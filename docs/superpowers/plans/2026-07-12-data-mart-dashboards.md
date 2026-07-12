@@ -20,6 +20,7 @@
 - **Keep host-provided deps external:** `react`, `react-dom`, `react-dom/client`, `react/jsx-runtime`, `react-router-dom`, `@owox/plugin-sdk`. Never add `@owox/plugin-sdk` to `package.json`. Every other runtime dep (e.g. `recharts`, `lucide-react`) goes in `dependencies`, not `devDependencies`.
 - **No `backend.ts`** in v1 (production backend execution is pending the host WASM sandbox).
 - **Query API limits (v1 scopes to these):** finest date grain is `DAY` (no `HOUR`); operators `in`, `not_in`, `this_week`, `in_next_n_days` are rejected by the service; `limit` is 1..1000; there is **no pagination/offset**.
+- **Top-N is server-side or it is a lie.** `limit` alone returns an *arbitrary* N rows. Any component that implies ranking (bar, pie/donut, a sorted table) MUST emit a `sortConfig` so the server applies `ORDER BY` before `LIMIT`. Never sort or truncate rows client-side to fake it. The endpoint validates `direction` strictly (`asc`/`desc`) — the request is rejected with a 400 otherwise.
 - **Never run test suites at full parallelism** (this machine overheats). Cap workers at 4. Note the runners differ per repo: repo A and repo B are **Jest** (`--maxWorkers=4`, and Jest's config lives in the *workspace* `package.json`, so you must `cd` into the workspace — running Jest from the repo root fails in Babel). Repo C is **vitest** (`--maxWorkers=4` — this vitest version's CLI does not expose `--poolOptions`).
 - Reference implementation to copy conventions from: `/Users/flakss/Projects/report-builder`.
 
@@ -666,6 +667,10 @@ export type QueryRequest = {
   filterConfig?: FilterRule[] | null;
   aggregationConfig?: AggregationRule[] | null;
   dateTruncConfig?: DateTruncRule[] | null;
+  // Server-side ORDER BY, applied BEFORE the limit — this is what makes top-N actually top-N.
+  // Without it the service returns an arbitrary N rows. The server validates direction strictly
+  // ('asc' | 'desc'); anything else is a 400.
+  sortConfig?: SortRule[] | null;
   limit?: number;
 };
 
@@ -937,6 +942,21 @@ git commit -m "feat: brokered OWOX api wrappers with server-side query"
 ## Task 6: `ui/lib/compile.ts` — component → query (THE CORE)
 
 This is the heart of the plugin: it is the only place that knows the query API, and it guarantees no client-side math. Test it hard.
+
+**Ranking must be pushed into `sortConfig`.** `limit` on its own returns an *arbitrary* N rows, so a
+"Top 10 sources" bar chart would plot 10 random sources. Compile emits a server-side `ORDER BY` for
+every component that implies ranking, and the server applies it before the `LIMIT`:
+
+| Component | `sortConfig` compile emits |
+|---|---|
+| **bar** | `[{ column: aggLabel(metric, aggregation), direction: config.sort ?? 'desc' }]` — the metric alias, not the raw column, because the ORDER BY references the aggregated output alias. |
+| **pie / donut** | `[{ column: aggLabel(metric, aggregation), direction: 'desc' }]` — `maxCategories` is a top-N, so the biggest slices must be the ones kept. |
+| **table** | `config.sort` mapped straight through (it is already `SortRule[]`); omit when the user set none. |
+| **scorecard** | none — a single aggregate row has nothing to order. |
+| **timeseries** | none — it is a full series over buckets, not a ranking. (Do NOT sort by date to "help"; the chart orders its own points for display, which is presentation, not computation.) |
+
+Never sort or slice rows in JS to fake this. `direction` is validated server-side as exactly
+`'asc' | 'desc'` — anything else is a 400.
 
 **Files:**
 - Create: `ui/lib/compile.ts`
