@@ -1,94 +1,122 @@
 # Data Mart Dashboards — Design Spec
 
-**Date:** 2026-07-11
-**Target:** OWOX Data Marts (experimental) — v2 plugin architecture
-**Deliverable:** an installable plugin `data-mart-dashboards`
+**Date:** 2026-07-11 (rev. 2026-07-12)
+**Deliverable:** an OWOX v2 plugin `data-mart-dashboards` + one enabling backend endpoint.
 
 ## 1. Summary
 
-A plugin that turns any Data Mart into an interactive dashboard. It auto-generates a
-sensible dashboard from the mart's schema and a data sample, persists the dashboard
-configuration as structured metadata, renders it from that metadata, and lets the user
-edit it. Dashboards are CRUD-managed like plugins/credentials, and each dashboard is
-bound to exactly one Data Mart.
+A plugin that turns a Data Mart into an interactive dashboard. It auto-generates a dashboard
+from the mart's schema, persists the dashboard configuration as structured metadata, renders
+it from that metadata, and lets the user edit it. Dashboards are CRUD-managed; each dashboard
+is bound to exactly one Data Mart.
 
-This is **not** a backend feature in the `owox-data-marts` monorepo. It is a v2 plugin: a
-folder (`plugin.json` + `ui/`) that the host builds and sandboxes. It uses only the
-capability SDK — no ambient authority, no embedded DB.
+**All aggregation is server-side.** The plugin performs no calculations on the client. Every
+component is one query against the Data Mart, requesting a subset of fields plus explicit
+aggregations and date buckets.
 
-## 2. Platform constraints (these shape everything)
+**Reference implementation:** `/Users/flakss/Documents/Projects/report-builder` — copy its
+conventions (see §11). This spec deviates from it in one way: report-builder aggregates
+client-side because the endpoint below does not exist yet. We add it.
 
-The v2 plugin contract (`owox-data-marts-experimental/AGENTS.md`) and SDK
-(`packages/plugin-sdk`) impose hard limits. The design is built around them, not against
-them.
+## 2. Repos touched (3)
 
-1. **Persistence = `collections(name)` SDK capability.** `collections('dashboards')`
-   exposes `list() / get(id) / put(id, doc) / delete(id)`, host-owned, scoped to
-   `(project, plugin)`, no grant needed. This is the "KV collection" / "collections
-   service with persistent storage." One document per dashboard.
+| # | Repo | Change |
+|---|---|---|
+| 0 | `owox-data-marts` | **Add `POST /api/data-marts/:id/query`** — a thin REST controller over the existing `QueryDataMartService`. Prerequisite for everything else. |
+| 1 | `owox-data-marts-experimental` | `collections` capability stamps the author server-side (`identity.whoami` was deleted). |
+| 2 | `data-mart-dashboardization` (this repo) | The plugin. |
 
-2. **Data access = `owox.dataMart(id).query()` only.** Resolves to `GET
-   /api/data-marts/{id}/run`. It takes **no arguments** and returns the mart's **full
-   result rows**. There is **no** SQL / filter / group-by / granularity pushdown.
+## 3. Phase 0 — the enabling endpoint (`owox-data-marts`)
 
-3. **No production backend.** `backend.ts` runs only in the dev runner
-   (`npm run dev:broker`), not on the real host (pending the WASM sandbox). The core flow
-   must therefore be **frontend-only**. No `backend.ts` in v1.
+`QueryDataMartService` already does everything required (fields, aggregations, date buckets,
+pre/post-join filters, limit, totals) but is wired **only** to the MCP tool `query_data_mart`
+(`POST /mcp`, JSON-RPC). The plugin broker's path allowlist does not permit `/mcp`, so no
+plugin can reach it. Everything else is already pre-wired for a REST endpoint:
 
-4. **Access control is free.** The manifest declares
-   `{ "type": "data-mart", "scope": "all", "actions": ["view"] }`. The broker enforces
-   that the user can only list/read Data Marts they already have access to. Requirement
-   "dashboards shown only for accessible data marts" is satisfied by the broker — the
-   plugin adds no authz code.
+- The broker allowlists any sub-path under `/api/data-marts/*` and forwards an arbitrary JSON body.
+- `owoxAction()` already maps `POST …/query` → **`view`** grant (not `create`).
+- `report-builder` already declares the `QueryRequest`/`QueryResult` types for it.
 
-5. **Host build = esbuild + default Tailwind theme** (AGENTS.md §7.1). The host ignores
-   `tailwind.config`. Custom theme tokens / plugins are NOT applied. CSS that needs a
-   custom theme must be **precompiled and committed**. Runtime deps must be in
-   `dependencies` (not `devDependencies`). `@owox/plugin-sdk`, `react*`, `react-router-dom`
-   are host-provided — keep them external, never bundle.
+**Add:** `POST /api/data-marts/:id/query`, delegating to `QueryDataMartService.run`.
 
-### Consequences (accepted design basis)
+Request:
+```ts
+{
+  fields: string[]                       // required, min 1
+  aggregations?: { field, function }[]   // SUM|COUNT|COUNT_DISTINCT|AVG|MIN|MAX|P25|P50|P75|P95
+  date_buckets?: { field, unit, time_zone? }[]  // DAY|WEEK|MONTH|QUARTER|YEAR
+  slices?:  { field, operator, value? }[]  // pre-join
+  filters?: { field, operator, value? }[]  // post-join
+  limit?: number                           // 1..1000, default 20
+}
+```
+Response (JSON — not the MCP TSV):
+```ts
+{ columns: string[], rows: unknown[][], totals: Record<string, unknown> | null,
+  returnedRows: number, truncated: boolean }
+```
 
-- **All aggregation is client-side.** Every filter, group-by, date-truncation,
-  aggregation, sort, and limit in this spec is computed **in the browser** over the rows
-  `query()` returns. The Data Mart's `/run` output **is** the dataset.
-  - **Ceiling:** bounded by row volume — appropriate when the mart is the pre-shaped
-    result (hundreds → low thousands of rows). Not for aggregating millions of rows live.
-  - **Upgrade path:** if the host later ships query pushdown or prod backend execution,
-    replace the aggregation layer only; the config data model is unchanged.
-  - Precedent: `packages/odm-usage-stat` already works exactly this way
-    (`ui/lib/runs.ts`: `applyFilters` / `distinctValues` / bucketing in JS).
+**Semantics inherited from the service (do not re-derive):**
+- **Grouping is implied.** A projected field *with* an aggregation is a metric; a projected field
+  *without* one is a GROUP BY key. **No `aggregations` ⇒ no GROUP BY ⇒ raw rows.**
+- Every field named in `aggregations`/`date_buckets` **must also appear in `fields`**, else
+  `AGGREGATION_COLUMN_NOT_SELECTED` / `DATE_TRUNC_COLUMN_NOT_SELECTED`.
+- Aggregated output columns are labelled `"<field> | <TOKEN>"` (e.g. `revenue | SUM`; P50 → `MEDIAN`).
+  A `COUNT(*) AS "Row Count"` column is auto-appended to any aggregated plan.
+- A field may only use a function in its `allowedAggregations` (governance) — else
+  `AGGREGATION_FUNCTION_NOT_ALLOWED_FOR_FIELD`.
+- **`totals` is a separate ungrouped query over all matching rows, ignoring `limit`.** This is what
+  scorecards read.
 
-- **Charts = shadcn chart component (recharts).** Chosen by the user. The design system
-  ships no chart primitives. Because the host uses the default Tailwind theme, the shadcn
-  chart's theme CSS must be **precompiled/committed** (§7.1) and chart colors set via
-  explicit values or inline CSS vars, not custom Tailwind tokens. `recharts` goes in
-  `dependencies`. **Tracked risk:** the shadcn chart CSS-variable theming must be verified
-  against the host's default-Tailwind build (reproduce the esbuild probe from AGENTS.md
-  §7.1 before publishing). Everything else (layout, filters, tables, controls) uses shadcn
-  + the `.dm-*` classes from `packages/plugin-starter/ui/styles.css`.
+**Accepted limits (v1 scopes to these):**
+- No `HOUR` bucket (DAY is the finest grain).
+- Operators `in`, `not_in`, `in_next_n_days`, `this_week` are **rejected** by the service →
+  no multi-select dimension filters, no "this week" preset in v1.
+- **No offset/pagination**; `limit` ≤ 1000. Tables are limit-only.
 
-## 3. Data model (the dashboard document)
+## 4. Phase 1 — author stamping (`owox-data-marts-experimental`)
 
-Stored as one JSON document per dashboard via `collections('dashboards').put(id, doc)`.
-Validated with a Zod schema in `ui/lib/schema.ts`. This is the "structured metadata, not
-hard-coded UI" principle.
+`identity.whoami` and the `storage` KV were **removed** from the plugin surface (commit `7883437`)
+— a plugin can no longer learn the user id. The dashboard spec requires an **Author**.
+
+**Change:** the `collections` capability stamps the acting user onto the doc server-side on `put`
+(the broker already holds `userId` in `CapabilityContext`). The plugin never sees an identity; it
+just reads `doc.createdBy` / `doc.createdByName` back. This preserves the privacy decision that
+motivated the removal.
+
+## 5. Persistence — `collections('dashboards')`
+
+One JSON document per dashboard. Declared in the manifest:
+
+```jsonc
+"collections": [{ "name": "dashboards", "scope": "project" }]
+```
+
+**Access control is free.** A collection doc may carry a reserved
+`$entity: { type: 'data-mart', id }`, which makes the doc **inherit that data mart's ACL** —
+`list()` returns only docs whose `$entity` the acting user can view; `get()` on an inaccessible
+doc reads as absent. Setting `$entity` to the linked mart therefore satisfies *"dashboards must be
+shown only for data marts accessible for the user"* with **zero authz code**, and structurally
+enforces one-mart-per-dashboard.
+
+Store: flat JSON file per collection, whole-file read/rewrite. **Ceiling: ~10k small docs** — far
+beyond any realistic dashboard count.
+
+## 6. The dashboard document
 
 ```ts
 Dashboard = {
-  id: string                 // uuid (crypto.randomUUID)
+  id: string                    // crypto.randomUUID()
+  $entity: { type: 'data-mart', id: dataMartId }   // ACL binding — the ONE mart
   name: string
-  author: string             // from identity.whoami() at creation
-  dataMartId: string         // the ONE mart this dashboard is bound to
-  createdAt: string          // ISO
-  updatedAt: string          // ISO — bumped on every saved change
-  gridColumns: number        // default 5, adjustable in settings
-  globalFilters: FilterNode  // AND/OR tree (see §5)
-  components: Component[]     // ordered; render order == array order
-  generatedFrom?: {          // provenance, enables "restore generated layout"
-    schemaHash: string
-    generatedAt: string
-  }
+  createdBy, createdByName      // stamped server-side (§4)
+  createdAt, updatedAt          // ISO; updatedAt bumped on every save
+  gridColumns: number           // default 5, adjustable in settings
+  filters: FilterRule[]         // GLOBAL, applied to every component
+  slices:  FilterRule[]         // GLOBAL, pre-join
+  components: Component[]       // ordered
+  configVersion: number         // optimistic-concurrency stamp AND refetch key (§9)
+  generatedAt?: string          // provenance for "restore generated layout"
 }
 
 Component = {
@@ -96,196 +124,143 @@ Component = {
   type: 'scorecard' | 'timeseries' | 'bar' | 'pie' | 'donut' | 'table'
   title: string
   description?: string
-  width: 1 | 2 | 3 | 4 | 5   // columns; % = width/gridColumns
-  config: ScorecardConfig | TimeSeriesConfig | BarConfig | PieConfig | TableConfig
-  filterOverrides?: FilterNode  // replaces/extends global filters for this component
+  width: number     // 1..gridColumns  (20/40/60/80/100% at gridColumns=5)
+  height: number    // row units, default 1
+  config: <per-type>
 }
+
+FilterRule = { field, operator, value?, placement?: 'pre-join' | 'post-join' }
 ```
 
-Per-type config (all reference fields by mart column name):
+**Filters and slices are global only.** There are no component-level filter overrides — every
+component receives the same `filters`/`slices`. (Explicit product decision.)
 
-- **ScorecardConfig**: `metric`, `aggregation`, `numberFormat`, `comparePreviousPeriod: bool`.
-- **TimeSeriesConfig**: `dateField`, `metric`, `aggregation`, `granularity`
-  (`hour|day|week|month|quarter|year`), `breakdown?`, `sort`, `nullHandling`.
-- **BarConfig**: `dimension`, `metric`, `aggregation`, `orientation`
-  (`vertical|horizontal`), `sort`, `limit`, `secondaryMetric?`, `breakdown?`.
-- **PieConfig** (pie/donut): `dimension`, `metric`, `aggregation`, `maxCategories`, `sort`,
-  `otherBucket: bool`.
-- **TableConfig**: `columns[]` (order + visibility), `sort`, `pageSize`, `search: bool`,
-  `columnFilters?`, `formatting`, `conditionalFormatting?`, `totals?`.
+Per-type `config` is a **query spec** — it compiles directly to a §3 request:
 
-`aggregation ∈ sum | avg | min | max | count | count_distinct`.
-`numberFormat` = a small formatting descriptor (decimals, prefix/suffix, thousands,
-percent). Formatting logic lives in `ui/lib/format.ts`.
+| Type | config | → query |
+|---|---|---|
+| `scorecard` | `metric, aggregation, format, comparePrevious?` | `fields:[metric]`, `aggregations:[{metric,agg}]` → read `totals` |
+| `timeseries` | `dateField, metric, aggregation, unit, breakdown?, sort` | `fields:[dateField,metric,(breakdown)]`, `aggregations:[{metric,agg}]`, `date_buckets:[{dateField,unit}]` |
+| `bar` | `dimension, metric, aggregation, orientation, sort, limit, breakdown?` | `fields:[dimension,metric]`, `aggregations:[{metric,agg}]`, `limit` |
+| `pie`/`donut` | `dimension, metric, aggregation, maxCategories, sort` | same as bar, `limit: maxCategories` |
+| `table` | `columns[], sort, limit, format` | `fields: columns`, no aggregations → raw rows |
 
-## 4. Field classification & auto-generation (`ui/lib/classify.ts`, `generate.ts`)
+`aggregation` must be within the field's `allowedAggregations`.
 
-**Inputs:** the mart schema (`owox.request('GET', '/api/data-marts/{id}')` → `schema`)
-and a data sample (one `query()` call; profile the returned rows).
+## 7. Auto-generation
 
-**Classify** each field into a role:
-- `date` — DATE / DATETIME / TIMESTAMP / TIME types.
-- `metric` — numeric types (INTEGER/FLOAT/NUMERIC…).
-- `dimension` — string/boolean types.
-- Per dimension, compute **cardinality** from the sample (distinct count) to decide
-  pie-vs-bar and default limits. Also compute min/max (dates → default range) and null
-  rate (metrics → default agg, null handling).
+**Inputs** (all server-side, no client math):
+- `GET /api/data-marts/:id` → `schema.fields[]` with `name, type, aggregationRole ('dimension'|'metric'),
+  allowedAggregations[]` — the field picker source.
+- `GET /api/data-marts/:id/blendable-schema` → joined fields (`<alias>__<field>`, `aggregateFunction`).
+- **Cardinality probe** for pie-vs-bar: one query per candidate dimension —
+  `fields:[dim]`, `aggregations:[{field: dim, function:'COUNT'}]`, `limit: 20`; a dimension with
+  ≤ 8 groups is pie-eligible, otherwise bar/table. (This is the "data sampling" step; it is a
+  server-side aggregation, not a client calculation.)
 
-**Generate** a default Dashboard doc in this order (spec's Default Dashboard Structure):
-1. Title + metadata (name defaults to mart title).
-2. Global date filters — one per date/datetime/timestamp field, default preset "Last 30
-   days" (or full range if data is older).
-3. Up to 5 scorecards — top numeric metrics (by field order / non-null density).
-4. One time-series chart per primary date field (metric = top scorecard metric,
-   granularity = day).
-5. Bar charts for the most informative dimension×metric pairs (low-to-moderate
-   cardinality dimensions).
-6. Pie/donut only for **low-cardinality** dimensions (≤ ~8 distinct); higher cardinality
-   → bar or table. (Explicit spec correction.)
-7. One detailed table over all columns.
+**Generated order** (the spec's Default Dashboard Structure):
+1. Title + metadata.
+2. Global date filters — one per DATE/DATETIME/TIMESTAMP field.
+3. Up to 5 scorecards — top `aggregationRole:'metric'` fields.
+4. Time-series per primary date field (unit = DAY).
+5. Bar charts for informative dimension×metric pairs.
+6. Pie/donut **only** for dimensions with ≤ 8 distinct values (high-cardinality → bar/table).
+7. Detailed table.
 
-Generation is deterministic given (schema, sample). `generatedFrom.schemaHash` records
-provenance so "Restore generated layout" can regenerate.
+Deterministic given (schema, probes). `generatedAt` enables "restore generated layout".
 
-## 5. Filter engine (`ui/lib/filter.ts`)
+## 8. Layout
 
-A pure function `applies(row, node): boolean` over a filter tree.
+- CSS grid, `gridColumns` wide (default 5). `width` = column span, `height` = row span. No arbitrary
+  widths. Responsive: collapses to full width on narrow screens, preserving order.
+- Page chrome is **mandatory and verbatim**: `dm-page > dm-page-header(+title) > dm-page-content >
+  dm-card`. Do **not** rebuild the card from Tailwind utilities — the host compiles plugin CSS with
+  the **default** Tailwind theme (`rounded-md`=6px, no `bg-muted`/`text-foreground` tokens), so
+  utilities render subtly wrong inside the iframe. Copy the `.dm-*` block from
+  `plugin-starter/ui/styles.css`.
+- **CSS is precompiled and committed** (`styles.src.css` → `styles.css`), because the host ignores
+  `tailwind.config` and won't resolve shadcn tokens (`--background`, `--chart-1..5`, `.dark`).
 
-```ts
-FilterNode = { op: 'and' | 'or', children: (FilterNode | Condition)[] }
-Condition  = { field, operator, value | value2 | values | relative }
-```
+## 9. Data fetching, loading & interactivity
 
-Operators: `eq, neq, in, notIn, gt, gte, lt, lte, between, contains, startsWith,
-endsWith, isNull, isNotNull`, plus **relative date** conditions (presets below).
-Global `globalFilters` apply to every component whose fields are compatible; a component's
-`filterOverrides` replace the global tree for that component.
+- **One query per component**, issued via `owox.request('POST', '/api/data-marts/{id}/query', body)`.
+  Grant: `{ type: 'data-mart', scope: 'all', actions: ['view'] }` (POST `…/query` → `view`).
+- **Refetch key = `configVersion`.** Any edit or filter change bumps it, debounced **1s**.
+- **Per-component loading/stale states** — copy `report-builder/ui/lib/freshness.ts#useLayerData`:
+  `idle | loading | stale | ready`. While refetching, the component shows its last-good data at 50%
+  opacity with a progress line ("preload"), never a blank flash. Offscreen/collapsed components skip
+  the network and go `stale`.
+- **Cross-filtering:** clicking a bar/slice appends a global `{field, operator:'eq', value}` filter
+  and bumps `configVersion` — every component refetches. Hover tooltips and legend toggles are local
+  to the chart (presentation only, no recomputation).
 
-**Date presets** (`ui/lib/date-presets.ts`, model after `odm-usage-stat`): Today,
-Yesterday, Last 7/30 days, This/Last week, This/Last month, This/Last year, Custom range.
-Interaction model ≈ Looker Studio date-range control.
+## 10. Charts
 
-## 6. Aggregation (`ui/lib/aggregate.ts`)
-
-Pure functions over filtered rows:
-- `groupBy(rows, dimField)` → buckets.
-- `dateTrunc(value, granularity)` → bucket key (hour…year).
-- `aggregate(values, fn)` → number.
-- `sortLimit(results, sort, limit)`.
-- `otherBucket(results, maxCategories)` for pie charts.
-
-Each component's data pipeline: `rows → filter(global ⊕ overrides) → group → aggregate →
-sort → limit → format`. All pure, all unit-tested independent of React.
-
-## 7. Rendering & layout (`ui/components/`)
-
-- **Grid** — `gridColumns`-wide responsive grid (default 5). Component `width` maps to a
-  column span (20/40/60/80/100%). On narrow screens, columns collapse to full width while
-  preserving component order. Uses shadcn + `.dm-*` classes + CSS grid (no arbitrary
-  widths).
-- **Page chrome** — every screen wraps in `dm-page > dm-page-header + dm-page-content >
-  dm-card` (AGENTS.md requirement; skipping the header = no title).
-- **DateFilterBar** — global date filters in one horizontal row (wrap on narrow),
-  each labeled with its mart field.
-- **Component renderers** — `Scorecard`, `TimeSeriesChart`, `BarChart`, `PieChart`,
-  `DataTable`. Charts use recharts (shadcn chart); scorecard/table use shadcn.
-- **DashboardView** — reads the doc, holds filter state, computes each component's data via
-  the lib functions, renders the grid. Filter changes re-run the pure pipeline (memoized).
-
-## 8. CRUD & routing (`ui/model/`, `ui/App.tsx`)
-
-- **DashboardList** — `collections('dashboards').list()`; shows name, mart, author, dates;
-  create / open / duplicate / delete. "New" flow: pick a Data Mart (from
-  `owox.request('GET', '/api/data-marts')`, already access-filtered by the broker) →
-  auto-generate → save → open.
-- **Routing** — react-router: `/` list, `/d/:id` view, `/d/:id/edit` edit (or an edit
-  toggle within view). react-router-dom is host-provided (external).
-- Every save `put`s the doc with a bumped `updatedAt`.
-
-## 9. Editing (§ Dashboard Editing)
-
-Add / remove / duplicate / move (reorder) / resize (1–5 cols) / change type / pick
-dimensions+metrics / configure aggregation, sort, filters / edit title+description /
-**restore generated layout**. Editing mutates the in-memory doc; save persists. Config
-panels are shadcn forms (sheet/drawer per component).
-
-## 10. Interactivity (§ Dashboard Interactivity)
-
-Global date + dimension + metric filters; reset; hover tooltips; legend series toggle;
-component-level overrides. **Cross-filtering** (click a bar/slice → optionally filter
-other components) and **drill-down** are included but sequenced last (phase 7) since they
-touch shared filter state.
+**recharts** wrapped in the **shadcn chart** component (`ui/components/ui/chart.tsx` — copy from
+report-builder), colors `var(--chart-1..5)`. Tables use shadcn table. `recharts` goes in
+`dependencies` (the host installs real deps; shared deps stay external).
 
 ## 11. Module layout
 
 ```
-plugin.json
+plugin.json                     # manifest: data-mart view grant + collections decl
 ui/
-  index.html  main.tsx  styles.css        # entry; precompiled CSS (§7.1)
-  App.tsx                                  # routes
+  index.html main.tsx App.tsx
+  styles.src.css  styles.css    # source + PRECOMPILED committed output
+  sdk-mock.ts                   # local SDK mock for `npm run dev` / vitest
   lib/
-    schema.ts        # Zod dashboard doc + config types
-    classify.ts      # field roles + cardinality/profile
-    generate.ts      # schema+sample -> Dashboard doc
-    filter.ts        # filter tree evaluation (15 operators + relative dates)
-    aggregate.ts     # group/agg/date-trunc/sort/limit/other-bucket
-    date-presets.ts  # Looker-style presets
-    format.ts        # number/date formatting
-    query.ts         # owox.dataMart(id).query() wrapper + mart list/schema fetch
-  model/
-    dashboards.ts    # collections('dashboards') CRUD
-    state.ts         # dashboard view/edit state (reducer)
+    api.ts        # owox.request wrappers: listMarts, getMartDetail, getBlendableSchema, queryDataMart
+    types.ts      # Dashboard doc, Component, FilterRule, QueryRequest/QueryResult
+    dashboards.ts # collections('dashboards') CRUD; $entity binding
+    compile.ts    # Component.config + global filters -> QueryRequest   (the core mapping)
+    generate.ts   # schema + cardinality probes -> Dashboard doc
+    filterOps.ts  # type-aware operator catalog + relative-date presets
+    freshness.ts  # useLayerData: loading/stale/refresh, 1s debounce
+    format.ts     # number/date formatting (presentation only)
   components/
-    DashboardList.tsx  DashboardView.tsx  Grid.tsx  DateFilterBar.tsx
+    DashboardList.tsx  DashboardView.tsx  Grid.tsx  FilterBar.tsx
     Scorecard.tsx  TimeSeriesChart.tsx  BarChart.tsx  PieChart.tsx  DataTable.tsx
-    editors/*        # per-component config panels
+    editors/*
+  components/ui/  # shadcn: chart, table, select, popover, sheet, ...
 ```
 
-Logic lives in pure `lib/` functions (unit-tested with vitest, the starter's test setup);
-components stay thin.
+`compile.ts` is the heart: a pure `(component, globalFilters, globalSlices) → QueryRequest`.
+It is the only place that knows the query API, and it is fully unit-testable without React.
 
-## 12. Phased implementation plan
+No `backend.ts` in v1 (production backend execution is pending the WASM sandbox). Assistant tools
+are deferred.
 
-Each phase is independently testable; pure `lib/` functions carry the logic.
+## 12. Phased plan
 
-1. **Skeleton + CRUD** — scaffold from `plugin-starter`; manifest with `data-mart`
-   credential; mart picker; `collections('dashboards')` CRUD list; empty dashboard shell
-   in `dm-*` chrome. *(No aggregation yet.)*
-2. **Data layer** — `query.ts` + `classify.ts` + `filter.ts` + `aggregate.ts` +
-   `date-presets.ts` + `format.ts` as pure, fully unit-tested functions.
-3. **Auto-generator** — `generate.ts`: schema + sample → default Dashboard doc.
-4. **Renderer + grid** — Grid, DateFilterBar, Scorecard, DataTable; end-to-end view of a
-   generated dashboard responding to date filters.
-5. **Charts** — recharts timeseries / bar / pie-donut wired to the filter+aggregate
-   pipeline. Verify shadcn chart CSS against the host build (§7.1 probe).
-6. **Editing** — add/remove/duplicate/move/resize/retype + config panels + "restore
-   generated layout"; save bumps `updatedAt`.
-7. **Interactivity polish** — cross-filtering, drill-down, legend toggles, component
-   filter overrides, reset.
+0. **`POST /api/data-marts/:id/query`** in `owox-data-marts` (+ e2e test). *Blocks everything.*
+1. **Author stamping** in the experimental host's `collections` capability.
+2. **Plugin skeleton + CRUD** — scaffold from `plugin-starter`; manifest; mart picker;
+   `collections('dashboards')` list/create/duplicate/delete with `$entity`; `dm-*` chrome.
+3. **Data layer** — `api.ts`, `types.ts`, `compile.ts`, `filterOps.ts`, `freshness.ts` (unit-tested).
+4. **Auto-generator** — `generate.ts` (schema + cardinality probes → doc).
+5. **Renderer + grid + global filters** — Grid (width/height), FilterBar, Scorecard (from `totals`),
+   DataTable. End-to-end generated dashboard responding to filters.
+6. **Charts** — recharts timeseries/bar/pie-donut + per-component loading/stale.
+7. **Editing** — add/remove/duplicate/move/resize(w+h)/retype, config panels, restore generated layout.
+8. **Interactivity polish** — cross-filtering, legend toggles, reset.
 
 ## 13. Testing & verification
 
-- **Unit (vitest):** every `lib/` function — classify, filter (all 15 operators + relative
-  dates), aggregate (each agg fn + date-trunc granularities), generate (schema+sample →
-  expected doc shape), format, date-presets. Mirror `odm-usage-stat`'s test layout.
-- **Component (@testing-library/react):** renderers with fixture rows; filter interaction
-  updates output.
-- **Host build check:** run the AGENTS.md §7.1 esbuild probe before publishing; confirm
-  recharts + precompiled CSS resolve with no unresolved imports.
-- **Dev loop:** `npm run dev` (mock SDK) for UI; `npm run dev:broker` with `owox.dev.json`
-  for live `owox`/`collections`; Step 4 embedded host install before release.
-- Run vitest capped at `--maxWorkers=4` (hardware constraint).
+- **Unit (vitest):** `compile.ts` (every component type → expected QueryRequest), `generate.ts`,
+  `filterOps.ts`, `format.ts`, `freshness.ts`. Run with `--maxWorkers=4`.
+- **Component:** renderers against fixture `QueryResult`s; loading/stale states.
+- **Host build probe** (AGENTS.md §7.1) before publishing — confirm recharts + precompiled CSS
+  bundle with no unresolved imports.
+- **Dev:** `npm run dev` (mock SDK) → `npm run dev:broker` with a gitignored `owox.dev.json`
+  pointing at a backend that has the §3 endpoint → embedded host install (required pre-release).
 
 ## 14. Out of scope (v1)
 
-- `backend.ts` / assistant tools (blocked on prod WASM sandbox).
-- Query pushdown / server-side aggregation (no SDK surface).
-- AI-assisted generation (deferred; config model already supports dropping it in).
-- Dashboard sharing independent of the mart (access derives from the mart by design).
+`backend.ts` / assistant tools; AI-assisted generation; multi-select (`in`) filters, `HOUR` grain,
+and table pagination (all blocked on §3 limits); dashboard sharing independent of the mart.
 
-## 15. Open ceilings (documented shortcuts)
+## 15. Tracked debt
 
-- Row-volume ceiling on client-side aggregation (§2). Revisit if marts exceed ~low
-  thousands of rows; upgrade path = query pushdown / prod backend.
-- shadcn-chart theming under host default-Tailwind is a build risk to verify early
-  (phase 5), not assume.
+- No `HOUR` granularity; no `in`/`not_in`; no `this_week`; no offset pagination; `limit` ≤ 1000.
+  Each is a one-line unblock in the query service — revisit after v1.
+- shadcn-chart theming under the host's default-Tailwind build must be verified in phase 6, not assumed.
