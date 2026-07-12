@@ -20,7 +20,7 @@
 - **Keep host-provided deps external:** `react`, `react-dom`, `react-dom/client`, `react/jsx-runtime`, `react-router-dom`, `@owox/plugin-sdk`. Never add `@owox/plugin-sdk` to `package.json`. Every other runtime dep (e.g. `recharts`, `lucide-react`) goes in `dependencies`, not `devDependencies`.
 - **No `backend.ts`** in v1 (production backend execution is pending the host WASM sandbox).
 - **Query API limits (v1 scopes to these):** finest date grain is `DAY` (no `HOUR`); operators `in`, `not_in`, `this_week`, `in_next_n_days` are rejected by the service; `limit` is 1..1000; there is **no pagination/offset**.
-- **Run vitest with `--maxWorkers=4`.** Never run test suites at full parallelism.
+- **Never run test suites at full parallelism** (this machine overheats). Cap workers at 4. Note the runners differ per repo: repo A and repo B are **Jest** (`--maxWorkers=4`, and Jest's config lives in the *workspace* `package.json`, so you must `cd` into the workspace — running Jest from the repo root fails in Babel). Repo C is **vitest** (`--poolOptions.threads.maxThreads=4`).
 - Reference implementation to copy conventions from: `/Users/flakss/Projects/report-builder`.
 
 ---
@@ -159,8 +159,8 @@ describe('DataMartController.query', () => {
 - [ ] **Step 3: Run the test to verify it fails**
 
 ```bash
-cd /Users/flakss/Projects/owox-data-marts
-npx jest --maxWorkers=4 apps/backend/src/data-marts/controllers/data-mart-query.controller.spec.ts
+cd /Users/flakss/Projects/owox-data-marts/apps/backend
+npx jest --maxWorkers=4 src/data-marts/controllers/data-mart-query.controller.spec.ts
 ```
 Expected: FAIL — `controller.query is not a function`.
 
@@ -295,17 +295,17 @@ Import it in the controller: `import { QueryDataMartSpec } from './spec/query-da
 - [ ] **Step 8: Run the test to verify it passes**
 
 ```bash
-cd /Users/flakss/Projects/owox-data-marts
-npx jest --maxWorkers=4 apps/backend/src/data-marts/controllers/data-mart-query.controller.spec.ts
+cd /Users/flakss/Projects/owox-data-marts/apps/backend
+npx jest --maxWorkers=4 src/data-marts/controllers/data-mart-query.controller.spec.ts
 ```
 Expected: PASS (3 tests).
 
 - [ ] **Step 9: Typecheck and lint**
 
 ```bash
-cd /Users/flakss/Projects/owox-data-marts
-npx tsc --noEmit -p apps/backend/tsconfig.json
-npx eslint apps/backend/src/data-marts/controllers/data-mart.controller.ts apps/backend/src/data-marts/dto/presentation/query-data-mart-*.ts
+cd /Users/flakss/Projects/owox-data-marts/apps/backend
+npx tsc --noEmit -p tsconfig.json
+npx eslint src/data-marts/controllers/data-mart.controller.ts src/data-marts/dto/presentation/query-data-mart-*.ts
 ```
 Expected: no errors.
 
@@ -377,8 +377,8 @@ it('ignores a $createdBy supplied by the plugin', async () => {
 - [ ] **Step 2: Run to verify they fail**
 
 ```bash
-cd /Users/flakss/Projects/owox-data-marts-experimental
-npx vitest run packages/host-backend/src/broker/capabilities/collections.spec.ts --poolOptions.threads.maxThreads=4
+cd /Users/flakss/Projects/owox-data-marts-experimental/packages/host-backend
+npx jest --maxWorkers=4 src/broker/capabilities/collections.spec.ts
 ```
 Expected: FAIL — `$createdBy` is `undefined`.
 
@@ -419,7 +419,8 @@ Replace the `case 'put'` block with:
 - [ ] **Step 4: Run to verify they pass**
 
 ```bash
-npx vitest run packages/host-backend/src/broker/capabilities/collections.spec.ts --poolOptions.threads.maxThreads=4
+cd /Users/flakss/Projects/owox-data-marts-experimental/packages/host-backend
+npx jest --maxWorkers=4 src/broker/capabilities/collections.spec.ts
 ```
 Expected: PASS (all, including the pre-existing tests).
 
