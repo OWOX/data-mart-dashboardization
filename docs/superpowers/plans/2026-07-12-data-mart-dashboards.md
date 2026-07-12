@@ -20,7 +20,7 @@
 - **Keep host-provided deps external:** `react`, `react-dom`, `react-dom/client`, `react/jsx-runtime`, `react-router-dom`, `@owox/plugin-sdk`. Never add `@owox/plugin-sdk` to `package.json`. Every other runtime dep (e.g. `recharts`, `lucide-react`) goes in `dependencies`, not `devDependencies`.
 - **No `backend.ts`** in v1 (production backend execution is pending the host WASM sandbox).
 - **Query API limits (v1 scopes to these):** finest date grain is `DAY` (no `HOUR`); operators `in`, `not_in`, `this_week`, `in_next_n_days` are rejected by the service; `limit` is 1..1000; there is **no pagination/offset**.
-- **Never run test suites at full parallelism** (this machine overheats). Cap workers at 4. Note the runners differ per repo: repo A and repo B are **Jest** (`--maxWorkers=4`, and Jest's config lives in the *workspace* `package.json`, so you must `cd` into the workspace — running Jest from the repo root fails in Babel). Repo C is **vitest** (`--poolOptions.threads.maxThreads=4`).
+- **Never run test suites at full parallelism** (this machine overheats). Cap workers at 4. Note the runners differ per repo: repo A and repo B are **Jest** (`--maxWorkers=4`, and Jest's config lives in the *workspace* `package.json`, so you must `cd` into the workspace — running Jest from the repo root fails in Babel). Repo C is **vitest** (`--maxWorkers=4` — this vitest version's CLI does not expose `--poolOptions`).
 - Reference implementation to copy conventions from: `/Users/flakss/Projects/report-builder`.
 
 ---
@@ -844,7 +844,7 @@ describe('api', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/lib/api.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/api.test.ts --maxWorkers=4
 ```
 Expected: FAIL — cannot resolve `./api`.
 
@@ -921,7 +921,7 @@ export const collections = (name: string) => { /* Map-backed mock — see report
 - [ ] **Step 5: Run to verify it passes**
 
 ```bash
-npx vitest run ui/lib/api.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/api.test.ts --maxWorkers=4
 ```
 Expected: PASS (4 tests).
 
@@ -1047,7 +1047,7 @@ describe('compile', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/lib/compile.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/compile.test.ts --maxWorkers=4
 ```
 Expected: FAIL — cannot resolve `./compile`.
 
@@ -1125,7 +1125,7 @@ export function compile(component: Component, filters: FilterRule[], slices: Fil
 - [ ] **Step 4: Run to verify it passes**
 
 ```bash
-npx vitest run ui/lib/compile.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/compile.test.ts --maxWorkers=4
 ```
 Expected: PASS (10 tests).
 
@@ -1207,7 +1207,7 @@ describe('dashboards', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/lib/dashboards.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/dashboards.test.ts --maxWorkers=4
 ```
 Expected: FAIL — cannot resolve `./dashboards`.
 
@@ -1258,7 +1258,7 @@ export async function duplicateDashboard(d: Dashboard): Promise<Dashboard> {
 - [ ] **Step 4: Run to verify it passes**
 
 ```bash
-npx vitest run ui/lib/dashboards.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/dashboards.test.ts --maxWorkers=4
 ```
 Expected: PASS (3 tests).
 
@@ -1357,7 +1357,7 @@ describe('useLayerData', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/lib/freshness.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/freshness.test.ts --maxWorkers=4
 ```
 Expected: FAIL — cannot resolve `./freshness`.
 
@@ -1424,7 +1424,7 @@ export function useLayerData<T>(
 - [ ] **Step 4: Run to verify it passes**
 
 ```bash
-npx vitest run ui/lib/freshness.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/freshness.test.ts --maxWorkers=4
 ```
 Expected: PASS (4 tests).
 
@@ -1532,7 +1532,7 @@ describe('generate', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/lib/generate.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/generate.test.ts --maxWorkers=4
 ```
 Expected: FAIL — cannot resolve `./generate`.
 
@@ -1664,7 +1664,7 @@ export function generate(
 - [ ] **Step 4: Run to verify it passes**
 
 ```bash
-npx vitest run ui/lib/generate.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/generate.test.ts --maxWorkers=4
 ```
 Expected: PASS (9 tests).
 
@@ -1767,7 +1767,7 @@ describe('RELATIVE_PRESETS', () => {
 - [ ] **Step 2: Run to verify they fail**
 
 ```bash
-npx vitest run ui/lib/format.test.ts ui/lib/filterOps.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/format.test.ts ui/lib/filterOps.test.ts --maxWorkers=4
 ```
 Expected: FAIL — modules not found.
 
@@ -1844,7 +1844,7 @@ export const RELATIVE_PRESETS: { kind: string; label: string; needsN: boolean }[
 - [ ] **Step 5: Run to verify they pass**
 
 ```bash
-npx vitest run ui/lib/format.test.ts ui/lib/filterOps.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/format.test.ts ui/lib/filterOps.test.ts --maxWorkers=4
 ```
 Expected: PASS.
 
@@ -1900,7 +1900,7 @@ describe('DashboardList', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/components/DashboardList.test.tsx --poolOptions.threads.maxThreads=4
+npx vitest run ui/components/DashboardList.test.tsx --maxWorkers=4
 ```
 Expected: FAIL — cannot resolve `./DashboardList`.
 
@@ -2051,7 +2051,7 @@ Use `MemoryRouter` — the plugin renders in a sandboxed iframe and must not fig
 - [ ] **Step 6: Run tests + host build probe**
 
 ```bash
-npx vitest run ui/components/DashboardList.test.tsx --poolOptions.threads.maxThreads=4
+npx vitest run ui/components/DashboardList.test.tsx --maxWorkers=4
 npx esbuild ui/main.tsx --bundle --format=esm --external:react --external:react-dom \
   --external:react-dom/client --external:react/jsx-runtime --external:react-router-dom \
   --external:@owox/plugin-sdk --outfile=/tmp/probe.js
@@ -2122,7 +2122,7 @@ describe('Grid', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/components/Grid.test.tsx --poolOptions.threads.maxThreads=4
+npx vitest run ui/components/Grid.test.tsx --maxWorkers=4
 ```
 Expected: FAIL — cannot resolve `./Grid`.
 
@@ -2288,7 +2288,7 @@ One control per date slice, laid out in a single horizontal row (wrapping when n
 - [ ] **Step 7: Run tests + probe**
 
 ```bash
-npx vitest run ui/components --poolOptions.threads.maxThreads=4
+npx vitest run ui/components --maxWorkers=4
 npm run typecheck
 ```
 Expected: PASS.
@@ -2352,7 +2352,7 @@ describe('Scorecard', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/components/Scorecard.test.tsx --poolOptions.threads.maxThreads=4
+npx vitest run ui/components/Scorecard.test.tsx --maxWorkers=4
 ```
 Expected: FAIL.
 
@@ -2412,7 +2412,7 @@ Stub the three chart components to `null` for now; Task 14 fills them in.
 - [ ] **Step 6: Run + commit**
 
 ```bash
-npx vitest run ui/components --poolOptions.threads.maxThreads=4
+npx vitest run ui/components --maxWorkers=4
 git add ui/components/Scorecard.tsx ui/components/Scorecard.test.tsx ui/components/DataTable.tsx ui/components/renderComponent.tsx
 git commit -m "feat: scorecard (from server totals) and detail table"
 ```
@@ -2475,7 +2475,7 @@ describe('toPoints', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/lib/rows.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/rows.test.ts --maxWorkers=4
 ```
 Expected: FAIL.
 
@@ -2574,7 +2574,7 @@ reorder them (recharts needs an explicit size in jsdom — wrap in a fixed-size 
 - [ ] **Step 7: Run + probe + commit**
 
 ```bash
-npx vitest run ui/lib/rows.test.ts ui/components --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/rows.test.ts ui/components --maxWorkers=4
 npm run css
 npx esbuild ui/main.tsx --bundle --format=esm --external:react --external:react-dom \
   --external:react-dom/client --external:react/jsx-runtime --external:react-router-dom \
@@ -2666,7 +2666,7 @@ describe('edit', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-npx vitest run ui/lib/edit.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/edit.test.ts --maxWorkers=4
 ```
 Expected: FAIL.
 
@@ -2692,7 +2692,7 @@ the dashboard's `id`, `name` and `$entity`.
 - [ ] **Step 6: Run + commit**
 
 ```bash
-npx vitest run ui/lib/edit.test.ts --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib/edit.test.ts --maxWorkers=4
 npm run typecheck
 git add ui/lib/edit.ts ui/lib/edit.test.ts ui/components/editors
 git commit -m "feat: component editing — add/remove/duplicate/move/resize/retype + restore"
@@ -2765,7 +2765,7 @@ component showing its preload state.
 - [ ] **Step 4: Run + commit**
 
 ```bash
-npx vitest run ui/lib --poolOptions.threads.maxThreads=4
+npx vitest run ui/lib --maxWorkers=4
 git add ui/lib/edit.ts ui/lib/edit.test.ts ui/components
 git commit -m "feat: cross-filtering from chart segments + filter reset"
 ```
@@ -2780,7 +2780,7 @@ No new code — this is the gate before publishing.
 
 ```bash
 cd /Users/flakss/Projects/data-mart-dashboardization
-npx vitest run --poolOptions.threads.maxThreads=4
+npx vitest run --maxWorkers=4
 npm run typecheck
 npm run css
 npm install --ignore-scripts --omit=dev && npx esbuild ui/main.tsx --bundle --format=esm \
