@@ -21,20 +21,20 @@
 - **No `backend.ts`** in v1 (production backend execution is pending the host WASM sandbox).
 - **Query API limits (v1 scopes to these):** finest date grain is `DAY` (no `HOUR`); operators `in`, `not_in`, `this_week`, `in_next_n_days` are rejected by the service; `limit` is 1..1000; there is **no pagination/offset**.
 - **Run vitest with `--maxWorkers=4`.** Never run test suites at full parallelism.
-- Reference implementation to copy conventions from: `/Users/flakss/Documents/Projects/report-builder`.
+- Reference implementation to copy conventions from: `/Users/flakss/Projects/report-builder`.
 
 ---
 
 ## File Structure
 
-**Repo A — `/Users/flakss/Documents/Projects/owox-data-marts`**
+**Repo A — `/Users/flakss/Projects/owox-data-marts`**
 - Create: `apps/backend/src/data-marts/dto/presentation/query-data-mart-request-api.dto.ts` — request DTO.
 - Create: `apps/backend/src/data-marts/dto/presentation/query-data-mart-response-api.dto.ts` — response DTO.
 - Create: `apps/backend/src/data-marts/controllers/spec/query-data-mart.spec.ts` — Swagger decorator.
 - Modify: `apps/backend/src/data-marts/controllers/data-mart.controller.ts` — add `POST :id/query`.
 - Test: `apps/backend/src/data-marts/controllers/data-mart-query.controller.spec.ts`
 
-**Repo B — `/Users/flakss/Documents/Projects/owox-data-marts-experimental`**
+**Repo B — `/Users/flakss/Projects/owox-data-marts-experimental`**
 - Modify: `packages/host-backend/src/broker/capabilities/collections.ts` — stamp `$createdBy`/`$createdAt`.
 - Test: `packages/host-backend/src/broker/capabilities/collections.spec.ts`
 
@@ -53,7 +53,7 @@
 
 ## Task 1: `POST /api/data-marts/:id/query` (repo A)
 
-**Repo:** `/Users/flakss/Documents/Projects/owox-data-marts`
+**Repo:** `/Users/flakss/Projects/owox-data-marts`
 
 > **Prerequisite:** the working tree is 53 commits behind `origin/main` and does **not** contain `QueryDataMartService`. Pull first.
 
@@ -85,7 +85,7 @@
 - [ ] **Step 1: Pull the branch that contains QueryDataMartService**
 
 ```bash
-cd /Users/flakss/Documents/Projects/owox-data-marts
+cd /Users/flakss/Projects/owox-data-marts
 git status --short          # must be clean; stash if not
 git pull --ff-only origin main
 test -f apps/backend/src/data-marts/use-cases/query-data-mart.service.ts && echo OK
@@ -159,7 +159,7 @@ describe('DataMartController.query', () => {
 - [ ] **Step 3: Run the test to verify it fails**
 
 ```bash
-cd /Users/flakss/Documents/Projects/owox-data-marts
+cd /Users/flakss/Projects/owox-data-marts
 npx jest --maxWorkers=4 apps/backend/src/data-marts/controllers/data-mart-query.controller.spec.ts
 ```
 Expected: FAIL — `controller.query is not a function`.
@@ -295,7 +295,7 @@ Import it in the controller: `import { QueryDataMartSpec } from './spec/query-da
 - [ ] **Step 8: Run the test to verify it passes**
 
 ```bash
-cd /Users/flakss/Documents/Projects/owox-data-marts
+cd /Users/flakss/Projects/owox-data-marts
 npx jest --maxWorkers=4 apps/backend/src/data-marts/controllers/data-mart-query.controller.spec.ts
 ```
 Expected: PASS (3 tests).
@@ -303,7 +303,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 9: Typecheck and lint**
 
 ```bash
-cd /Users/flakss/Documents/Projects/owox-data-marts
+cd /Users/flakss/Projects/owox-data-marts
 npx tsc --noEmit -p apps/backend/tsconfig.json
 npx eslint apps/backend/src/data-marts/controllers/data-mart.controller.ts apps/backend/src/data-marts/dto/presentation/query-data-mart-*.ts
 ```
@@ -334,7 +334,7 @@ git commit -m "feat(data-marts): expose POST /api/data-marts/:id/query over Quer
 
 ## Task 2: Stamp the author on collection docs (repo B)
 
-**Repo:** `/Users/flakss/Documents/Projects/owox-data-marts-experimental`
+**Repo:** `/Users/flakss/Projects/owox-data-marts-experimental`
 
 `identity.whoami` was removed from the plugin surface, so a plugin cannot learn who the user is. The host stamps it instead, on write. The plugin reads `$createdBy` back but never learns the *viewer's* id — which preserves the privacy decision that motivated the removal.
 
@@ -377,7 +377,7 @@ it('ignores a $createdBy supplied by the plugin', async () => {
 - [ ] **Step 2: Run to verify they fail**
 
 ```bash
-cd /Users/flakss/Documents/Projects/owox-data-marts-experimental
+cd /Users/flakss/Projects/owox-data-marts-experimental
 npx vitest run packages/host-backend/src/broker/capabilities/collections.spec.ts --poolOptions.threads.maxThreads=4
 ```
 Expected: FAIL — `$createdBy` is `undefined`.
@@ -438,7 +438,7 @@ git commit -m "feat(broker): stamp \$createdBy/\$createdAt/\$updatedAt on collec
 
 ## Task 3: Scaffold the plugin (repo C)
 
-**Repo:** this repo (`/Users/flakss/Documents/Projects/data-mart-dashboardization`)
+**Repo:** this repo (`/Users/flakss/Projects/data-mart-dashboardization`)
 
 **Files:**
 - Create: `plugin.json`, `package.json`, `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`, `postcss.config.js`, `tailwind.config.ts`, `.gitignore`
@@ -452,9 +452,9 @@ git commit -m "feat(broker): stamp \$createdBy/\$createdAt/\$updatedAt on collec
 - [ ] **Step 1: Copy the starter and strip it**
 
 ```bash
-cd /Users/flakss/Documents/Projects/data-mart-dashboardization
-STARTER=/Users/flakss/Documents/Projects/owox-data-marts-experimental/packages/plugin-starter
-REF=/Users/flakss/Documents/Projects/report-builder
+cd /Users/flakss/Projects/data-mart-dashboardization
+STARTER=/Users/flakss/Projects/owox-data-marts-experimental/packages/plugin-starter
+REF=/Users/flakss/Projects/report-builder
 cp -r "$STARTER"/{package.json,tsconfig.json,vite.config.ts,vitest.config.ts,postcss.config.js,tailwind.config.ts,owox.dev.example.json,.gitignore} .
 cp -r "$STARTER"/ui ./ui
 cp -r "$STARTER"/src ./src
@@ -499,7 +499,7 @@ npm install
 
 - [ ] **Step 4: Copy the mandatory `.dm-*` chrome CSS**
 
-Copy the `.dm-*` block **verbatim** from `/Users/flakss/Documents/Projects/owox-data-marts-experimental/packages/plugin-starter/ui/styles.css` into `ui/styles.src.css`, and add the shadcn token block (`:root` + `.dark` with `--background`, `--foreground`, `--card`, `--border`, `--muted`, `--primary`, `--radius`, and `--chart-1`…`--chart-5`) by copying from `/Users/flakss/Documents/Projects/report-builder/ui/styles.src.css`.
+Copy the `.dm-*` block **verbatim** from `/Users/flakss/Projects/owox-data-marts-experimental/packages/plugin-starter/ui/styles.css` into `ui/styles.src.css`, and add the shadcn token block (`:root` + `.dark` with `--background`, `--foreground`, `--card`, `--border`, `--muted`, `--primary`, `--radius`, and `--chart-1`…`--chart-5`) by copying from `/Users/flakss/Projects/report-builder/ui/styles.src.css`.
 
 Add a `css` script to `package.json` that compiles `styles.src.css` → `styles.css`, mirroring report-builder:
 ```json
@@ -830,7 +830,7 @@ export async function queryDataMart(id: string, body: QueryRequest): Promise<Que
 
 - [ ] **Step 4: Make `owox.request` spy-able in the mock**
 
-In `ui/sdk-mock.ts`, ensure `owox` is a concrete object (not a Proxy) so `vi.spyOn` works — copy the shape from `/Users/flakss/Documents/Projects/report-builder/ui/sdk-mock.ts`:
+In `ui/sdk-mock.ts`, ensure `owox` is a concrete object (not a Proxy) so `vi.spyOn` works — copy the shape from `/Users/flakss/Projects/report-builder/ui/sdk-mock.ts`:
 
 ```ts
 export const owox = {
@@ -2429,8 +2429,8 @@ export function toPoints(
 
 ```bash
 mkdir -p ui/components/ui
-cp /Users/flakss/Documents/Projects/report-builder/ui/components/ui/chart.tsx ui/components/ui/chart.tsx
-cp /Users/flakss/Documents/Projects/report-builder/ui/lib/cn.ts ui/lib/cn.ts
+cp /Users/flakss/Projects/report-builder/ui/components/ui/chart.tsx ui/components/ui/chart.tsx
+cp /Users/flakss/Projects/report-builder/ui/lib/cn.ts ui/lib/cn.ts
 ```
 Fix the import paths inside `chart.tsx` to match this repo's layout.
 
@@ -2700,7 +2700,7 @@ No new code — this is the gate before publishing.
 - [ ] **Step 1: Full test suite + typecheck + host build probe**
 
 ```bash
-cd /Users/flakss/Documents/Projects/data-mart-dashboardization
+cd /Users/flakss/Projects/data-mart-dashboardization
 npx vitest run --poolOptions.threads.maxThreads=4
 npm run typecheck
 npm run css
@@ -2725,7 +2725,7 @@ Watch every brokered call at `http://localhost:5177/host/plugin-dev-log`.
 - [ ] **Step 3: Install into the real host (the only place the postMessage transport runs)**
 
 ```bash
-cd /Users/flakss/Documents/Projects/owox-data-marts-experimental && ./start.sh --dev
+cd /Users/flakss/Projects/owox-data-marts-experimental && ./start.sh --dev
 ```
 Push this repo to GitHub, then in the host: **Plugins → New Plugin → GitHub URL** → grant the
 `data-mart` view permission → open **Dashboards**.

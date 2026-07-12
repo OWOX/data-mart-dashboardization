@@ -14,7 +14,7 @@ is bound to exactly one Data Mart.
 component is one query against the Data Mart, requesting a subset of fields plus explicit
 aggregations and date buckets.
 
-**Reference implementation:** `/Users/flakss/Documents/Projects/report-builder` — copy its
+**Reference implementation:** `/Users/flakss/Projects/report-builder` — copy its
 conventions (see §11). This spec deviates from it in one way: report-builder aggregates
 client-side because the endpoint below does not exist yet. We add it.
 
