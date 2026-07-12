@@ -16,23 +16,27 @@ describe('api', () => {
   });
 
   it('listMarts keeps only published, reportable marts', async () => {
-    vi.spyOn(owox, 'request').mockResolvedValue([
+    const spy = vi.spyOn(owox, 'request').mockResolvedValue([
       { id: '1', title: 'A', status: 'PUBLISHED', availableForReporting: true },
       { id: '2', title: 'B', status: 'DRAFT', availableForReporting: true },
       { id: '3', title: 'C', status: 'PUBLISHED', availableForReporting: false },
     ]);
-    expect(await listMarts()).toEqual([{ id: '1', title: 'A' }]);
+    const result = await listMarts();
+    expect(spy).toHaveBeenCalledWith('GET', '/api/data-marts');
+    expect(result).toEqual([{ id: '1', title: 'A' }]);
   });
 
   it('listMarts unwraps an { items } envelope', async () => {
-    vi.spyOn(owox, 'request').mockResolvedValue({
+    const spy = vi.spyOn(owox, 'request').mockResolvedValue({
       items: [{ id: '1', title: 'A', status: 'PUBLISHED', availableForReporting: true }],
     });
-    expect(await listMarts()).toEqual([{ id: '1', title: 'A' }]);
+    const result = await listMarts();
+    expect(spy).toHaveBeenCalledWith('GET', '/api/data-marts');
+    expect(result).toEqual([{ id: '1', title: 'A' }]);
   });
 
   it('getMartFields maps schema fields to roles and allowed aggregations', async () => {
-    vi.spyOn(owox, 'request').mockResolvedValue({
+    const spy = vi.spyOn(owox, 'request').mockResolvedValue({
       schema: {
         fields: [
           { name: 'Date', type: 'DATE', aggregationRole: 'dimension', allowedAggregations: ['MIN', 'MAX'] },
@@ -41,7 +45,9 @@ describe('api', () => {
         ],
       },
     });
-    expect(await getMartFields('dm1')).toEqual([
+    const result = await getMartFields('dm1');
+    expect(spy).toHaveBeenCalledWith('GET', '/api/data-marts/dm1');
+    expect(result).toEqual([
       { name: 'Date', type: 'DATE', role: 'dimension', allowedAggregations: ['MIN', 'MAX'] },
       { name: 'Cost', type: 'FLOAT', role: 'metric', allowedAggregations: ['SUM', 'AVG'] },
       // Falls back by type when the schema omits governance: string -> dimension.
