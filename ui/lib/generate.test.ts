@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { owox } from '@owox/plugin-sdk';
 import { generate, probeCardinality, PIE_MAX_CATEGORIES } from './generate';
+import { aggLabel } from './compile';
 import type { BarConfig, MartField, PieConfig, ScorecardConfig, TimeSeriesConfig } from './types';
 
 const fields: MartField[] = [
@@ -78,12 +79,11 @@ describe('generate', () => {
 // ---------------------------------------------------------------------------
 
 describe('generate: degenerate marts', () => {
-  it('produces just a (columnless) table when the mart has no fields at all', () => {
+  it('omits the table entirely (never emits an uncompilable zero-column table) when the mart has no fields at all', () => {
     const d = generate('m1', 'Empty', [], {});
     expect(d.slices).toEqual([]);
-    expect(d.components).toHaveLength(1);
-    expect(d.components[0].type).toBe('table');
-    expect((d.components[0].config as { columns: string[] }).columns).toEqual([]);
+    expect(d.components).toHaveLength(0);
+    expect(d.components.some(c => c.type === 'table')).toBe(false);
   });
 
   it('emits no timeseries and no date slice when the mart has no date field', () => {
@@ -209,33 +209,48 @@ describe('probeCardinality', () => {
   beforeEach(() => vi.restoreAllMocks());
 
   const dims: MartField[] = [
-    { name: 'Source', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT'] },
-    { name: 'Campaign', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT'] },
+    { name: 'Source', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT', 'COUNT_DISTINCT'] },
+    { name: 'Campaign', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT', 'COUNT_DISTINCT'] },
   ];
 
-  it('queries each dimension server-side with no client-side aggregation and a limit one over the pie threshold', async () => {
-    const spy = vi.spyOn(owox, 'request').mockResolvedValue({ columns: ['Source'], rows: [['a'], ['b']], truncated: false, totals: null });
+  it('asks the SERVER for the distinct count via an aggregated COUNT_DISTINCT read, limit 1 (no raw-row probing)', async () => {
+    const spy = vi.spyOn(owox, 'request').mockResolvedValue({
+      columns: [], rows: [], truncated: false,
+      totals: { [aggLabel('Source', 'COUNT_DISTINCT')]: 2 },
+    });
     await probeCardinality('m1', [dims[0]]);
     expect(spy).toHaveBeenCalledWith('POST', '/api/data-marts/m1/query', {
       fields: ['Source'],
-      aggregationConfig: null,
-      limit: PIE_MAX_CATEGORIES + 1,
+      aggregationConfig: [{ column: 'Source', function: 'COUNT_DISTINCT' }],
+      limit: 1,
     });
   });
 
-  it('reports the row count as cardinality when the server did not truncate', async () => {
-    vi.spyOn(owox, 'request').mockResolvedValue({ columns: ['Source'], rows: [['a'], ['b'], ['c']], truncated: false, totals: null });
+  it('reads the distinct count from totals, keyed by aggLabel — never from rows.length', async () => {
+    vi.spyOn(owox, 'request').mockResolvedValue({
+      columns: [], rows: [], truncated: false,
+      totals: { [aggLabel('Source', 'COUNT_DISTINCT')]: 4 },
+    });
     const out = await probeCardinality('m1', [dims[0]]);
-    expect(out.Source).toBe(3);
+    expect(out.Source).toBe(4);
   });
 
-  it('reports Infinity (never a client-counted number) when the server truncated the result', async () => {
+  it('reports a genuinely low cardinality even when the mart has far more than PIE_MAX_CATEGORIES total rows', async () => {
+    // The old (buggy) probe counted raw rows and would misclassify this as high-cardinality.
+    // A COUNT_DISTINCT read is immune to total row count.
     vi.spyOn(owox, 'request').mockResolvedValue({
-      columns: ['Campaign'], rows: Array.from({ length: PIE_MAX_CATEGORIES + 1 }, (_, i) => [`c${i}`]),
-      truncated: true, totals: null,
+      columns: [], rows: [], truncated: false,
+      totals: { [aggLabel('Campaign', 'COUNT_DISTINCT')]: 2 },
     });
     const out = await probeCardinality('m1', [dims[1]]);
-    expect(out.Campaign).toBe(Number.POSITIVE_INFINITY);
+    expect(out.Campaign).toBe(2);
+    expect(out.Campaign).toBeLessThanOrEqual(PIE_MAX_CATEGORIES);
+  });
+
+  it('reports Infinity when totals is missing the COUNT_DISTINCT key (unexpected server shape)', async () => {
+    vi.spyOn(owox, 'request').mockResolvedValue({ columns: [], rows: [], truncated: false, totals: null });
+    const out = await probeCardinality('m1', [dims[0]]);
+    expect(out.Source).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('reports Infinity (prefers a bar over a wrong pie) when the query fails', async () => {
@@ -255,5 +270,13 @@ describe('probeCardinality', () => {
     const out = await probeCardinality('m1', []);
     expect(out).toEqual({});
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('never sends COUNT_DISTINCT for a dimension whose allowedAggregations forbids it; treats it as high-cardinality (bar, not pie)', async () => {
+    const noDistinct: MartField = { name: 'Raw', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT'] };
+    const spy = vi.spyOn(owox, 'request');
+    const out = await probeCardinality('m1', [noDistinct]);
+    expect(spy).not.toHaveBeenCalled();
+    expect(out.Raw).toBe(Number.POSITIVE_INFINITY);
   });
 });

@@ -1,4 +1,5 @@
 import { queryDataMart } from './api';
+import { aggLabel } from './compile';
 import { emptyDashboard } from './types';
 import type { AggregateFunction, Component, Dashboard, MartField } from './types';
 
@@ -24,11 +25,16 @@ const uid = () => crypto.randomUUID();
  * Distinct-count each candidate dimension, server-side, to decide pie-vs-bar. This is the spec's
  * "data sampling" step — it is an aggregated query, not a client-side calculation.
  *
- * A field WITHOUT an aggregation rule is a grouping key (see compile.ts), so projecting the
- * dimension alone with `aggregationConfig: null` and a limit of PIE_MAX_CATEGORIES + 1 yields at
- * most that many distinct-value rows. If the server had to cut more rows than we asked for
- * (`truncated`), there were MORE distinct values than the pie threshold, so the dimension is
- * high-cardinality without ever counting a single row in JS.
+ * "No `aggregations` ⇒ no GROUP BY ⇒ raw rows" (spec + compile.ts's table case): with ZERO
+ * aggregations there is no grouping at all, so projecting the dimension alone would return raw,
+ * duplicate-laden rows — that counts TOTAL ROWS, not distinct values. Instead we ask the server
+ * directly for the distinct count via an aggregated `COUNT_DISTINCT` read from `totals`, which per
+ * the spec is "a separate ungrouped query over all matching rows, ignoring `limit`" — exactly a
+ * cardinality probe. `aggLabel` mirrors the backend's alias exactly; reading `totals` by a wrong
+ * key would silently yield `undefined`.
+ *
+ * Governance applies to probes too: a dimension whose `allowedAggregations` does not include
+ * `COUNT_DISTINCT` must never be probed with it — it falls back to Infinity (prefer a bar).
  */
 export async function probeCardinality(
   martId: string,
@@ -36,14 +42,17 @@ export async function probeCardinality(
 ): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const dim of dimensions) {
+    if (!dim.allowedAggregations.includes('COUNT_DISTINCT')) {
+      out[dim.name] = Number.POSITIVE_INFINITY;   // not allowed to probe -> treat as high, prefer a bar
+      continue;
+    }
     try {
       const res = await queryDataMart(martId, {
         fields: [dim.name],
-        aggregationConfig: null,   // project the dimension alone; grouping is implied
-        limit: PIE_MAX_CATEGORIES + 1,
+        aggregationConfig: [{ column: dim.name, function: 'COUNT_DISTINCT' }],
+        limit: 1,
       });
-      // `truncated` means there were MORE groups than we asked for -> high cardinality.
-      out[dim.name] = res.truncated ? Number.POSITIVE_INFINITY : res.rows.length;
+      out[dim.name] = Number(res.totals?.[aggLabel(dim.name, 'COUNT_DISTINCT')] ?? Number.POSITIVE_INFINITY);
     } catch {
       out[dim.name] = Number.POSITIVE_INFINITY;   // unknown -> treat as high, prefer a bar
     }
@@ -125,11 +134,15 @@ export function generate(
     }
   }
 
-  // 7. Detail table.
-  add({
-    type: 'table', title: 'Details', width: 5, height: 3,
-    config: { columns: fields.map(f => f.name), limit: TABLE_LIMIT },
-  });
+  // 7. Detail table. `QueryRequest.fields` is required with min length 1, so a table with zero
+  // columns would compile into a request the service rejects — omit it entirely rather than emit
+  // an uncompilable component.
+  if (fields.length > 0) {
+    add({
+      type: 'table', title: 'Details', width: 5, height: 3,
+      config: { columns: fields.map(f => f.name), limit: TABLE_LIMIT },
+    });
+  }
 
   d.components = components;
   d.generatedAt = new Date().toISOString();
