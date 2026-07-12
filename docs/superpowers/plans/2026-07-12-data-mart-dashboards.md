@@ -1709,9 +1709,11 @@ export function formatNumber(v: unknown): string {
 /** Period-over-period comparison for a scorecard. Both values come from the server. */
 export function formatDelta(current: number, previous: number) {
   const abs = current - previous;
-  // A zero baseline has no meaningful percentage; report flat rather than Infinity/NaN.
-  const pct = previous === 0 ? 0 : (abs / Math.abs(previous)) * 100;
-  const trend: 'up' | 'down' | 'flat' = previous === 0 || abs === 0 ? (abs === 0 ? 'flat' : 'flat') : abs > 0 ? 'up' : 'down';
+  // A zero baseline has no meaningful percentage, and no defensible direction: report flat
+  // rather than Infinity/NaN.
+  if (previous === 0) return { abs, pct: 0, trend: 'flat' as const };
+  const pct = (abs / Math.abs(previous)) * 100;
+  const trend: 'up' | 'down' | 'flat' = abs === 0 ? 'flat' : abs > 0 ? 'up' : 'down';
   return { abs, pct, trend };
 }
 ```
