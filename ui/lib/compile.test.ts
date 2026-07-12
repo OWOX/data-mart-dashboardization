@@ -272,3 +272,69 @@ describe('compile: per-type query shape', () => {
     expect(() => compile(c, [], [])).toThrow(/sankey/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// sortConfig: `limit` alone returns an ARBITRARY N rows. Every component that
+// implies ranking must emit a server-side ORDER BY on the aggregated alias,
+// applied before LIMIT. See docs/superpowers/plans/2026-07-12-data-mart-dashboards.md, Task 6.
+// ---------------------------------------------------------------------------
+
+describe('compile: sortConfig', () => {
+  it('bar: sorts by the aggregated metric alias, descending by default', () => {
+    const c: Component = {
+      ...base, type: 'bar',
+      config: { dimension: 'source', metric: 'cost', aggregation: 'SUM', orientation: 'vertical', limit: 10 },
+    };
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost | SUM', direction: 'desc' }]);
+  });
+
+  it('bar: honours an explicit ascending sort from config', () => {
+    const c: Component = {
+      ...base, type: 'bar',
+      config: { dimension: 'source', metric: 'cost', aggregation: 'SUM', orientation: 'vertical', limit: 10, sort: 'asc' },
+    };
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost | SUM', direction: 'asc' }]);
+  });
+
+  it('pie: sorts by the aggregated metric alias, always descending (maxCategories keeps the biggest slices)', () => {
+    const c: Component = {
+      ...base, type: 'pie',
+      config: { dimension: 'country', metric: 'cost', aggregation: 'SUM', maxCategories: 6 },
+    };
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost | SUM', direction: 'desc' }]);
+  });
+
+  it('donut: sorts identically to pie', () => {
+    const c: Component = {
+      ...base, type: 'donut',
+      config: { dimension: 'country', metric: 'cost', aggregation: 'SUM', maxCategories: 6 },
+    };
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost | SUM', direction: 'desc' }]);
+  });
+
+  it('table: maps config.sort straight through, already-shaped SortRule[]', () => {
+    const c: Component = {
+      ...base, type: 'table',
+      config: { columns: ['date', 'cost'], sort: [{ column: 'cost', direction: 'desc' }], limit: 50 },
+    };
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost', direction: 'desc' }]);
+  });
+
+  it('table: omits sortConfig entirely when the user set no sort', () => {
+    const c: Component = { ...base, type: 'table', config: { columns: ['date', 'cost'], limit: 50 } };
+    expect(compile(c, [], [])).not.toHaveProperty('sortConfig');
+  });
+
+  it('scorecard: emits no sortConfig — a single aggregate row has nothing to order', () => {
+    const c: Component = { ...base, type: 'scorecard', config: { metric: 'revenue', aggregation: 'SUM' } };
+    expect(compile(c, [], [])).not.toHaveProperty('sortConfig');
+  });
+
+  it('timeseries: emits no sortConfig — a full series over buckets is not a ranking', () => {
+    const c: Component = {
+      ...base, type: 'timeseries',
+      config: { dateField: 'date', metric: 'cost', aggregation: 'SUM', unit: 'DAY' },
+    };
+    expect(compile(c, [], [])).not.toHaveProperty('sortConfig');
+  });
+});

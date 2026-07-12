@@ -1,6 +1,6 @@
 import type {
   AggregateFunction, BarConfig, Component, FilterRule, PieConfig,
-  QueryRequest, ScorecardConfig, TableConfig, TimeSeriesConfig,
+  QueryRequest, ScorecardConfig, SortRule, TableConfig, TimeSeriesConfig,
 } from './types';
 
 /**
@@ -56,42 +56,62 @@ export function compile(component: Component, filters: FilterRule[], slices: Fil
     agg: QueryRequest['aggregationConfig'],
     limit: number,
     dateTrunc: QueryRequest['dateTruncConfig'] = null,
+    sortConfig?: SortRule[],
   ): QueryRequest => ({
     fields: dedupe(fields),
     filterConfig,
     aggregationConfig: agg,
     dateTruncConfig: dateTrunc,
     limit: clamp(limit),
+    // Omit the key entirely (never `null`/`[]`) when a component has no ordering, so the
+    // request stays minimal — see the compile-to-sort table in Task 6 of the plan.
+    ...(sortConfig ? { sortConfig } : {}),
   });
 
   switch (component.type) {
     case 'scorecard': {
       const c = component.config as ScorecardConfig;
       // The value is read from `totals` (computed server-side over ALL matching rows, ignoring
-      // `limit`), so one row is enough — the client never sums anything.
+      // `limit`), so one row is enough — the client never sums anything. A single aggregate row
+      // has nothing to order, so no sortConfig.
       return q([c.metric], [{ column: c.metric, function: c.aggregation }], 1);
     }
     case 'timeseries': {
       const c = component.config as TimeSeriesConfig;
       // The date bucket is a server-side DATE_TRUNC (DAY is the finest grain the service has —
-      // there is no HOUR). The breakdown is an extra grouping key, never an aggregation.
+      // there is no HOUR). The breakdown is an extra grouping key, never an aggregation. This is
+      // a full series over buckets, not a ranking, so no sortConfig — the chart orders its own
+      // points for display, which is presentation, not computation.
       const fields = [c.dateField, c.metric, ...(c.breakdown ? [c.breakdown] : [])];
       return q(fields, [{ column: c.metric, function: c.aggregation }], MAX_LIMIT,
         [{ column: c.dateField, unit: c.unit }]);
     }
     case 'bar': {
       const c = component.config as BarConfig;
-      return q([c.dimension, c.metric], [{ column: c.metric, function: c.aggregation }], c.limit);
+      // ORDER BY the aggregated output ALIAS (not the raw metric column) — the warehouse groups
+      // first, so only the alias exists in the result set. `limit` alone would return an
+      // ARBITRARY N rows; this is what makes "Top N" actually top N.
+      return q(
+        [c.dimension, c.metric], [{ column: c.metric, function: c.aggregation }], c.limit, null,
+        [{ column: aggLabel(c.metric, c.aggregation), direction: c.sort ?? 'desc' }],
+      );
     }
     case 'pie':
     case 'donut': {
       const c = component.config as PieConfig;
-      return q([c.dimension, c.metric], [{ column: c.metric, function: c.aggregation }], c.maxCategories);
+      // maxCategories is a top-N: always keep the biggest slices, so direction is fixed 'desc'
+      // (pie/donut have no user-facing sort control).
+      return q(
+        [c.dimension, c.metric], [{ column: c.metric, function: c.aggregation }], c.maxCategories, null,
+        [{ column: aggLabel(c.metric, c.aggregation), direction: 'desc' }],
+      );
     }
     case 'table': {
       const c = component.config as TableConfig;
       // No aggregations => no GROUP BY => raw rows, which is what a detail table wants.
-      return q(c.columns, null, c.limit);
+      // config.sort is already shaped as SortRule[]; map it straight through and omit when the
+      // user set none.
+      return q(c.columns, null, c.limit, null, c.sort?.length ? c.sort : undefined);
     }
     default: {
       // Unreachable for a well-formed doc; a corrupt one must fail loudly rather than send a

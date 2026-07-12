@@ -24,6 +24,12 @@ export type QueryRequest = {
   filterConfig?: FilterRule[] | null;
   aggregationConfig?: AggregationRule[] | null;
   dateTruncConfig?: DateTruncRule[] | null;
+  /**
+   * Server-side ORDER BY, applied BEFORE `limit`. Without it, `limit` returns an ARBITRARY N
+   * rows — this is what makes a "Top 10 sources" chart actually top 10. Omit rather than send
+   * `null`/`[]` when a component has no ordering.
+   */
+  sortConfig?: SortRule[] | null;
   limit?: number;
 };
 
