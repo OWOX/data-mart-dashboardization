@@ -35,7 +35,7 @@
 - Test: `apps/backend/src/data-marts/controllers/data-mart-query.controller.spec.ts`
 
 **Repo B — `/Users/flakss/Projects/owox-data-marts-experimental`**
-- Modify: `packages/host-backend/src/broker/capabilities/collections.ts` — stamp `$createdBy`/`$createdAt`.
+- Modify: `packages/host-backend/src/broker/capabilities/collections.ts` — stamp authorship on write, strip `$createdBy` on read.
 - Test: `packages/host-backend/src/broker/capabilities/collections.spec.ts`
 
 **Repo C — this repo (the plugin)**
@@ -336,7 +336,15 @@ git commit -m "feat(data-marts): expose POST /api/data-marts/:id/query over Quer
 
 **Repo:** `/Users/flakss/Projects/owox-data-marts-experimental`
 
-`identity.whoami` was removed from the plugin surface, so a plugin cannot learn who the user is. The host stamps it instead, on write. The plugin reads `$createdBy` back but never learns the *viewer's* id — which preserves the privacy decision that motivated the removal.
+`identity.whoami` was removed from the plugin surface, so a plugin cannot learn who the user is. The host stamps authorship on write — and **strips it back off on read**, so it never crosses the capability boundary. Authorship is recorded for the host UI (the Collections tab), and the plugin never sees it.
+
+> **This task was implemented once the naive way (stamp only, no strip) and reverted — see `4b475dc`.**
+> `$createdBy` holds the acting user's real OWOX `userId`, and `get`/`list`/`put` return stored docs to
+> the plugin unmodified. In a **project-scoped** collection that hands the plugin the UUID of *every other
+> user* who authored a doc — precisely the disclosure the identity-removal work exists to prevent.
+> `collections.spec.ts` now carries a permanent regression block, `'no user identity crosses back to the
+> plugin'` (from `2e966c1`), which fails against a stamp-without-strip implementation. **It must stay green.**
+> Stamp on write. Strip on read. Never return authorship through the capability.
 
 **Files:**
 - Modify: `packages/host-backend/src/broker/capabilities/collections.ts`
@@ -344,16 +352,24 @@ git commit -m "feat(data-marts): expose POST /api/data-marts/:id/query over Quer
 
 **Interfaces:**
 - Consumes: `CapabilityContext { pluginId, projectId, userId, requireGrant }`. It carries **only** `userId` — no name or email.
-- Produces: on `put`, the stored doc gains reserved fields `$createdBy: string`, `$createdAt: string` (ISO), `$updatedAt: string` (ISO). `$createdBy`/`$createdAt` are preserved from the existing doc on update; they are never taken from plugin input.
+- Persists: on `put`, the doc written **to the store** gains reserved fields `$createdBy: string`, `$createdAt: string` (ISO), `$updatedAt: string` (ISO). `$createdBy`/`$createdAt` are preserved from the existing doc on update; they are never taken from plugin input.
+- Returns to the plugin: `get`, `list` and `put` strip **`$createdBy`** — and only `$createdBy` — from every doc before it crosses the capability boundary. It is the sole identity-bearing field.
+- `$createdAt`/`$updatedAt` **are** returned to the plugin: they are timestamps, carry no identity, and the dashboard list needs them. Their plugin-supplied values are still ignored on write (host stamps them).
+- The plugin therefore has **no** author field. The dashboard list (Task 11) has **no** Author column, but keeps its Created and Modified columns.
 
 - [ ] **Step 1: Write the failing tests**
 
 Add to `packages/host-backend/src/broker/capabilities/collections.spec.ts` (match the existing describe/setup style in that file):
 
+Authorship is now invisible to the plugin, so the capability's return value can no longer be used to
+assert that the stamp happened. Assert on the **store** for persistence, and on the **capability return**
+for absence. Use the spec file's existing store handle (the same one `makeCap()` is built from).
+
 ```ts
-it('stamps $createdBy/$createdAt on first put', async () => {
+it('persists $createdBy/$createdAt to the store on first put', async () => {
   const cap = makeCap();                       // existing helper in this spec file
-  const stored = (await cap.invoke('put', ['dashboards', 'd1', { name: 'A' }], ctx('u1'))) as Record<string, unknown>;
+  await cap.invoke('put', ['dashboards', 'd1', { name: 'A' }], ctx('u1'));
+  const [stored] = await store.find('dashboards', { id: 'd1' });   // read the STORE, not the return value
   expect(stored.$createdBy).toBe('u1');
   expect(typeof stored.$createdAt).toBe('string');
   expect(typeof stored.$updatedAt).toBe('string');
@@ -362,17 +378,42 @@ it('stamps $createdBy/$createdAt on first put', async () => {
 it('preserves the original author on update by another user', async () => {
   const cap = makeCap();
   await cap.invoke('put', ['dashboards', 'd1', { name: 'A' }], ctx('u1'));
-  const updated = (await cap.invoke('put', ['dashboards', 'd1', { name: 'B' }], ctx('u2'))) as Record<string, unknown>;
-  expect(updated.$createdBy).toBe('u1');       // NOT u2
-  expect(updated.name).toBe('B');
+  await cap.invoke('put', ['dashboards', 'd1', { name: 'B' }], ctx('u2'));
+  const [stored] = await store.find('dashboards', { id: 'd1' });
+  expect(stored.$createdBy).toBe('u1');        // NOT u2 — an editor never becomes the author
+  expect(stored.name).toBe('B');
 });
 
 it('ignores a $createdBy supplied by the plugin', async () => {
   const cap = makeCap();
-  const stored = (await cap.invoke('put', ['dashboards', 'd1', { $createdBy: 'spoofed' }], ctx('u1'))) as Record<string, unknown>;
-  expect(stored.$createdBy).toBe('u1');
+  await cap.invoke('put', ['dashboards', 'd1', { $createdBy: 'spoofed' }], ctx('u1'));
+  const [stored] = await store.find('dashboards', { id: 'd1' });
+  expect(stored.$createdBy).toBe('u1');        // spoof discarded
+});
+
+it('strips $createdBy from put/get/list, but keeps the timestamps', async () => {
+  const cap = makeCap();
+  const put = (await cap.invoke('put', ['dashboards', 'd1', { name: 'A' }], ctx('u1'))) as Record<string, unknown>;
+  const got = (await cap.invoke('get', ['dashboards', 'd1'], ctx('u1'))) as Record<string, unknown>;
+  const [listed] = (await cap.invoke('list', ['dashboards'], ctx('u1'))) as Record<string, unknown>[];
+
+  for (const doc of [put, got, listed]) {
+    expect(doc.name).toBe('A');                    // payload survives
+    expect(doc.$createdBy).toBeUndefined();        // identity does not
+    expect(typeof doc.$createdAt).toBe('string');  // timestamps DO survive — the list renders them
+    expect(typeof doc.$updatedAt).toBe('string');
+  }
+});
+
+it('does not leak another user\'s id through a project-scoped collection', async () => {
+  const cap = makeCap();
+  await cap.invoke('put', ['dashboards', 'd1', { name: 'A' }], ctx('u1'));   // authored by u1
+  const got = (await cap.invoke('get', ['dashboards', 'd1'], ctx('u2')));    // read by u2
+  expect(JSON.stringify(got)).not.toContain('u1');                          // u1's id must not appear
 });
 ```
+
+The existing `'no user identity crosses back to the plugin'` block from `2e966c1` must also stay green.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -393,6 +434,25 @@ const CREATED_AT_FIELD = '$createdAt';
 const UPDATED_AT_FIELD = '$updatedAt';
 ```
 
+Add one helper — the single choke point through which every doc leaves the capability:
+
+```ts
+/**
+ * $createdBy holds a real OWOX userId and MUST NOT cross the capability boundary: in a
+ * project-scoped collection it would hand the plugin the id of every other author. It is
+ * persisted to the store and shown in the host's Collections tab, never returned to plugin code.
+ * Every doc leaving the capability goes through here. See the revert in 4b475dc.
+ *
+ * $createdAt/$updatedAt are deliberately NOT stripped — timestamps carry no identity and the
+ * plugin's dashboard list renders them.
+ */
+function stripAuthor<T>(doc: T): T {
+  if (!doc || typeof doc !== 'object') return doc;
+  const { [CREATED_BY_FIELD]: _by, ...clean } = doc as Record<string, unknown>;
+  return clean as T;
+}
+```
+
 Replace the `case 'put'` block with:
 
 ```ts
@@ -403,18 +463,30 @@ Replace the `case 'put'` block with:
 
         const existing = (await this.deps.store.find(ns, { id }))[0];
         const now = new Date().toISOString();
-        // Authorship is host-owned: strip whatever the plugin sent, then stamp. On update the
-        // ORIGINAL author and creation time survive — an editor never becomes the author.
+        // Strip whatever the plugin sent, then stamp. On update the ORIGINAL author and creation
+        // time survive — an editor never becomes the author.
         const { [CREATED_BY_FIELD]: _by, [CREATED_AT_FIELD]: _at, [UPDATED_AT_FIELD]: _up, ...clean } = doc;
-        return this.deps.store.insert(ns, {
+        const saved = await this.deps.store.insert(ns, {
           ...clean,
           id,
           [CREATED_BY_FIELD]: (existing?.[CREATED_BY_FIELD] as string | undefined) ?? ctx.userId,
           [CREATED_AT_FIELD]: (existing?.[CREATED_AT_FIELD] as string | undefined) ?? now,
           [UPDATED_AT_FIELD]: now,
         }); // upserts on explicit id
+        return stripAuthor(saved);   // $createdBy stamped on disk, invisible to the plugin
       }
 ```
+
+Then apply the same strip to **every other path that returns a doc to the plugin** — `case 'get'` and
+`case 'list'`:
+
+```ts
+      case 'get':  return stripAuthor(await /* …existing get expression… */);
+      case 'list': return (await /* …existing list expression… */).map(stripAuthor);
+```
+
+Read the current `get`/`list` bodies and wrap their return values; do not otherwise restructure them.
+If any future path returns a stored doc to plugin code, it goes through `stripAuthor` too.
 
 - [ ] **Step 4: Run to verify they pass**
 
@@ -432,8 +504,10 @@ git add packages/host-backend/src/broker/capabilities/collections.ts \
 git commit -m "feat(broker): stamp \$createdBy/\$createdAt/\$updatedAt on collection docs"
 ```
 
-> **Tracked debt:** `$createdBy` is an opaque user id — the host has no display name in
-> `CapabilityContext`. Rendering a human-readable author requires a user lookup upstream. Out of scope.
+> **Tracked debt:** authorship is recorded but only visible in the host's Collections tab, and it is an
+> opaque user id — `CapabilityContext` carries no display name. Showing a human-readable author *in the
+> plugin* would need a non-identifying scheme (e.g. a per-plugin pseudonym, `HMAC(userId, pluginId)`),
+> which is deliberately out of scope for v1. The plugin has no Author column.
 
 ---
 
@@ -663,7 +737,8 @@ export type Dashboard = {
   configVersion: number;
   generatedAt?: string;
   // Stamped server-side by the host on put — read-only to the plugin.
-  $createdBy?: string;
+  // NOTE: there is no $createdBy here. The host stamps it but strips it before the doc reaches
+  // the plugin (Task 2), because it holds a real user id. Do not add it back.
   $createdAt?: string;
   $updatedAt?: string;
 };
@@ -1808,7 +1883,7 @@ import { emptyDashboard } from '../lib/types';
 describe('DashboardList', () => {
   it('renders each dashboard the host made visible', async () => {
     vi.spyOn(db, 'listDashboards').mockResolvedValue([
-      { ...emptyDashboard('d1', 'm1', 'Sales'), $createdBy: 'u1', $updatedAt: '2026-07-01T00:00:00Z' },
+      { ...emptyDashboard('d1', 'm1', 'Sales'), $updatedAt: '2026-07-01T00:00:00Z' },
     ]);
     render(<MemoryRouter><DashboardList /></MemoryRouter>);
     expect(await screen.findByText('Sales')).toBeInTheDocument();
@@ -1831,7 +1906,10 @@ Expected: FAIL — cannot resolve `./DashboardList`.
 
 - [ ] **Step 3: Implement `ui/components/DashboardList.tsx`**
 
-Render inside the mandatory chrome. Columns: Name, Author (`$createdBy`), Created (`$createdAt`), Modified (`$updatedAt`). Row actions: Open, Duplicate, Delete. A "New dashboard" button opens `CreateDashboardDialog`.
+Render inside the mandatory chrome. Columns: Name, Created (`$createdAt`), Modified (`$updatedAt`). Row actions: Open, Duplicate, Delete. A "New dashboard" button opens `CreateDashboardDialog`.
+
+> **No Author column.** The host strips `$createdBy` before it reaches the plugin (Task 2) — a plugin
+> must never learn a user id. Do not add one.
 
 ```tsx
 import { useEffect, useState } from 'react';
@@ -1875,7 +1953,7 @@ export function DashboardList() {
                 {items.map(d => (
                   <tr key={d.id} className="border-t">
                     <td className="p-3"><Link to={`/d/${d.id}`}>{d.name}</Link></td>
-                    <td className="p-3">{d.$createdBy ?? '—'}</td>
+                    <td className="p-3">{d.$createdAt?.slice(0, 10) ?? '—'}</td>
                     <td className="p-3">{d.$updatedAt?.slice(0, 10) ?? '—'}</td>
                     <td className="p-3 text-right">
                       <button className="mr-2" onClick={() => void duplicateDashboard(d).then(reload)}>Duplicate</button>
@@ -2736,7 +2814,8 @@ Confirm:
 - [ ] `--chart-N` colors resolve inside the iframe (the theming risk from Task 14).
 - [ ] The `.dm-*` chrome matches the Storages/Destinations pages — a titled header and one card.
 - [ ] Editing a component refetches after ~1 s and shows the preload overlay.
-- [ ] Author appears on the list (from the host's `$createdBy` stamp).
+- [ ] The list shows Created/Modified — and **no** author. Confirm in the dev log that no doc handed to
+      the plugin carries `$createdBy`; the host's Collections tab is the only place authorship appears.
 
 - [ ] **Step 4: Commit any fixes and tag**
 

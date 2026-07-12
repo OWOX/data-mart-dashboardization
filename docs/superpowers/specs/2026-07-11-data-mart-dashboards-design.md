@@ -81,7 +81,7 @@ Response (JSON — not the MCP TSV):
 
 **Change:** the `collections` capability stamps the acting user onto the doc server-side on `put`
 (the broker already holds `userId` in `CapabilityContext`). The plugin never sees an identity; it
-just reads `doc.createdBy` / `doc.createdByName` back. This preserves the privacy decision that
+never sees authorship at all: the host stamps it on write and strips it on read (see plan Task 2). This preserves the privacy decision that
 motivated the removal.
 
 ## 5. Persistence — `collections('dashboards')`
@@ -109,7 +109,7 @@ Dashboard = {
   id: string                    // crypto.randomUUID()
   $entity: { type: 'data-mart', id: dataMartId }   // ACL binding — the ONE mart
   name: string
-  createdBy, createdByName      // stamped server-side (§4)
+  $createdAt, $updatedAt        // stamped server-side; $createdBy is stamped but NEVER returned to the plugin (§4)
   createdAt, updatedAt          // ISO; updatedAt bumped on every save
   gridColumns: number           // default 5, adjustable in settings
   filters: FilterRule[]         // GLOBAL, applied to every component
