@@ -15,6 +15,7 @@ describe('dashboards', () => {
     const d = { ...emptyDashboard('d1', 'mart1', 'A'), configVersion: 3 };
     const saved = await saveDashboard(d);
 
+    expect(collections).toHaveBeenCalledWith('dashboards');
     expect(put).toHaveBeenCalledWith('d1', expect.objectContaining({
       id: 'd1',
       $entity: { type: 'data-mart', id: 'mart1' },
@@ -33,6 +34,23 @@ describe('dashboards', () => {
     expect(copy.id).not.toBe('d1');
     expect(copy.name).toBe('Sales (copy)');
     expect(copy.$entity).toEqual({ type: 'data-mart', id: 'mart1' });
+  });
+
+  it('duplicateDashboard never sends host-owned $-prefixed fields from source dashboard on a write', async () => {
+    const put = vi.fn().mockImplementation((_id, doc) => Promise.resolve(doc));
+    vi.mocked(collections).mockReturnValue({ put } as never);
+
+    const source = {
+      ...emptyDashboard('d1', 'mart1', 'Sales'),
+      $createdAt: '2020-01-01T00:00:00Z',
+      $updatedAt: '2020-01-02T00:00:00Z',
+    };
+    await duplicateDashboard(source);
+
+    const [, sentDoc] = put.mock.calls[0];
+    expect(sentDoc.$createdAt).toBeUndefined();
+    expect(sentDoc.$updatedAt).toBeUndefined();
+    expect('$createdBy' in sentDoc).toBe(false);
   });
 
   it('listDashboards returns whatever the host made visible', async () => {
@@ -55,6 +73,7 @@ describe('dashboards', () => {
     vi.mocked(collections).mockReturnValue({ get } as never);
 
     expect(await getDashboard('missing')).toBeNull();
+    expect(get).toHaveBeenCalledWith('missing');
   });
 
   it('saveDashboard never sends host-owned $-prefixed fields back on a write', async () => {
