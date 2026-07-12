@@ -84,7 +84,14 @@ const stub = (name: string) =>
     },
   ) as any;
 
-export const owox = stub('owox');
+// Concrete (not a Proxy stub) so `vi.spyOn(sdk.owox, 'request')` works — a Proxy's `get` trap
+// fabricates a fresh function on every access, which spyOn can't intercept.
+export const owox = {
+  request: async (method: string, path: string, body?: unknown): Promise<unknown> => {
+    console.info('[owox dev mock] owox.request', method, path, body);
+    return null;
+  },
+};
 // `ai` returns the real capability's shape ({ text, model, raw }) so UI that reads reply.text works
 // in mock mode too. Use `npm run dev:broker` for a real model reply.
 export const ai = {
