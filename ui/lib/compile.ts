@@ -1,0 +1,103 @@
+import type {
+  AggregateFunction, BarConfig, Component, FilterRule, PieConfig,
+  QueryRequest, ScorecardConfig, TableConfig, TimeSeriesConfig,
+} from './types';
+
+/**
+ * The service caps a single query at 1000 rows, and there is no pagination/offset in v1.
+ * A limit outside 1..1000 is REJECTED, so nothing may leave this module unclamped.
+ */
+const MAX_LIMIT = 1000;
+
+/** The backend labels an aggregated output column "<column> | <TOKEN>"; P50 renders as MEDIAN. */
+export function aggLabel(column: string, fn: AggregateFunction): string {
+  const token = fn === 'P50' ? 'MEDIAN' : fn;
+  return `${column} | ${token}`;
+}
+
+/**
+ * Force any stored limit into the 1..1000 window the service accepts. A non-finite limit
+ * (missing field on an older/hand-edited doc) would serialise to `null` and be rejected, so it
+ * falls back to the maximum rather than reaching the wire.
+ */
+const clamp = (n: number): number =>
+  Number.isFinite(n) ? Math.max(1, Math.min(MAX_LIMIT, Math.trunc(n))) : MAX_LIMIT;
+
+/** Group-by keys must be unique; a repeated projection would corrupt the implied GROUP BY. */
+const dedupe = (fields: string[]): string[] => [...new Set(fields)];
+
+/**
+ * Global slices are pre-join, global filters are post-join. Both are tagged and merged into the
+ * single filterConfig the query carries; the server does all the filtering.
+ * Rules are copied, never mutated in place, and their placement is authoritative here.
+ */
+function mergeFilters(filters: FilterRule[], slices: FilterRule[]): FilterRule[] | null {
+  const merged = [
+    ...filters.map(f => ({ ...f, placement: 'post-join' as const })),
+    ...slices.map(f => ({ ...f, placement: 'pre-join' as const })),
+  ];
+  return merged.length ? merged : null;
+}
+
+/**
+ * Compile a component into exactly ONE server-side query.
+ *
+ * NO CLIENT-SIDE CALCULATION: every aggregate, group-by, date bucket, filter and total below is
+ * expressed in the request so the server computes it. The client only formats what comes back.
+ *
+ * Group-by is IMPLIED by the backend: a projected field WITH an aggregation rule is a metric; a
+ * projected field WITHOUT one is a grouping key. A table therefore sends no aggregations at all.
+ * Every field named in aggregationConfig/dateTruncConfig must also appear in `fields`.
+ */
+export function compile(component: Component, filters: FilterRule[], slices: FilterRule[]): QueryRequest {
+  const filterConfig = mergeFilters(filters, slices);
+  const q = (
+    fields: string[],
+    agg: QueryRequest['aggregationConfig'],
+    limit: number,
+    dateTrunc: QueryRequest['dateTruncConfig'] = null,
+  ): QueryRequest => ({
+    fields: dedupe(fields),
+    filterConfig,
+    aggregationConfig: agg,
+    dateTruncConfig: dateTrunc,
+    limit: clamp(limit),
+  });
+
+  switch (component.type) {
+    case 'scorecard': {
+      const c = component.config as ScorecardConfig;
+      // The value is read from `totals` (computed server-side over ALL matching rows, ignoring
+      // `limit`), so one row is enough — the client never sums anything.
+      return q([c.metric], [{ column: c.metric, function: c.aggregation }], 1);
+    }
+    case 'timeseries': {
+      const c = component.config as TimeSeriesConfig;
+      // The date bucket is a server-side DATE_TRUNC (DAY is the finest grain the service has —
+      // there is no HOUR). The breakdown is an extra grouping key, never an aggregation.
+      const fields = [c.dateField, c.metric, ...(c.breakdown ? [c.breakdown] : [])];
+      return q(fields, [{ column: c.metric, function: c.aggregation }], MAX_LIMIT,
+        [{ column: c.dateField, unit: c.unit }]);
+    }
+    case 'bar': {
+      const c = component.config as BarConfig;
+      return q([c.dimension, c.metric], [{ column: c.metric, function: c.aggregation }], c.limit);
+    }
+    case 'pie':
+    case 'donut': {
+      const c = component.config as PieConfig;
+      return q([c.dimension, c.metric], [{ column: c.metric, function: c.aggregation }], c.maxCategories);
+    }
+    case 'table': {
+      const c = component.config as TableConfig;
+      // No aggregations => no GROUP BY => raw rows, which is what a detail table wants.
+      return q(c.columns, null, c.limit);
+    }
+    default: {
+      // Unreachable for a well-formed doc; a corrupt one must fail loudly rather than send a
+      // malformed query.
+      const unknown: never = component.type;
+      throw new Error(`compile: unsupported component type "${String(unknown)}"`);
+    }
+  }
+}
