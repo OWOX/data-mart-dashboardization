@@ -9,11 +9,37 @@ import type {
  */
 const MAX_LIMIT = 1000;
 
-/** The backend labels an aggregated output column "<column> | <TOKEN>"; P50 renders as MEDIAN. */
+/**
+ * Uppercase token per aggregate function, used in the aggregated output-column alias.
+ * Mirrors `REPORT_AGGREGATE_FUNCTION_TOKENS` in the backend's `dto/schemas/aggregation-labels.ts`
+ * — the single source of truth for this naming. Note COUNT_DISTINCT -> COUNTUNIQUE and
+ * P50 -> MEDIAN; every other token is the function name itself.
+ */
+const AGG_TOKEN: Record<AggregateFunction, string> = {
+  SUM: 'SUM', AVG: 'AVG', MIN: 'MIN', MAX: 'MAX', COUNT: 'COUNT',
+  COUNT_DISTINCT: 'COUNTUNIQUE',
+  P25: 'P25', P50: 'MEDIAN', P75: 'P75', P95: 'P95',
+};
+
+/**
+ * Mirrors `aggregatedColumnLabel()` in the backend's `dto/schemas/aggregation-labels.ts` — the
+ * single source of truth for aggregated output-column names. This is how the plugin READS values
+ * back (the scorecard looks up `totals[aggLabel(metric, agg)]`; charts key rows by it), so a
+ * wrong token does not error, it silently renders a blank number. Dots are sanitized to `_`
+ * because BigQuery rejects a dot in an output alias (the aggregate argument still uses the real
+ * dotted/struct reference — only the output NAME is sanitized here).
+ */
 export function aggLabel(column: string, fn: AggregateFunction): string {
-  const token = fn === 'P50' ? 'MEDIAN' : fn;
-  return `${column} | ${token}`;
+  return `${column.replace(/\./g, '_')} | ${AGG_TOKEN[fn]}`;
 }
+
+/**
+ * `sortConfig.direction` comes off a stored JSON dashboard doc, which may be hand-edited or
+ * written by an older schema version, so it is not provably 'asc' | 'desc' at runtime even though
+ * the type says so. The server 400s on anything else, so coerce defensively — same spirit as the
+ * NaN-limit fallback below.
+ */
+const dir = (d: unknown): 'asc' | 'desc' => (d === 'asc' ? 'asc' : 'desc');
 
 /**
  * Force any stored limit into the 1..1000 window the service accepts. A non-finite limit
@@ -88,30 +114,35 @@ export function compile(component: Component, filters: FilterRule[], slices: Fil
     }
     case 'bar': {
       const c = component.config as BarConfig;
-      // ORDER BY the aggregated output ALIAS (not the raw metric column) — the warehouse groups
-      // first, so only the alias exists in the result set. `limit` alone would return an
-      // ARBITRARY N rows; this is what makes "Top N" actually top N.
+      // ORDER BY the RAW metric column, never the aggregated alias — the server's ORDER BY
+      // resolver (`col => aliasByColumn.get(col) ?? quoteIdentifier(col)`) is keyed by the raw
+      // column and derives the correct alias itself. `limit` alone would return an ARBITRARY N
+      // rows; this is what makes "Top N" actually top N.
       return q(
         [c.dimension, c.metric], [{ column: c.metric, function: c.aggregation }], c.limit, null,
-        [{ column: aggLabel(c.metric, c.aggregation), direction: c.sort ?? 'desc' }],
+        [{ column: c.metric, direction: dir(c.sort) }],
       );
     }
     case 'pie':
     case 'donut': {
       const c = component.config as PieConfig;
       // maxCategories is a top-N: always keep the biggest slices, so direction is fixed 'desc'
-      // (pie/donut have no user-facing sort control).
+      // (pie/donut have no user-facing sort control). Same RAW-column rule as bar above.
       return q(
         [c.dimension, c.metric], [{ column: c.metric, function: c.aggregation }], c.maxCategories, null,
-        [{ column: aggLabel(c.metric, c.aggregation), direction: 'desc' }],
+        [{ column: c.metric, direction: 'desc' }],
       );
     }
     case 'table': {
       const c = component.config as TableConfig;
       // No aggregations => no GROUP BY => raw rows, which is what a detail table wants.
-      // config.sort is already shaped as SortRule[]; map it straight through and omit when the
-      // user set none.
-      return q(c.columns, null, c.limit, null, c.sort?.length ? c.sort : undefined);
+      // config.sort is already shaped as SortRule[] of raw columns; map into FRESH objects
+      // (never the dashboard doc's own rules by reference — mergeFilters holds the same
+      // invariant for filters) and omit the key entirely when the user set none.
+      const sortConfig = c.sort?.length
+        ? c.sort.map(s => ({ column: s.column, direction: dir(s.direction) }))
+        : undefined;
+      return q(c.columns, null, c.limit, null, sortConfig);
     }
     default: {
       // Unreachable for a well-formed doc; a corrupt one must fail loudly rather than send a

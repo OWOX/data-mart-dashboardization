@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { compile, aggLabel } from './compile';
-import type { Component, FilterRule, QueryRequest } from './types';
+import type { Component, FilterRule, QueryRequest, SortRule } from './types';
 
 const filters: FilterRule[] = [{ column: 'country', operator: 'eq', value: 'US' }];
 const slices: FilterRule[] = [{ column: 'date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } }];
@@ -12,6 +12,12 @@ describe('aggLabel', () => {
   });
   it('maps P50 to MEDIAN like the backend does', () => {
     expect(aggLabel('x', 'P50')).toBe('x | MEDIAN');
+  });
+  it('maps COUNT_DISTINCT to COUNTUNIQUE like the backend does', () => {
+    expect(aggLabel('user_id', 'COUNT_DISTINCT')).toBe('user_id | COUNTUNIQUE');
+  });
+  it('sanitizes a dotted/struct path in the output name (BigQuery rejects a dot in an alias)', () => {
+    expect(aggLabel('metrics.revenue', 'SUM')).toBe('metrics_revenue | SUM');
   });
 });
 
@@ -280,12 +286,16 @@ describe('compile: per-type query shape', () => {
 // ---------------------------------------------------------------------------
 
 describe('compile: sortConfig', () => {
-  it('bar: sorts by the aggregated metric alias, descending by default', () => {
+  // sortConfig.column carries the RAW metric/column, never the aggregated alias — the server's
+  // ORDER BY resolver (`col => aliasByColumn.get(col) ?? quoteIdentifier(col)`) is keyed by the
+  // raw column and derives the correct alias itself. Sending the alias only *appeared* to work
+  // for SUM by coincidence; it silently breaks ranking for COUNT_DISTINCT, P50, and dotted paths.
+  it('bar: sorts by the RAW metric column, descending by default', () => {
     const c: Component = {
       ...base, type: 'bar',
       config: { dimension: 'source', metric: 'cost', aggregation: 'SUM', orientation: 'vertical', limit: 10 },
     };
-    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost | SUM', direction: 'desc' }]);
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost', direction: 'desc' }]);
   });
 
   it('bar: honours an explicit ascending sort from config', () => {
@@ -293,15 +303,43 @@ describe('compile: sortConfig', () => {
       ...base, type: 'bar',
       config: { dimension: 'source', metric: 'cost', aggregation: 'SUM', orientation: 'vertical', limit: 10, sort: 'asc' },
     };
-    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost | SUM', direction: 'asc' }]);
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost', direction: 'asc' }]);
   });
 
-  it('pie: sorts by the aggregated metric alias, always descending (maxCategories keeps the biggest slices)', () => {
+  it('bar: a non-SUM aggregation (whose alias differs from the column) still sorts by the RAW column', () => {
+    // This is the case that would have caught the Critical: COUNT_DISTINCT's real alias is
+    // "<col> | COUNTUNIQUE", nothing like "<col>", so sending the alias here would 400/misorder.
+    const c: Component = {
+      ...base, type: 'bar',
+      config: { dimension: 'source', metric: 'user_id', aggregation: 'COUNT_DISTINCT', orientation: 'vertical', limit: 10 },
+    };
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'user_id', direction: 'desc' }]);
+  });
+
+  it('bar: coerces a non-asc/desc stored sort direction to desc rather than forwarding it', () => {
+    // config.sort comes off a stored JSON doc that may be hand-edited or from an older schema
+    // version, so it is not provably 'asc' | 'desc' at runtime even though the type says so.
+    const c = {
+      ...base, type: 'bar',
+      config: { dimension: 'source', metric: 'cost', aggregation: 'SUM', orientation: 'vertical', limit: 10, sort: 'ascending' },
+    } as unknown as Component;
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost', direction: 'desc' }]);
+  });
+
+  it('pie: sorts by the RAW metric column, always descending (maxCategories keeps the biggest slices)', () => {
     const c: Component = {
       ...base, type: 'pie',
       config: { dimension: 'country', metric: 'cost', aggregation: 'SUM', maxCategories: 6 },
     };
-    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost | SUM', direction: 'desc' }]);
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost', direction: 'desc' }]);
+  });
+
+  it('pie: a non-SUM aggregation still sorts by the RAW column', () => {
+    const c: Component = {
+      ...base, type: 'pie',
+      config: { dimension: 'country', metric: 'user_id', aggregation: 'COUNT_DISTINCT', maxCategories: 6 },
+    };
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'user_id', direction: 'desc' }]);
   });
 
   it('donut: sorts identically to pie', () => {
@@ -309,10 +347,10 @@ describe('compile: sortConfig', () => {
       ...base, type: 'donut',
       config: { dimension: 'country', metric: 'cost', aggregation: 'SUM', maxCategories: 6 },
     };
-    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost | SUM', direction: 'desc' }]);
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost', direction: 'desc' }]);
   });
 
-  it('table: maps config.sort straight through, already-shaped SortRule[]', () => {
+  it('table: maps config.sort straight through, already-shaped SortRule[] of raw columns', () => {
     const c: Component = {
       ...base, type: 'table',
       config: { columns: ['date', 'cost'], sort: [{ column: 'cost', direction: 'desc' }], limit: 50 },
@@ -320,8 +358,21 @@ describe('compile: sortConfig', () => {
     expect(compile(c, [], []).sortConfig).toEqual([{ column: 'cost', direction: 'desc' }]);
   });
 
+  it('table: does not alias the dashboard doc — mutating the result must not mutate config.sort', () => {
+    const sort: SortRule[] = [{ column: 'cost', direction: 'desc' }];
+    const c: Component = { ...base, type: 'table', config: { columns: ['date', 'cost'], sort, limit: 50 } };
+    const q = compile(c, [], []);
+    (q.sortConfig as SortRule[])[0].direction = 'asc';
+    expect(sort).toEqual([{ column: 'cost', direction: 'desc' }]);
+  });
+
   it('table: omits sortConfig entirely when the user set no sort', () => {
     const c: Component = { ...base, type: 'table', config: { columns: ['date', 'cost'], limit: 50 } };
+    expect(compile(c, [], [])).not.toHaveProperty('sortConfig');
+  });
+
+  it('table: omits sortConfig entirely when config.sort is an empty array', () => {
+    const c: Component = { ...base, type: 'table', config: { columns: ['date', 'cost'], sort: [], limit: 50 } };
     expect(compile(c, [], [])).not.toHaveProperty('sortConfig');
   });
 
