@@ -18,6 +18,12 @@ export type LayerStatus = 'idle' | 'loading' | 'stale' | 'ready';
  * so a burst of rapid changes (e.g. dragging a date filter) fires at most one request per idle
  * gap, never one per keystroke.
  *
+ * `refresh()` is the odd one out on purpose: it bypasses the debounce and fetches immediately.
+ * The debounce exists to coalesce rapid config/filter edits (e.g. dragging a slider) into one
+ * request; a user clicking "refresh" wants that request to fire right now, not after waiting out
+ * an idle gap. It still goes through the same effect (via `nonce`) so it gets the same
+ * cancellation guard as any other run.
+ *
  * `T` is left opaque on purpose (no post-processing here): when `T` is `QueryResult`, its
  * `truncated` flag rides through in `data` untouched for the caller to surface.
  */
@@ -36,9 +42,19 @@ export function useLayerData<T>(
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
-  const refresh = useCallback(() => setNonce(n => n + 1), []);
+  // Set by refresh() just before bumping `nonce`, consumed (and cleared) by the very next effect
+  // run so that run fetches immediately instead of waiting out the debounce.
+  const immediateRef = useRef(false);
+
+  const refresh = useCallback(() => {
+    immediateRef.current = true;
+    setNonce(n => n + 1);
+  }, []);
 
   useEffect(() => {
+    const isImmediate = immediateRef.current;
+    immediateRef.current = false;
+
     if (!enabled) {
       setStatus('stale');
       return;
@@ -46,7 +62,8 @@ export function useLayerData<T>(
 
     let cancelled = false;
     setStatus('loading');
-    const timer = setTimeout(() => {
+
+    const runFetch = () => {
       fetcherRef.current()
         .then(result => {
           if (cancelled) return;
@@ -59,11 +76,14 @@ export function useLayerData<T>(
           setError(err instanceof Error ? err.message : String(err));
           setStatus('stale'); // last-good `data` is deliberately retained
         });
-    }, debounceMs);
+    };
+
+    const timer = isImmediate ? undefined : setTimeout(runFetch, debounceMs);
+    if (isImmediate) runFetch();
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
     };
   }, [configVersion, enabled, debounceMs, nonce]);
 

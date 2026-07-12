@@ -55,4 +55,62 @@ describe('useLayerData', () => {
     expect(result.current.data).toEqual({ ok: 1 });   // last good data survives
     expect(result.current.error).toBe('boom');
   });
+
+  it('ignores a stale request that resolves after a fresher one (out-of-order network)', async () => {
+    let resolveA: (v: { id: string }) => void;
+    let resolveB: (v: { id: string }) => void;
+    const pendingA = new Promise<{ id: string }>(res => { resolveA = res; });
+    const pendingB = new Promise<{ id: string }>(res => { resolveB = res; });
+
+    const fetcher = vi.fn()
+      .mockImplementationOnce(() => pendingA)
+      .mockImplementationOnce(() => pendingB);
+
+    const { result, rerender } = renderHook(({ v }) => useLayerData(v, true, fetcher, 1000), {
+      initialProps: { v: 1 },
+    });
+
+    // Request A fires (config version 1).
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    // Config changes before A resolves -> request B fires (config version 2).
+    rerender({ v: 2 });
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    // B (the fresher request) resolves first.
+    await act(async () => {
+      resolveB({ id: 'B' });
+      await pendingB;
+    });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.data).toEqual({ id: 'B' });
+
+    // A (the stale request) resolves last, after B already landed.
+    await act(async () => {
+      resolveA({ id: 'A' });
+      await pendingA;
+    });
+
+    // The stale, late-arriving response must not clobber the fresher data.
+    expect(result.current.data).toEqual({ id: 'B' });
+    expect(result.current.status).toBe('ready');
+  });
+
+  it('refresh() fetches immediately, bypassing the debounce', async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: 1 });
+    const { result } = renderHook(() => useLayerData(1, true, fetcher, 1000));
+
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    // No timer advance here: refresh() must not wait out the debounce.
+    act(() => { result.current.refresh(); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.data).toEqual({ ok: 1 });
+  });
 });
