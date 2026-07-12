@@ -1,0 +1,14 @@
+.superpowers/
+
+node_modules/
+dist/
+.owox-dev/
+owox.dev.json
+*.tsbuildinfo
+
+# Stray TypeScript emit into the source tree (some IDEs/editor build tasks emit .js/.d.ts next to
+# the .ts/.tsx sources). Never commit or ship these — they shadow the sources at build time.
+*.js
+*.d.ts
+*.d.ts.map
+!postcss.config.js

@@ -1,0 +1,9 @@
+{
+  "id": "data-mart-dashboards",
+  "name": "Dashboards",
+  "version": "0.1.0",
+  "ui": { "entry": "ui/index.html" },
+  "menu": [{ "title": "Dashboards", "path": "" }],
+  "credentials": [{ "type": "data-mart", "scope": "all", "actions": ["view"] }],
+  "collections": [{ "name": "dashboards", "scope": "project" }]
+}

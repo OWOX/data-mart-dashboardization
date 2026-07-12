@@ -1,0 +1,21 @@
+{
+  "_readme": "Copy to owox.dev.json (gitignored) for `npm run dev:broker`. Mirrors the prod vault + SettingsStore shapes, so your plugin behaves identically in dev and prod. Fill in only what your plugin uses. NEVER commit owox.dev.json.",
+
+  "owox": {
+    "apiUrl": "http://localhost:3000",
+    "apiKey": ""
+  },
+
+  "credentials": [
+    { "type": "ai-provider", "secret": "", "config": { "baseUrl": "https://openrouter.ai/api/v1" } },
+    { "type": "github", "secret": "" },
+    { "type": "google-service-account", "secret": "" }
+  ],
+
+  "settings": {
+    "global": { "greeting": "Hello" },
+    "byProject": {}
+  },
+
+  "ports": { "ui": 5177, "broker": 5178 }
+}

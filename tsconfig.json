@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "types": ["vitest/globals", "@testing-library/jest-dom"],
+    "baseUrl": ".",
+    // @owox/plugin-sdk is host-provided at runtime and NOT an npm dependency (it's unpublished).
+    // Type the import against the local mock so `npm run typecheck` works with no install. When the
+    // SDK is published, drop this alias and add it back as a devDependency.
+    "paths": { "@owox/plugin-sdk": ["./ui/sdk-mock"] }
+  },
+  "include": ["ui", "src"]
+}
