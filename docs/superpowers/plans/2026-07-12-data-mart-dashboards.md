@@ -947,16 +947,30 @@ This is the heart of the plugin: it is the only place that knows the query API, 
 "Top 10 sources" bar chart would plot 10 random sources. Compile emits a server-side `ORDER BY` for
 every component that implies ranking, and the server applies it before the `LIMIT`:
 
+**`sortConfig.column` carries the RAW column, never the aggregated alias.** The server's ORDER BY
+resolver is `col => aliasByColumn.get(col) ?? quoteIdentifier(col)` — keyed by the raw column — so it
+derives the correct output alias itself. Sending the alias only *appears* to work: it happens to match
+for `SUM` because the fallback quoting coincides, and breaks for `COUNT_DISTINCT` (real alias:
+`COUNTUNIQUE`), `P50` (`MEDIAN`), and any dotted path (dots are sanitized to `_`). Sending the raw
+column is structurally immune to that drift.
+
 | Component | `sortConfig` compile emits |
 |---|---|
-| **bar** | `[{ column: aggLabel(metric, aggregation), direction: config.sort ?? 'desc' }]` — the metric alias, not the raw column, because the ORDER BY references the aggregated output alias. |
-| **pie / donut** | `[{ column: aggLabel(metric, aggregation), direction: 'desc' }]` — `maxCategories` is a top-N, so the biggest slices must be the ones kept. |
-| **table** | `config.sort` mapped straight through (it is already `SortRule[]`); omit when the user set none. |
+| **bar** | `[{ column: config.metric, direction: config.sort ?? 'desc' }]` — the RAW metric column. |
+| **pie / donut** | `[{ column: config.metric, direction: 'desc' }]` — `maxCategories` is a top-N, so the biggest slices must be the ones kept. |
+| **table** | `config.sort` mapped through (already `SortRule[]`, raw columns); omit when the user set none. |
 | **scorecard** | none — a single aggregate row has nothing to order. |
 | **timeseries** | none — it is a full series over buckets, not a ranking. (Do NOT sort by date to "help"; the chart orders its own points for display, which is presentation, not computation.) |
 
 Never sort or slice rows in JS to fake this. `direction` is validated server-side as exactly
 `'asc' | 'desc'` — anything else is a 400.
+
+**`aggLabel` must mirror the backend's naming EXACTLY**, because it is how the plugin *reads values back*
+(the scorecard looks up `totals[aggLabel(metric, agg)]`; charts key rows by it). A wrong label does not
+error — it silently renders a blank number. The single source of truth is
+`owox-data-marts/apps/backend/src/data-marts/dto/schemas/aggregation-labels.ts`:
+`` `${column.replace(/\./g,'_')} | ${TOKEN[fn]}` `` where the tokens are `SUM, AVG, MIN, MAX, COUNT,`
+`COUNT_DISTINCT→COUNTUNIQUE, P25, P50→MEDIAN, P75, P95`.
 
 **Files:**
 - Create: `ui/lib/compile.ts`
@@ -1082,10 +1096,21 @@ import type {
 /** The service caps a single query at 1000 rows. */
 const MAX_LIMIT = 1000;
 
-/** The backend labels an aggregated output column "<column> | <TOKEN>"; P50 renders as MEDIAN. */
+/**
+ * Mirrors `aggregatedColumnLabel()` in the backend's `dto/schemas/aggregation-labels.ts` — the single
+ * source of truth for aggregated output-column names. This is how the plugin READS values back
+ * (`totals[aggLabel(metric, agg)]`), so a wrong token silently yields a blank number, not an error.
+ * Note COUNT_DISTINCT → COUNTUNIQUE and P50 → MEDIAN, and dots are sanitized (BigQuery rejects a dot
+ * in an output alias).
+ */
+const AGG_TOKEN: Record<AggregateFunction, string> = {
+  SUM: 'SUM', AVG: 'AVG', MIN: 'MIN', MAX: 'MAX', COUNT: 'COUNT',
+  COUNT_DISTINCT: 'COUNTUNIQUE',
+  P25: 'P25', P50: 'MEDIAN', P75: 'P75', P95: 'P95',
+};
+
 export function aggLabel(column: string, fn: AggregateFunction): string {
-  const token = fn === 'P50' ? 'MEDIAN' : fn;
-  return `${column} | ${token}`;
+  return `${column.replace(/\./g, '_')} | ${AGG_TOKEN[fn]}`;
 }
 
 const clamp = (n: number) => Math.max(1, Math.min(MAX_LIMIT, Math.trunc(n)));
