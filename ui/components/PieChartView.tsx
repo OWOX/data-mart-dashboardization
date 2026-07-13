@@ -42,11 +42,12 @@ export function PieChartView({
 }) {
   const c = component.config as PieConfig;
   if (!data) return null;
+  if (!c.dimension) return <p className="text-xs text-muted-foreground">No dimension configured.</p>;
   const points = toPoints(data, c.dimension, aggLabel(c.metric, c.aggregation));
+  if (points.length === 0) return <p className="text-xs text-muted-foreground">No rows.</p>;
   const donut = component.type === 'donut';
 
   const activeFilter = filters.find(f => f.column === c.dimension && f.operator === 'eq');
-  const activeValue = activeFilter ? String(activeFilter.value) : undefined;
 
   const emit = (raw: unknown) => onSegmentFilter?.({ column: c.dimension, operator: 'eq', value: raw });
 
@@ -67,12 +68,12 @@ export function PieChartView({
             onClick={(p: { label?: string; raw?: unknown }) => p?.label !== undefined && emit(p.raw)}
           >
             {points.map((p, i) => {
-              const isActive = activeValue !== undefined && activeValue === p.label;
+              const isActive = activeFilter !== undefined && activeFilter.value === p.raw;
               return (
                 <Cell
                   key={i}
                   fill={COLORS[i % COLORS.length]}
-                  fillOpacity={activeValue !== undefined && !isActive ? 0.4 : 1}
+                  fillOpacity={activeFilter !== undefined && !isActive ? 0.4 : 1}
                   stroke={isActive ? 'var(--foreground)' : undefined}
                   strokeWidth={isActive ? 2 : undefined}
                   style={{ cursor: onSegmentFilter ? 'pointer' : undefined }}
@@ -86,7 +87,7 @@ export function PieChartView({
         <div className="flex flex-wrap items-center gap-1" role="group" aria-label={`Filter by ${c.dimension}`}>
           <span className="text-xs text-muted-foreground">Filter by {c.dimension}:</span>
           {points.map(p => {
-            const isActive = activeValue !== undefined && activeValue === p.label;
+            const isActive = activeFilter !== undefined && activeFilter.value === p.raw;
             return (
               <button
                 key={p.label}
@@ -101,11 +102,7 @@ export function PieChartView({
           })}
         </div>
       )}
-      {data.truncated && (
-        <p className="text-xs text-muted-foreground">
-          Showing first {points.length} of possibly more — results truncated.
-        </p>
-      )}
+      <p className="text-xs text-muted-foreground">Top {c.maxCategories} by {c.metric}</p>
     </div>
   );
 }

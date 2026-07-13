@@ -72,9 +72,42 @@ describe('PieChartView', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('surfaces truncated results', () => {
-    const { getByText } = render(<PieChartView component={pieComponent('pie')} data={{ ...data, truncated: true }} />);
-    expect(getByText(/truncated/i)).toBeInTheDocument();
+  it('never surfaces the truncated flag as a warning — a Top-N hitting its limit is the intended behavior', () => {
+    const { queryByText, getByText } = render(
+      <PieChartView component={pieComponent('pie')} data={{ ...data, truncated: true }} />
+    );
+    expect(queryByText(/truncated/i)).toBeNull();
+    expect(getByText('Top 8 by Cost')).toBeInTheDocument();
+  });
+
+  it('shows "No rows." when the dimension is configured but nothing matched', () => {
+    const { getByText, queryByText } = render(
+      <PieChartView component={pieComponent('pie')} data={{ ...data, rows: [] }} />
+    );
+    expect(getByText('No rows.')).toBeInTheDocument();
+    expect(queryByText(/^Top /)).toBeNull();
+  });
+
+  it('shows "No dimension configured." when the component has no dimension', () => {
+    const { getByText } = render(
+      <PieChartView component={pieComponent('pie', { dimension: '' })} data={data} />
+    );
+    expect(getByText('No dimension configured.')).toBeInTheDocument();
+  });
+
+  it('highlights the active segment by comparing the RAW dimension value, not the stringified label — a NULL cell must still highlight', () => {
+    const withNull: QueryResult = {
+      columns: ['Source', 'Cost | SUM'],
+      rows: [[null, 30], ['meta', 20]],
+      truncated: false, totals: null,
+    };
+    const filters: FilterRule[] = [{ column: 'Source', operator: 'eq', value: null }];
+    const { getAllByRole } = render(
+      <PieChartView component={pieComponent('pie')} data={withNull} filters={filters} onSegmentFilter={vi.fn()} />
+    );
+    const chips = getAllByRole('button');
+    expect(chips[0].getAttribute('aria-pressed')).toBe('true'); // the NULL-labeled chip
+    expect(chips[1].getAttribute('aria-pressed')).toBe('false');
   });
 
   // ---- Cross-filtering (Task 16) ----
