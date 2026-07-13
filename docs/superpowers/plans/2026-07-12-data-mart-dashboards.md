@@ -960,7 +960,7 @@ column is structurally immune to that drift.
 | **pie / donut** | `[{ column: config.metric, direction: 'desc' }]` — `maxCategories` is a top-N, so the biggest slices must be the ones kept. |
 | **table** | `config.sort` mapped through (already `SortRule[]`, raw columns); omit when the user set none. |
 | **scorecard** | none — a single aggregate row has nothing to order. |
-| **timeseries** | none — it is a full series over buckets, not a ranking. (Do NOT sort by date to "help"; the chart orders its own points for display, which is presentation, not computation.) |
+| **timeseries** | `[{ column: config.dateField, direction: 'asc' }]` — chronological. SQL guarantees no row order without an `ORDER BY`, and neither `rows.ts` nor the chart sorts (that would be client-side computation), so **without this the line plots its points in arbitrary x-order** — a zigzag. Order it on the server. |
 
 Never sort or slice rows in JS to fake this. `direction` is validated server-side as exactly
 `'asc' | 'desc'` — anything else is a 400.

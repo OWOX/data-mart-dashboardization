@@ -105,12 +105,20 @@ export function compile(component: Component, filters: FilterRule[], slices: Fil
     case 'timeseries': {
       const c = component.config as TimeSeriesConfig;
       // The date bucket is a server-side DATE_TRUNC (DAY is the finest grain the service has —
-      // there is no HOUR). The breakdown is an extra grouping key, never an aggregation. This is
-      // a full series over buckets, not a ranking, so no sortConfig — the chart orders its own
-      // points for display, which is presentation, not computation.
+      // there is no HOUR). The breakdown is an extra grouping key, never an aggregation.
+      //
+      // sortConfig IS required here, even though this is a full series and not a ranking: SQL
+      // guarantees no row order without an explicit ORDER BY, and neither `rows.ts` nor the chart
+      // sorts (that would be client-side computation, which this plugin forbids) — so without a
+      // server-side ORDER BY the points arrive in arbitrary order and the line renders as a
+      // zigzag instead of a chronological series. Sort ascending by the RAW date field (not
+      // aggLabel(...)) — same rule as bar/pie above: the server's ORDER BY resolver
+      // (`col => aliasByColumn.get(col) ?? quoteIdentifier(col)`) is keyed by the raw column and
+      // derives the correct alias itself.
       const fields = [c.dateField, c.metric, ...(c.breakdown ? [c.breakdown] : [])];
       return q(fields, [{ column: c.metric, function: c.aggregation }], MAX_LIMIT,
-        [{ column: c.dateField, unit: c.unit }]);
+        [{ column: c.dateField, unit: c.unit }],
+        [{ column: c.dateField, direction: 'asc' }]);
     }
     case 'bar': {
       const c = component.config as BarConfig;

@@ -381,11 +381,22 @@ describe('compile: sortConfig', () => {
     expect(compile(c, [], [])).not.toHaveProperty('sortConfig');
   });
 
-  it('timeseries: emits no sortConfig — a full series over buckets is not a ranking', () => {
+  it('timeseries: sorts chronologically by the RAW date field, ascending', () => {
+    // SQL guarantees no row order without an ORDER BY, and neither rows.ts nor the chart sorts
+    // (that would be client-side computation), so without this the line plots its points in
+    // arbitrary x-order — a zigzag. See Task 6 of the plan.
     const c: Component = {
       ...base, type: 'timeseries',
       config: { dateField: 'date', metric: 'cost', aggregation: 'SUM', unit: 'DAY' },
     };
-    expect(compile(c, [], [])).not.toHaveProperty('sortConfig');
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'date', direction: 'asc' }]);
+  });
+
+  it('timeseries: still sorts by the RAW date field when a breakdown is present', () => {
+    const c: Component = {
+      ...base, type: 'timeseries',
+      config: { dateField: 'date', metric: 'cost', aggregation: 'SUM', unit: 'DAY', breakdown: 'source' },
+    };
+    expect(compile(c, [], []).sortConfig).toEqual([{ column: 'date', direction: 'asc' }]);
   });
 });
