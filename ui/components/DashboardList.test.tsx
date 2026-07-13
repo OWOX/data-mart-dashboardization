@@ -187,5 +187,81 @@ describe('DashboardList', () => {
       // The dialog stays open so the user can retry instead of silently landing nowhere.
       expect(screen.getByText('Mart One')).toBeInTheDocument();
     });
+
+    describe('accessibility', () => {
+      const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+      it('is a labeled, modal dialog', async () => {
+        vi.spyOn(api, 'listMarts').mockResolvedValue([mart]);
+        renderApp();
+        await screen.findByText(/no dashboards/i);
+        fireEvent.click(screen.getByRole('button', { name: /new dashboard/i }));
+
+        const dialog = await screen.findByRole('dialog');
+        expect(dialog).toHaveAttribute('aria-modal', 'true');
+        const labelledBy = dialog.getAttribute('aria-labelledby');
+        expect(labelledBy).toBeTruthy();
+        expect(document.getElementById(labelledBy!)).toHaveTextContent(/choose a data mart/i);
+      });
+
+      it('moves focus into the dialog on open', async () => {
+        vi.spyOn(api, 'listMarts').mockResolvedValue([mart]);
+        renderApp();
+        await screen.findByText(/no dashboards/i);
+        fireEvent.click(screen.getByRole('button', { name: /new dashboard/i }));
+
+        const dialog = await screen.findByRole('dialog');
+        expect(dialog.contains(document.activeElement)).toBe(true);
+      });
+
+      it('Escape closes the dialog', async () => {
+        vi.spyOn(api, 'listMarts').mockResolvedValue([mart]);
+        renderApp();
+        await screen.findByText(/no dashboards/i);
+        fireEvent.click(screen.getByRole('button', { name: /new dashboard/i }));
+        await screen.findByRole('dialog');
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+
+      it('traps Tab focus within the dialog: Shift+Tab from the first control wraps to the last', async () => {
+        vi.spyOn(api, 'listMarts').mockResolvedValue([mart]);
+        renderApp();
+        await screen.findByText(/no dashboards/i);
+        fireEvent.click(screen.getByRole('button', { name: /new dashboard/i }));
+
+        const dialog = await screen.findByRole('dialog');
+        await screen.findByText('Mart One');
+        const focusables = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)];
+        expect(focusables.length).toBeGreaterThan(1);
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        first.focus();
+        fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+        expect(document.activeElement).toBe(last);
+
+        last.focus();
+        fireEvent.keyDown(document, { key: 'Tab' });
+        expect(document.activeElement).toBe(first);
+      });
+
+      it('restores focus to the "New dashboard" trigger once the dialog closes', async () => {
+        vi.spyOn(api, 'listMarts').mockResolvedValue([mart]);
+        renderApp();
+        await screen.findByText(/no dashboards/i);
+
+        const trigger = screen.getByRole('button', { name: /new dashboard/i });
+        trigger.focus();
+        fireEvent.click(trigger);
+        await screen.findByRole('dialog');
+        expect(document.activeElement).not.toBe(trigger); // focus moved into the panel
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(document.activeElement).toBe(trigger);
+      });
+    });
   });
 });
