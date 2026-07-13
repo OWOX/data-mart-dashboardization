@@ -23,7 +23,7 @@ export function AddComponentButton({ onAdd }: { onAdd: (type: ComponentType) => 
       <button
         type="button"
         className="rounded border px-3 py-1.5 text-sm"
-        aria-haspopup="menu"
+        aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
       >
@@ -31,18 +31,17 @@ export function AddComponentButton({ onAdd }: { onAdd: (type: ComponentType) => 
       </button>
       {open && (
         <>
-          {/* Click-outside-to-close backdrop, transparent so it never obscures the page. */}
-          <button
-            type="button"
-            aria-label="Close menu"
-            className="fixed inset-0 z-10 cursor-default"
+          {/* Click-outside-to-close backdrop, transparent so it never obscures the page. Plain
+              div — not focusable — so it never sits in the Tab order between the trigger and the
+              first item. */}
+          <div
             onClick={() => setOpen(false)}
+            className="fixed inset-0 z-10 cursor-default"
           />
-          <div role="menu" className="dm-card absolute right-0 z-20 mt-1 w-44 space-y-0.5 p-1 shadow-lg">
+          <div className="dm-card absolute right-0 z-20 mt-1 w-44 space-y-0.5 p-1 shadow-lg">
             {TYPES.map(t => (
               <button
                 key={t.type}
-                role="menuitem"
                 type="button"
                 className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-black/5"
                 onClick={() => {
