@@ -7,7 +7,8 @@ import { useLayerData } from '../lib/freshness';
 import { Grid } from './Grid';
 import { ComponentCard } from './ComponentCard';
 import { FilterBar } from './FilterBar';
-import type { Component, Dashboard, FilterRule, QueryResult } from '../lib/types';
+import { renderComponent } from './renderComponent';
+import type { Component, Dashboard, FilterRule } from '../lib/types';
 
 /**
  * One component = one server-side query. Refetch is keyed on the doc's `configVersion` (bumped by
@@ -22,30 +23,11 @@ export function useComponentData(dashboard: Dashboard, component: Component) {
   return useLayerData(dashboard.configVersion, true, fetcher);
 }
 
-/**
- * Placeholder body for a component's data. Task 13 (`renderComponent`) replaces this with the
- * real scorecard/chart/table renderers; this task only owns the frame they render inside. Still
- * surfaces the server's `truncated` flag per spec — that must never be silently dropped, even by
- * a placeholder.
- */
-function ComponentBody({ component, data }: { component: Component; data: QueryResult | null }) {
-  if (!data) return <p className="text-xs text-muted-foreground">No data yet.</p>;
-  return (
-    <div className="text-xs text-muted-foreground">
-      <p>{component.type}</p>
-      <p>
-        {data.rows.length} row{data.rows.length === 1 ? '' : 's'}
-        {data.truncated && <span> · truncated</span>}
-      </p>
-    </div>
-  );
-}
-
 function Cell({ dashboard, component }: { dashboard: Dashboard; component: Component }) {
   const { data, status, error, refresh } = useComponentData(dashboard, component);
   return (
     <ComponentCard title={component.title} status={status} error={error} onRefresh={refresh}>
-      <ComponentBody component={component} data={data} />
+      {renderComponent(component, data)}
     </ComponentCard>
   );
 }

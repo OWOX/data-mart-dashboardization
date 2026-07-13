@@ -84,8 +84,16 @@ describe('DashboardView', () => {
   });
 
   it('surfaces the server truncated flag rather than dropping it', async () => {
-    vi.spyOn(db, 'getDashboard').mockResolvedValue(dashWithScorecard());
-    vi.spyOn(api, 'queryDataMart').mockResolvedValue({ ...emptyResult, rows: [[1]], truncated: true });
+    // A scorecard's value comes from `totals`, not `rows`, so `truncated` (which describes
+    // `rows`) has nothing to surface there — this exercises the renderer that actually shows it.
+    const dash: Dashboard = {
+      ...dashWithScorecard(),
+      components: [
+        { id: 'a', type: 'table', title: 'Revenue', width: 1, height: 1, config: { columns: ['Cost'], limit: 10 } },
+      ],
+    };
+    vi.spyOn(db, 'getDashboard').mockResolvedValue(dash);
+    vi.spyOn(api, 'queryDataMart').mockResolvedValue({ ...emptyResult, columns: ['Cost'], rows: [[1]], truncated: true });
 
     renderAt('d1');
     expect(await screen.findByText(/truncated/i, {}, past)).toBeInTheDocument();
