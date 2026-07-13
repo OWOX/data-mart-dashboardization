@@ -330,43 +330,46 @@ export function restoreGenerated(
   return { ...fresh, id: d.id, name: d.name, $entity: d.$entity, configVersion: d.configVersion + 1 };
 }
 
-// ---------- Cross-filtering (Task 16) ----------
+// ---------- Cross-filtering (Task 16, ephemeral view-state as of Task 20/M7) ----------
 //
-// A "slice" (clicking a bar/pie segment) is just another entry in `d.filters` — the SAME global,
-// post-join array a manually-added filter would land in (see the `Dashboard.filters` doc in
-// types.ts: "GLOBAL — applied to every component. No per-component overrides by design."). There
-// is deliberately no separate "cross-filter" storage: `compile()` already merges `d.filters` into
-// every component's query, so putting the clicked value there is what makes the SERVER recompute
-// every tile's aggregates under the filter — nothing here ever touches already-fetched rows.
+// A "slice" (clicking a bar/pie segment) is EXPLORATION, not configuration: it must never land in
+// `d.filters` and must never be persisted by `saveDashboard` or survive a reload. So, unlike every
+// other transform in this file, `addGlobalFilter`/`removeGlobalFilter` no longer operate on a
+// `Dashboard` at all — they toggle-by-column on a bare `FilterRule[]` that `DashboardView` keeps as
+// separate, ephemeral React state (`crossFilters`), merged into a query-only `effectiveDashboard`
+// at render/fetch time and never written back into the real `dashboard` (see `DashboardView.tsx`).
+// `compile()` still merges the effective filter set into every component's query, so the clicked
+// value still makes the SERVER recompute every tile's aggregates under the filter — nothing here
+// ever touches already-fetched rows — it's WHERE that value lives client-side that changed.
 //
 // The operator is always `eq` (an exact match on the clicked category) — never `in`/`not_in`,
 // which `filterOps.ts` documents as REJECTED by the query service.
+//
+// `resetFilters` below is UNCHANGED and still Dashboard-level: `d.filters` can still hold
+// deliberately-persisted filters that were already on the doc when it was loaded, and those still
+// need a Dashboard-level clear.
 
 /**
- * Cross-filter: clicking a bar/slice sets a GLOBAL filter — filters are never per-component.
- * Replaces (never stacks) any existing filter on the same column, so re-clicking a DIFFERENT
- * segment of the same dimension moves the filter rather than ANDing two values on one column
- * together (which would match zero rows for an equality filter). Always bumps `configVersion` —
- * a filter change always changes what the server must compute, so every component must refetch.
+ * Toggles a cross-filter into a bare `FilterRule[]` (never a `Dashboard` — see the section comment
+ * above). Replaces (never stacks) any existing filter on the same column, so re-clicking a
+ * DIFFERENT segment of the same dimension moves the filter rather than ANDing two values on one
+ * column together (which would match zero rows for an equality filter). Pure — never mutates
+ * `filters`.
  */
-export function addGlobalFilter(d: Dashboard, f: FilterRule): Dashboard {
-  return {
-    ...d,
-    filters: [...d.filters.filter(x => x.column !== f.column), f],
-    configVersion: d.configVersion + 1,
-  };
+export function addGlobalFilter(filters: FilterRule[], f: FilterRule): FilterRule[] {
+  return [...filters.filter(x => x.column !== f.column), f];
 }
 
 /**
  * The other half of the click-to-toggle interaction: clicking the SAME already-active segment
  * again clears that column's filter instead of re-applying it (see `DashboardView`'s
  * `onSegmentFilter`, which decides add-vs-remove by comparing the clicked value against the
- * currently active filter for that column). A no-op (including no `configVersion` bump) when the
+ * currently active filter for that column). A no-op (returns the SAME array reference) when the
  * column has no active filter, mirroring `removeComponent`'s unknown-id no-op.
  */
-export function removeGlobalFilter(d: Dashboard, column: string): Dashboard {
-  if (!d.filters.some(f => f.column === column)) return d;
-  return { ...d, filters: d.filters.filter(f => f.column !== column), configVersion: d.configVersion + 1 };
+export function removeGlobalFilter(filters: FilterRule[], column: string): FilterRule[] {
+  if (!filters.some(f => f.column === column)) return filters;
+  return filters.filter(f => f.column !== column);
 }
 
 /**

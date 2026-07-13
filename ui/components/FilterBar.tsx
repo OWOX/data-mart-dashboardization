@@ -1,5 +1,4 @@
 import { RELATIVE_PRESETS } from '../lib/filterOps';
-import { resetFilters } from '../lib/edit';
 import type { Dashboard, FilterRule } from '../lib/types';
 
 type RelativeValue = { kind: string; n?: number };
@@ -31,34 +30,40 @@ const needsN = (kind: string): boolean => RELATIVE_PRESETS.find(p => p.kind === 
  * the wire. Changing a control reports the FULL updated `filters`/`slices` pair to `onChange`;
  * `DashboardView` bumps `configVersion` from there, which refetches every component.
  *
- * Cross-filtering (Task 16): `dashboard.filters` now also holds cross-filters set by clicking a
- * bar/pie segment (see `DashboardView`'s `onSegmentFilter`), so this bar must render whenever
- * EITHER `slices` OR `filters` is non-empty — a dashboard with no date fields (no slices) but an
- * active cross-filter must still show a way to see/clear it, or the filter is invisible and stuck
- * on (the "worst possible outcome" this plugin explicitly guards against: a filtered dashboard that
- * looks unfiltered). "Reset filters" now goes through `ui/lib/edit.ts`'s `resetFilters` — it clears
- * `filters` (manual AND cross-filters) but, per that function's contract, leaves the date sliders'
- * current values alone; it is not "restore the generated defaults" (that's a wholesale, deliberate
- * user action = "Restore generated layout", not what a filter-clear button should also silently do).
+ * Cross-filtering (Task 16; ephemeral as of Task 20/M7): `filters` is the EFFECTIVE, display-only
+ * view `DashboardView` computes — persisted `dashboard.filters` merged with any active ephemeral
+ * cross-filter set by clicking a bar/pie segment (see `DashboardView`'s `onSegmentFilter` and
+ * `effectiveDashboard`). This bar must render whenever EITHER `dashboard.slices` OR the `filters`
+ * PROP is non-empty — a dashboard with no date fields (no slices) but an active cross-filter must
+ * still show a way to see/clear it, or the filter is invisible and stuck on (the "worst possible
+ * outcome" this plugin explicitly guards against: a filtered dashboard that looks unfiltered).
+ * "Reset filters" no longer computes anything itself — `FilterBar` has no way to reach the
+ * ephemeral `crossFilters` state that lives in `DashboardView`, so the button just calls the
+ * `onResetAll` prop, which is `DashboardView`'s job to implement (clearing BOTH the persisted
+ * `dashboard.filters`, via `ui/lib/edit.ts`'s unchanged Dashboard-level `resetFilters`, AND the
+ * ephemeral cross-filter array).
  */
 export function FilterBar({
   dashboard,
+  filters,
   onChange,
+  onResetAll,
 }: {
+  /** The REAL dashboard — used only for `slices` (the date controls). */
   dashboard: Dashboard;
+  /** The EFFECTIVE filters (persisted + ephemeral cross-filters), for display only. */
+  filters: FilterRule[];
+  /** Slice edits only — unchanged signature, always passes through the real `dashboard.filters`. */
   onChange: (filters: FilterRule[], slices: FilterRule[]) => void;
+  /** Clears BOTH the persisted filters and the ephemeral cross-filters. */
+  onResetAll: () => void;
 }) {
-  const { slices, filters } = dashboard;
+  const { slices } = dashboard;
   if (slices.length === 0 && filters.length === 0) return null;
 
   const updateSlice = (index: number, value: RelativeValue) => {
     const next = slices.map((s, i) => (i === index ? { ...s, operator: 'relative_date', value } : s));
     onChange(dashboard.filters, next);
-  };
-
-  const reset = () => {
-    const next = resetFilters(dashboard);
-    onChange(next.filters, next.slices);
   };
 
   return (
@@ -101,7 +106,7 @@ export function FilterBar({
           Filtered by: {filters.map(f => `${f.column} = ${String(f.value)}`).join(', ')}
         </p>
       )}
-      <button className="rounded border px-3 py-1.5 text-sm" onClick={reset}>Reset filters</button>
+      <button className="rounded border px-3 py-1.5 text-sm" onClick={onResetAll}>Reset filters</button>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import {
   addGlobalFilter, removeGlobalFilter, resetFilters,
 } from './edit';
 import { emptyDashboard } from './types';
-import type { BarConfig, Component, ComponentConfig, ComponentType, Dashboard, MartField, PieConfig, ScorecardConfig, TableConfig, TimeSeriesConfig } from './types';
+import type { BarConfig, Component, ComponentConfig, ComponentType, Dashboard, FilterRule, MartField, PieConfig, ScorecardConfig, TableConfig, TimeSeriesConfig } from './types';
 
 const base = (): Dashboard => ({
   ...emptyDashboard('d1', 'm1', 'D'),
@@ -468,85 +468,81 @@ describe('edit', () => {
     expect(cfg.aggregation).toBe('AVG');
   });
 
-  // ---- Cross-filtering (Task 16): addGlobalFilter / removeGlobalFilter / resetFilters ----
+  // ---- Task 20/M7: addGlobalFilter/removeGlobalFilter now operate on a bare FilterRule[] ----
   //
-  // Brief's verbatim tests (Step 1).
-
-  it('addGlobalFilter appends a filter and bumps configVersion so every component refetches', () => {
-    const d = addGlobalFilter(base(), { column: 'country', operator: 'eq', value: 'US' });
-    expect(d.filters).toEqual([{ column: 'country', operator: 'eq', value: 'US' }]);
-    expect(d.configVersion).toBe(1);
-  });
-
-  it('addGlobalFilter replaces an existing filter on the same column rather than stacking', () => {
-    let d = addGlobalFilter(base(), { column: 'country', operator: 'eq', value: 'US' });
-    d = addGlobalFilter(d, { column: 'country', operator: 'eq', value: 'DE' });
-    expect(d.filters).toHaveLength(1);
-    expect(d.filters[0].value).toBe('DE');
-  });
+  // (never a Dashboard) — the ephemeral cross-filter click no longer lives inside the dashboard
+  // doc at all, see the "Cross-filtering" section comment in edit.ts. `resetFilters` stays
+  // Dashboard-level and unchanged: it still clears whatever is in `d.filters`, regardless of
+  // whether that came from a deliberately-persisted filter already on the loaded doc.
 
   it('resetFilters clears filters but keeps the generated date slices', () => {
-    const withSlice = { ...base(), slices: [{ column: 'Date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } }] };
-    const d = resetFilters(addGlobalFilter(withSlice, { column: 'x', operator: 'eq', value: 1 }));
+    const withSlice: Dashboard = {
+      ...base(),
+      slices: [{ column: 'Date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } }],
+      filters: [{ column: 'x', operator: 'eq', value: 1 }],
+    };
+    const d = resetFilters(withSlice);
     expect(d.filters).toEqual([]);
     expect(d.slices).toHaveLength(1);
   });
 
-  // ---- Adversarial: two different-column filters coexist (two components sliced at once) ----
+  it('resetFilters clears filters regardless of how they got there, keeping slices', () => {
+    const withSlice = { ...base(), slices: [{ column: 'Date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } }] };
+    const d: Dashboard = { ...withSlice, filters: [{ column: 'Cost', operator: 'gt', value: 100 }, { column: 'source', operator: 'eq', value: 'google' }] };
+    const next = resetFilters(d);
+    expect(next.filters).toEqual([]);
+    expect(next.slices).toHaveLength(1);
+  });
 
-  it('addGlobalFilter on a second column leaves the first column filter untouched — multiple cross-filters coexist', () => {
-    let d = addGlobalFilter(base(), { column: 'source', operator: 'eq', value: 'google' });
-    d = addGlobalFilter(d, { column: 'country', operator: 'eq', value: 'US' });
-    expect(d.filters).toEqual([
+  it('resetFilters does not mutate the input document', () => {
+    const d: Dashboard = { ...base(), filters: [{ column: 'x', operator: 'eq', value: 1 }] };
+    resetFilters(d);
+    expect(d.filters).toEqual([{ column: 'x', operator: 'eq', value: 1 }]);
+  });
+});
+
+describe('addGlobalFilter / removeGlobalFilter (array-level, ephemeral cross-filter toggling)', () => {
+  it('appends a filter, replacing any existing filter on the same column rather than stacking', () => {
+    let filters = addGlobalFilter([], { column: 'country', operator: 'eq', value: 'US' });
+    expect(filters).toEqual([{ column: 'country', operator: 'eq', value: 'US' }]);
+    filters = addGlobalFilter(filters, { column: 'country', operator: 'eq', value: 'DE' });
+    expect(filters).toEqual([{ column: 'country', operator: 'eq', value: 'DE' }]);
+  });
+
+  it('a second column leaves the first column filter untouched — multiple cross-filters coexist', () => {
+    let filters = addGlobalFilter([], { column: 'source', operator: 'eq', value: 'google' });
+    filters = addGlobalFilter(filters, { column: 'country', operator: 'eq', value: 'US' });
+    expect(filters).toEqual([
       { column: 'source', operator: 'eq', value: 'google' },
       { column: 'country', operator: 'eq', value: 'US' },
     ]);
   });
 
-  // ---- Adversarial: never emits `in`/`not_in` — a cross-filter is always a single `eq` ----
-
-  it('addGlobalFilter never upgrades to an `in`/`not_in` operator when replacing a value on the same column', () => {
-    let d = addGlobalFilter(base(), { column: 'source', operator: 'eq', value: 'google' });
-    d = addGlobalFilter(d, { column: 'source', operator: 'eq', value: 'meta' });
-    expect(d.filters).toEqual([{ column: 'source', operator: 'eq', value: 'meta' }]);
+  it('never upgrades to an `in`/`not_in` operator when replacing a value on the same column', () => {
+    let filters = addGlobalFilter([], { column: 'source', operator: 'eq', value: 'google' });
+    filters = addGlobalFilter(filters, { column: 'source', operator: 'eq', value: 'meta' });
+    expect(filters).toEqual([{ column: 'source', operator: 'eq', value: 'meta' }]);
   });
 
-  // ---- removeGlobalFilter: the toggle-off half of clicking the same segment twice ----
-
-  it('removeGlobalFilter clears the filter on the given column and bumps configVersion', () => {
-    const withFilter = addGlobalFilter(base(), { column: 'source', operator: 'eq', value: 'google' });
-    const d = removeGlobalFilter(withFilter, 'source');
-    expect(d.filters).toEqual([]);
-    expect(d.configVersion).toBe(withFilter.configVersion + 1);
+  it('removeGlobalFilter clears the filter on the given column', () => {
+    const withFilter = addGlobalFilter([], { column: 'source', operator: 'eq', value: 'google' });
+    expect(removeGlobalFilter(withFilter, 'source')).toEqual([]);
   });
 
   it('removeGlobalFilter only removes the named column, leaving other cross-filters intact', () => {
-    let d = addGlobalFilter(base(), { column: 'source', operator: 'eq', value: 'google' });
-    d = addGlobalFilter(d, { column: 'country', operator: 'eq', value: 'US' });
-    const next = removeGlobalFilter(d, 'source');
-    expect(next.filters).toEqual([{ column: 'country', operator: 'eq', value: 'US' }]);
+    let filters = addGlobalFilter([], { column: 'source', operator: 'eq', value: 'google' });
+    filters = addGlobalFilter(filters, { column: 'country', operator: 'eq', value: 'US' });
+    expect(removeGlobalFilter(filters, 'source')).toEqual([{ column: 'country', operator: 'eq', value: 'US' }]);
   });
 
-  it('removeGlobalFilter on a column with no active filter is a safe no-op (no bump)', () => {
-    const d = base();
-    const next = removeGlobalFilter(d, 'nope');
-    expect(next).toEqual(d);
+  it('removeGlobalFilter on a column with no active filter is a safe no-op (returns the same array)', () => {
+    const filters: FilterRule[] = [];
+    expect(removeGlobalFilter(filters, 'nope')).toBe(filters);
   });
 
-  // ---- Adversarial: a slice combined with a global filter — both must reach the query ----
-
-  it('resetFilters combined with a pre-existing manual filter and a cross-filter clears both, keeping slices', () => {
-    let d: Dashboard = { ...base(), filters: [{ column: 'Cost', operator: 'gt', value: 100 }] };
-    d = addGlobalFilter(d, { column: 'source', operator: 'eq', value: 'google' });
-    expect(d.filters).toHaveLength(2); // both the manual filter AND the cross-filter are present
-    const next = resetFilters(d);
-    expect(next.filters).toEqual([]);
-  });
-
-  it('does not mutate the input document (cross-filter transforms)', () => {
-    const d = base();
-    addGlobalFilter(d, { column: 'x', operator: 'eq', value: 1 });
-    resetFilters(d);
-    expect(d.filters).toEqual([]);
+  it('does not mutate the input array', () => {
+    const filters: FilterRule[] = [];
+    addGlobalFilter(filters, { column: 'x', operator: 'eq', value: 1 });
+    expect(filters).toEqual([]);
   });
 });

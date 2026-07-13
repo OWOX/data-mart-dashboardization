@@ -224,4 +224,49 @@ describe('DashboardView', () => {
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => expect(save).toHaveBeenCalledWith(dash));
   });
+
+  // ---- Task 20/M7: a cross-filter click is EPHEMERAL view-state — never persisted, never survives
+  // a reload — while still flowing into the real server query. ----
+
+  it('Save does not persist an active cross-filter — it stays view-state only (M7)', async () => {
+    const dash = dashWithBar();
+    vi.spyOn(db, 'getDashboard').mockResolvedValue(dash);
+    const query = vi.spyOn(api, 'queryDataMart').mockResolvedValue(barResult);
+    const save = vi.spyOn(db, 'saveDashboard').mockImplementation(async d => ({ ...d, configVersion: d.configVersion + 1 }));
+
+    renderAt('d1');
+    await screen.findByText('Sales');
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(2), past);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'google' }));
+    await screen.findByText(/Filtered by.*google/i, {}, past); // cross-filter visibly active
+
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const [savedDoc] = save.mock.calls[0];
+    expect(savedDoc.filters).toEqual([]); // the cross-filter never reached the saved doc
+  });
+
+  it('a cross-filter does not survive a reload of the same dashboard (M7)', async () => {
+    vi.spyOn(db, 'getDashboard').mockResolvedValue(dashWithBar());
+    const query = vi.spyOn(api, 'queryDataMart').mockResolvedValue(barResult);
+
+    const { unmount } = renderAt('d1');
+    await screen.findByText('Sales');
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(2), past);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'google' }));
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(4), past);
+    unmount();
+
+    query.mockClear();
+    renderAt('d1'); // fresh mount, same id — simulates a reload
+    await screen.findByText('Sales');
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(2), past); // unfiltered — no cross-filter carried over
+
+    for (const [, request] of query.mock.calls) {
+      const filters = (request.filterConfig ?? []) as { column: string }[];
+      expect(filters.some(f => f.column === 'Source')).toBe(false);
+    }
+  });
 });

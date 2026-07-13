@@ -4,7 +4,7 @@ import { getDashboard, saveDashboard } from '../lib/dashboards';
 import { queryDataMart, getMartFields } from '../lib/api';
 import { compile } from '../lib/compile';
 import { useLayerData } from '../lib/freshness';
-import { addComponent, addGlobalFilter, removeGlobalFilter, restoreGenerated } from '../lib/edit';
+import { addComponent, addGlobalFilter, removeGlobalFilter, resetFilters, restoreGenerated } from '../lib/edit';
 import { probeCardinality } from '../lib/generate';
 import { Grid } from './Grid';
 import { ComponentCard } from './ComponentCard';
@@ -19,7 +19,9 @@ const isDateField = (f: MartField) => /^(DATE|DATETIME|TIMESTAMP)$/i.test(f.type
 /**
  * One component = one server-side query. Refetch is keyed on the doc's `configVersion` (bumped by
  * every filter change and every save), so a filter edit refetches EVERY component's data — filters
- * are global, there are no per-component overrides.
+ * are global, there are no per-component overrides. `DashboardView` always passes `effectiveDashboard`
+ * here (persisted filters merged with any ephemeral cross-filter, see Task 20/M7) — this hook itself
+ * is agnostic to that split, it just reads whatever `Dashboard`-shaped object it's given.
  */
 export function useComponentData(dashboard: Dashboard, component: Component) {
   const fetcher = useCallback(
@@ -65,16 +67,42 @@ export function DashboardView() {
   const [fields, setFields] = useState<MartField[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
+  // Cross-filter clicks (Task 20/M7): EPHEMERAL view-state, deliberately kept OUT of `dashboard`
+  // so `saveDashboard(dashboard)` (the Save button, below) can never persist an ad-hoc slice a
+  // viewer only clicked to explore. Reset alongside `dashboard` on every `id` change so a fresh
+  // mount/navigation — a "reload" — never carries a stale cross-filter into the new session.
+  const [crossFilters, setCrossFilters] = useState<FilterRule[]>([]);
+  // A synthetic refetch-trigger: `dashboard.configVersion` no longer changes when a cross-filter
+  // is toggled (it never touches `dashboard` at all), so this stands in for it inside
+  // `effectiveDashboard.configVersion` below. Never written back anywhere else.
+  const [crossFilterVersion, setCrossFilterVersion] = useState(0);
 
   useEffect(() => {
     if (!id) return;
     setDashboard(undefined);
     setFields([]);
+    setCrossFilters([]);
+    setCrossFilterVersion(0);
     void getDashboard(id).then(d => {
       setDashboard(d);
       if (d) void getMartFields(d.$entity.id).then(setFields).catch(() => setFields([]));
     });
   }, [id]);
+
+  /**
+   * Query/render-only merged view: persisted `dashboard.filters` plus any active ephemeral
+   * cross-filters (cross-filter wins by column, mirroring `addGlobalFilter`'s replace-not-stack
+   * semantics), with a synthetic `configVersion` that changes whenever EITHER half changes. Never
+   * used for Save, `ComponentEditor`, or any other edit/persist path — see usages below.
+   */
+  const effectiveDashboard: Dashboard | null | undefined = dashboard && {
+    ...dashboard,
+    filters: [
+      ...dashboard.filters.filter(f => !crossFilters.some(cf => cf.column === f.column)),
+      ...crossFilters,
+    ],
+    configVersion: dashboard.configVersion + crossFilterVersion,
+  };
 
   // A filter change bumps configVersion, which refetches EVERY component. Filters are global.
   const applyFilters = (filters: FilterRule[], slices: FilterRule[]) => {
@@ -82,24 +110,34 @@ export function DashboardView() {
   };
 
   /**
-   * Cross-filtering (Task 16): a click/keypress on a bar/pie segment reports
-   * `{ column, operator: 'eq', value }` here. Clicking the SAME already-active segment again is a
-   * toggle-off (removes the filter) rather than a no-op re-apply — matched by column, operator AND
-   * value so a different value on the same column always REPLACES, never toggles off, the existing
-   * one. Either branch goes through `ui/lib/edit.ts` (`addGlobalFilter`/`removeGlobalFilter`), which
-   * always bumps `configVersion` — the SAME refetch key `useComponentData`/`useLayerData` key every
-   * component's query on, so one click refetches the whole dashboard (with each tile's own preload
-   * state) rather than leaving any tile showing stale pre-filter numbers.
+   * Cross-filtering (Task 16; ephemeral as of Task 20/M7): a click/keypress on a bar/pie segment
+   * reports `{ column, operator: 'eq', value }` here. Clicking the SAME already-active segment
+   * again is a toggle-off (removes the filter) rather than a no-op re-apply — matched by column,
+   * operator AND value so a different value on the same column always REPLACES, never toggles off,
+   * the existing one. Either branch goes through the now-array-level `addGlobalFilter`/
+   * `removeGlobalFilter` from `ui/lib/edit.ts`, operating on `crossFilters` — NOT `dashboard` —
+   * so a cross-filter click can never be picked up by `saveDashboard(dashboard)`.
+   * `crossFilterVersion` is bumped alongside so `effectiveDashboard.configVersion` changes and
+   * every component's `useLayerData` key changes with it, triggering the real refetch.
    */
   const onSegmentFilter = (f: FilterRule) => {
-    setDashboard(d => {
-      if (!d) return d;
-      const existing = d.filters.find(x => x.column === f.column);
+    setCrossFilters(prev => {
+      const existing = prev.find(x => x.column === f.column);
       const isToggleOff =
         existing !== undefined && existing.operator === f.operator
         && JSON.stringify(existing.value) === JSON.stringify(f.value);
-      return isToggleOff ? removeGlobalFilter(d, f.column) : addGlobalFilter(d, f);
+      return isToggleOff ? removeGlobalFilter(prev, f.column) : addGlobalFilter(prev, f);
     });
+    setCrossFilterVersion(v => v + 1);
+  };
+
+  /** "Reset filters" clears BOTH halves: the persisted `dashboard.filters` (via `resetFilters`,
+   * unchanged) AND the ephemeral `crossFilters` — the FilterBar shows one merged view, so its
+   * single Reset button must clear whichever combination of the two is actually active. */
+  const resetAllFilters = () => {
+    setCrossFilters([]);
+    setCrossFilterVersion(v => v + 1);
+    setDashboard(d => (d ? resetFilters(d) : d));
   };
 
   const addNewComponent = (type: ComponentType) => {
@@ -147,6 +185,10 @@ export function DashboardView() {
     );
   }
 
+  // Unreachable given the two guards above (both narrow `dashboard`, which `effectiveDashboard`
+  // is always derived from) — narrows `effectiveDashboard` itself for the compiler.
+  if (!effectiveDashboard) return null;
+
   return (
     <div className="dm-page text-foreground">
       <header className="dm-page-header">
@@ -154,7 +196,10 @@ export function DashboardView() {
       </header>
       <div className="dm-page-content space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <FilterBar dashboard={dashboard} onChange={applyFilters} />
+          <FilterBar
+            dashboard={dashboard} filters={effectiveDashboard.filters}
+            onChange={applyFilters} onResetAll={resetAllFilters}
+          />
           <div className="flex gap-2">
             <AddComponentButton onAdd={addNewComponent} />
             <button className="rounded border px-3 py-1.5 text-sm" disabled={restoring} onClick={() => void restore()}>
@@ -162,10 +207,10 @@ export function DashboardView() {
             </button>
           </div>
         </div>
-        <Grid dashboard={dashboard}>
+        <Grid dashboard={effectiveDashboard}>
           {c => (
             <Cell
-              key={c.id} dashboard={dashboard} component={c} onEdit={setEditingId}
+              key={c.id} dashboard={effectiveDashboard} component={c} onEdit={setEditingId}
               onSegmentFilter={onSegmentFilter}
             />
           )}
