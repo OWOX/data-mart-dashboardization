@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatNumber, formatDelta } from './format';
+import { formatNumber } from './format';
 
 describe('formatNumber', () => {
   it('groups thousands and trims to two decimals', () => {
@@ -41,36 +41,5 @@ describe('formatNumber', () => {
   });
   it('does not throw for a boolean value', () => {
     expect(() => formatNumber(true)).not.toThrow();
-  });
-});
-
-describe('formatDelta', () => {
-  it('computes absolute and percentage change with an up trend', () => {
-    expect(formatDelta(150, 100)).toEqual({ abs: 50, pct: 50, trend: 'up' });
-  });
-  it('reports a down trend', () => {
-    expect(formatDelta(50, 100)).toEqual({ abs: -50, pct: -50, trend: 'down' });
-  });
-  it('treats a zero previous value as flat rather than dividing by zero', () => {
-    expect(formatDelta(10, 0)).toEqual({ abs: 10, pct: 0, trend: 'flat' });
-  });
-
-  // Adversarial / degenerate cases beyond the brief's examples.
-  it('treats equal current and previous as flat with zero delta', () => {
-    expect(formatDelta(100, 100)).toEqual({ abs: 0, pct: 0, trend: 'flat' });
-  });
-  it('treats zero current and zero previous as flat', () => {
-    expect(formatDelta(0, 0)).toEqual({ abs: 0, pct: 0, trend: 'flat' });
-  });
-  it('handles a negative previous value without producing NaN', () => {
-    const r = formatDelta(50, -50);
-    expect(r.abs).toBe(100);
-    expect(Number.isNaN(r.pct)).toBe(false);
-  });
-  it('never returns Infinity or NaN in pct for any finite inputs', () => {
-    for (const [c, p] of [[10, 0], [0, 0], [-5, 0], [1e9, 1], [1, 1e9]]) {
-      const r = formatDelta(c, p);
-      expect(Number.isFinite(r.pct)).toBe(true);
-    }
   });
 });

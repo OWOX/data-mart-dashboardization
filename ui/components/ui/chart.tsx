@@ -1,7 +1,8 @@
 // shadcn/ui `chart` primitive (canonical source: https://ui.shadcn.com/docs/components/chart),
 // adapted for this plugin: relative `cn` import, Tailwind v3 syntax (`bg-[var(--x)]` instead of
-// v4's `bg-(--x)` shorthand), and trimmed to the pieces Visualization.tsx actually uses
-// (ChartContainer / ChartTooltip / ChartTooltipContent) — no legend support.
+// v4's `bg-(--x)` shorthand), and trimmed to the pieces BarChartView.tsx, PieChartView.tsx, and
+// TimeSeriesChart.tsx actually use (ChartContainer / ChartTooltip / ChartTooltipContent) — no
+// legend support.
 import * as React from 'react';
 import * as RechartsPrimitive from 'recharts';
 
