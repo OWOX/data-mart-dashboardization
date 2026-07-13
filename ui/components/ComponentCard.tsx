@@ -8,16 +8,21 @@ import type { LayerStatus } from '../lib/freshness';
  * with an error, a "Refresh" overlay lets the user retry without losing the last-good render.
  */
 export function ComponentCard({
-  title, status, error, onRefresh, children,
+  title, status, error, onRefresh, children, actions,
 }: {
   title: string; status: LayerStatus; error: string | null;
   onRefresh: () => void; children: ReactNode;
+  /** Optional header-right slot (Task 15's ⋯ edit menu trigger) — omitted, the header is unchanged. */
+  actions?: ReactNode;
 }) {
   const busy = status === 'loading';
   return (
     <div className="dm-card relative flex h-full flex-col overflow-hidden">
       {busy && <div className="dmd-progress" aria-label="Updating" />}
-      <div className="px-4 pt-3 text-sm font-medium">{title}</div>
+      <div className="flex items-start justify-between gap-2 px-4 pt-3">
+        <div className="text-sm font-medium">{title}</div>
+        {actions}
+      </div>
       <div className={`flex-1 p-4 ${busy ? 'pointer-events-none opacity-50' : ''}`}>{children}</div>
       {status === 'stale' && error && (
         <div className="absolute inset-0 grid place-items-center bg-black/5">
