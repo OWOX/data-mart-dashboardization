@@ -14,6 +14,11 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: '../dist/ui',
     emptyOutDir: true,
-    rollupOptions: { external: ['@owox/plugin-sdk'] },
+    rollupOptions: {
+      external: [
+        'react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime',
+        'react-router-dom', '@owox/plugin-sdk',
+      ],
+    },
   },
 }));
