@@ -4,7 +4,7 @@ import {
   retypeComponent, updateComponent, restoreGenerated,
 } from './edit';
 import { emptyDashboard } from './types';
-import type { BarConfig, Component, ComponentType, Dashboard, MartField, PieConfig, ScorecardConfig, TableConfig, TimeSeriesConfig } from './types';
+import type { BarConfig, Component, ComponentConfig, ComponentType, Dashboard, MartField, PieConfig, ScorecardConfig, TableConfig, TimeSeriesConfig } from './types';
 
 const base = (): Dashboard => ({
   ...emptyDashboard('d1', 'm1', 'D'),
@@ -281,5 +281,161 @@ describe('edit', () => {
   it('updateComponent on an unknown id is a safe no-op', () => {
     const d = base();
     expect(updateComponent(d, 'nope', { title: 'x' })).toEqual(d);
+  });
+
+  // ---- CRITICAL: configVersion bumps ONLY for query-affecting config changes (review fix #1) ----
+  //
+  // Rule: a config patch bumps configVersion iff it changes a field compile.ts actually reads for
+  // that component's type. Everything else (bar's `orientation`, and any future display-only key)
+  // is cosmetic and must NOT bump — but every field compile.ts DOES read must still bump, or the
+  // component silently keeps rendering data from the stale query.
+
+  it('updateComponent changing ONLY bar.orientation (cosmetic — not read by compile.ts) does NOT bump configVersion', () => {
+    const d = updateComponent(base(), 'b', {
+      config: { dimension: 'd', metric: 'x', aggregation: 'SUM', orientation: 'horizontal', limit: 10 },
+    });
+    expect(d.configVersion).toBe(0);
+    expect((d.components[1].config as BarConfig).orientation).toBe('horizontal');
+  });
+
+  it('updateComponent changing bar.dimension DOES bump configVersion', () => {
+    const d = updateComponent(base(), 'b', {
+      config: { dimension: 'other', metric: 'x', aggregation: 'SUM', orientation: 'vertical', limit: 10 },
+    });
+    expect(d.configVersion).toBe(1);
+  });
+
+  it('updateComponent changing bar.metric DOES bump configVersion', () => {
+    const d = updateComponent(base(), 'b', {
+      config: { dimension: 'd', metric: 'other', aggregation: 'SUM', orientation: 'vertical', limit: 10 },
+    });
+    expect(d.configVersion).toBe(1);
+  });
+
+  it('updateComponent changing bar.aggregation DOES bump configVersion', () => {
+    const d = updateComponent(base(), 'b', {
+      config: { dimension: 'd', metric: 'x', aggregation: 'AVG', orientation: 'vertical', limit: 10 },
+    });
+    expect(d.configVersion).toBe(1);
+  });
+
+  it('updateComponent changing bar.limit DOES bump configVersion', () => {
+    const d = updateComponent(base(), 'b', {
+      config: { dimension: 'd', metric: 'x', aggregation: 'SUM', orientation: 'vertical', limit: 25 },
+    });
+    expect(d.configVersion).toBe(1);
+  });
+
+  it('updateComponent changing bar.sort DOES bump configVersion', () => {
+    const d = updateComponent(base(), 'b', {
+      config: { dimension: 'd', metric: 'x', aggregation: 'SUM', orientation: 'vertical', limit: 10, sort: 'asc' },
+    });
+    expect(d.configVersion).toBe(1);
+  });
+
+  it('updateComponent changing timeseries.dateField/unit/breakdown all bump configVersion', () => {
+    const d0 = updateComponent(base(), 'a', {
+      type: 'timeseries',
+      config: { dateField: 'Date', metric: 'x', aggregation: 'SUM', unit: 'DAY' },
+    });
+    const withVersion1 = d0.configVersion;
+    expect(withVersion1).toBe(1);
+
+    const dateFieldChange = updateComponent(d0, 'a', {
+      config: { dateField: 'Other', metric: 'x', aggregation: 'SUM', unit: 'DAY' },
+    });
+    expect(dateFieldChange.configVersion).toBe(withVersion1 + 1);
+
+    const unitChange = updateComponent(d0, 'a', {
+      config: { dateField: 'Date', metric: 'x', aggregation: 'SUM', unit: 'MONTH' },
+    });
+    expect(unitChange.configVersion).toBe(withVersion1 + 1);
+
+    const breakdownChange = updateComponent(d0, 'a', {
+      config: { dateField: 'Date', metric: 'x', aggregation: 'SUM', unit: 'DAY', breakdown: 'Source' },
+    });
+    expect(breakdownChange.configVersion).toBe(withVersion1 + 1);
+  });
+
+  it('updateComponent changing pie/donut.maxCategories DOES bump configVersion', () => {
+    const asPie = updateComponent(base(), 'a', {
+      type: 'pie',
+      config: { dimension: 'd', metric: 'x', aggregation: 'SUM', maxCategories: 8 },
+    });
+    const next = updateComponent(asPie, 'a', {
+      config: { dimension: 'd', metric: 'x', aggregation: 'SUM', maxCategories: 3 },
+    });
+    expect(next.configVersion).toBe(asPie.configVersion + 1);
+  });
+
+  it('updateComponent changing table.columns DOES bump configVersion', () => {
+    const asTable = updateComponent(base(), 'a', {
+      type: 'table',
+      config: { columns: ['x'], limit: 10 },
+    });
+    const next = updateComponent(asTable, 'a', {
+      config: { columns: ['x', 'd'], limit: 10 },
+    });
+    expect(next.configVersion).toBe(asTable.configVersion + 1);
+  });
+
+  it('updateComponent changing table.sort DOES bump configVersion', () => {
+    const asTable = updateComponent(base(), 'a', {
+      type: 'table',
+      config: { columns: ['x'], limit: 10 },
+    });
+    const next = updateComponent(asTable, 'a', {
+      config: { columns: ['x'], limit: 10, sort: [{ column: 'x', direction: 'asc' }] },
+    });
+    expect(next.configVersion).toBe(asTable.configVersion + 1);
+  });
+
+  // ---- CRITICAL: updateComponent must never leave type/config inconsistent (review fix #2) ----
+
+  it('updateComponent changing type discards a mismatched caller-supplied config and rebuilds a VALID one for the new type', () => {
+    // The caller passes a scorecard-shaped config alongside `type: 'table'` — a stale config for
+    // the OLD type. updateComponent must not let `type` and `config` disagree; it must rebuild the
+    // config for 'table' the same way retypeComponent does, not pass the mismatched one through.
+    const d = updateComponent(base(), 'a', {
+      type: 'table',
+      config: { metric: 'x', aggregation: 'SUM' } as unknown as ComponentConfig,
+    });
+    const comp = d.components[0];
+    expect(comp.type).toBe('table');
+    const cfg = comp.config as TableConfig;
+    expect(Array.isArray(cfg.columns)).toBe(true);
+    expect(cfg.columns.length).toBeGreaterThan(0);
+    expect(cfg.limit).toBeGreaterThan(0);
+    // Must NOT be the mismatched scorecard-shaped object that was passed in.
+    expect(cfg).not.toHaveProperty('aggregation');
+  });
+
+  it('updateComponent changing type still applies OTHER fields in the same patch (e.g. title)', () => {
+    const d = updateComponent(base(), 'a', { type: 'table', title: 'Renamed' });
+    expect(d.components[0].type).toBe('table');
+    expect(d.components[0].title).toBe('Renamed');
+    expect(d.configVersion).toBe(1);
+  });
+
+  it('updateComponent changing type to the SAME type does not go through the retype path and behaves like a normal config patch', () => {
+    const d = updateComponent(base(), 'a', { type: 'scorecard', config: { metric: 'x', aggregation: 'SUM' } });
+    expect(d.configVersion).toBe(0); // identical config, same type — no-op
+  });
+
+  // ---- bestAggregation scans sibling components, like bestMetric/bestDimension (review fix #4) ----
+
+  it('addComponent borrows an aggregation from a sibling component when the new component has no source of its own', () => {
+    const d: Dashboard = {
+      ...base(),
+      components: [
+        { id: 'a', type: 'table', title: 'A', width: 5, height: 3, config: { columns: ['x'], limit: 10 } },
+        { id: 'b', type: 'bar', title: 'B', width: 3, height: 2, config: { dimension: 'd', metric: 'x', aggregation: 'AVG', orientation: 'vertical', limit: 10 } },
+      ],
+    };
+    const next = addComponent(d, 'scorecard');
+    const cfg = next.components.at(-1)!.config as ScorecardConfig;
+    // 'a' (table) has no aggregation; 'b' (bar) does — bestAggregation must scan past 'a' to find it,
+    // the same way bestMetric/bestDimension scan every sibling rather than stopping at the first.
+    expect(cfg.aggregation).toBe('AVG');
   });
 });

@@ -96,23 +96,29 @@ function bestDimension(d: Dashboard, prefer?: Component): string {
   return firstNonEmpty([...(prefer ? [getDimension(prefer)] : []), ...rest]);
 }
 /**
- * `prefer`'s own aggregation, if it has one, is always already valid for whatever field it names
- * — carrying it forward across a retype (e.g. scorecard -> pie) never introduces an aggregation a
- * field doesn't allow, because the field/aggregation pairing itself is unchanged. There is no safe
- * governance-blind default when the source has none (e.g. table -> bar): 'COUNT' mirrors the same
- * last-resort token `generate.ts`'s `pick()` uses, on the understanding that `ComponentEditor`
- * (which DOES have `MartField.allowedAggregations`) is where the user corrects a governance
- * mismatch this function cannot see.
+ * Mirrors `bestMetric`/`bestDimension`: `prefer`'s own aggregation wins if it has one, otherwise
+ * scan the REST of the dashboard the same way those two do, rather than stopping at `prefer` alone.
+ * `prefer`'s own aggregation is always already valid for whatever field it names — carrying it
+ * forward across a retype (e.g. scorecard -> pie) never introduces an aggregation a field doesn't
+ * allow, because the field/aggregation pairing itself is unchanged. A borrowed sibling aggregation
+ * carries the same caveat `bestMetric`/`bestDimension`'s borrowed values already carry: it is a
+ * best-effort default that COULD pair with a metric that disallows it, on the understanding that
+ * `ComponentEditor` (which DOES have `MartField.allowedAggregations`) is where the user corrects a
+ * governance mismatch this function cannot see. 'COUNT' (mirroring the same last-resort token
+ * `generate.ts`'s `pick()` uses) is the true final fallback, reached only when NOTHING on the
+ * dashboard — `prefer` included — has an aggregation at all (e.g. every component is a table).
  */
-function bestAggregation(prefer?: Component): AggregateFunction {
-  return (prefer && getAggregation(prefer)) || 'COUNT';
+function bestAggregation(d: Dashboard, prefer?: Component): AggregateFunction {
+  const rest = d.components.filter(c => c.id !== prefer?.id).map(getAggregation);
+  const candidates = [...(prefer ? [getAggregation(prefer)] : []), ...rest];
+  return candidates.find((a): a is AggregateFunction => a !== undefined) ?? 'COUNT';
 }
 
 /** Builds a config for `type`, borrowing values from `source` (if retyping) and the rest of `d`. */
 function buildConfig(type: ComponentType, d: Dashboard, source?: Component): ComponentConfig {
   const metric = bestMetric(d, source);
   const dimension = bestDimension(d, source) || metric;
-  const aggregation = bestAggregation(source);
+  const aggregation = bestAggregation(d, source);
 
   switch (type) {
     case 'scorecard':
@@ -239,28 +245,74 @@ export function retypeComponent(d: Dashboard, id: string, type: ComponentType): 
   return { ...d, components, configVersion: d.configVersion + 1 };
 }
 
-const configsEqual = (a: ComponentConfig, b: ComponentConfig): boolean =>
-  JSON.stringify(a) === JSON.stringify(b);
+/**
+ * Per type, exactly the config keys `compile.ts` reads to build the server-side query — see the
+ * `case` for each type there. Anything NOT listed here is, by construction, purely cosmetic (e.g.
+ * `bar`'s `orientation`: vertical-vs-horizontal is a rendering choice, `compile.ts` never looks at
+ * it). `updateComponent` bumps `configVersion` iff a patch changes one of THESE keys — never the
+ * whole config object — so a cosmetic-only edit doesn't force a pointless refetch, while every
+ * field that actually changes what the server computes still does.
+ *
+ * If `compile.ts` starts reading a new config field, add it here too, or `configVersion` will
+ * silently stop bumping for edits to it and components will render stale data from the old query.
+ */
+const QUERY_AFFECTING_CONFIG_KEYS: Record<ComponentType, readonly string[]> = {
+  scorecard: ['metric', 'aggregation'],
+  timeseries: ['dateField', 'metric', 'aggregation', 'unit', 'breakdown'],
+  bar: ['dimension', 'metric', 'aggregation', 'limit', 'sort'],
+  pie: ['dimension', 'metric', 'aggregation', 'maxCategories'],
+  donut: ['dimension', 'metric', 'aggregation', 'maxCategories'],
+  table: ['columns', 'sort', 'limit'],
+};
 
 /**
- * General-purpose patch, used by `ComponentEditor` for every field it exposes. This is where the
- * configVersion boundary is enforced for arbitrary edits: bump ONLY when the patch actually
- * changes `type` or `config` (i.e. what the server must compute) — never for `title`,
- * `description`, `width` or `height` alone, and never when a `config`/`type` patch happens to be
- * a no-op (identical to the current value).
+ * `true` iff `a` and `b` differ on at least one query-affecting key for `type` (see
+ * `QUERY_AFFECTING_CONFIG_KEYS`). Projecting to a fixed key order before stringifying also makes
+ * this robust to two configs that are equal but were built with their keys in a different order —
+ * unlike a raw `JSON.stringify(a) === JSON.stringify(b)` over the whole object would be.
+ */
+function queryAffectingConfigChanged(type: ComponentType, a: ComponentConfig, b: ComponentConfig): boolean {
+  const keys = QUERY_AFFECTING_CONFIG_KEYS[type];
+  const project = (c: ComponentConfig) => {
+    const obj = c as unknown as Record<string, unknown>;
+    return keys.map(k => obj[k]);
+  };
+  return JSON.stringify(project(a)) !== JSON.stringify(project(b));
+}
+
+/**
+ * General-purpose patch, used by `ComponentEditor` for every field it exposes.
+ *
+ * A `type` change is routed through `retypeComponent` — the same validated `buildConfig()` path
+ * `retypeComponent` itself uses — rather than duplicating that logic here. Any `config` supplied
+ * in the SAME patch is intentionally dropped in that case: it was shaped for the OLD type and
+ * cannot be trusted to be valid for the new one, so honoring it verbatim could leave `type` and
+ * `config` disagreeing (a component whose compiled query the server either rejects, or accepts
+ * with the wrong meaning). Any other fields in the patch (title, width, ...) are applied on top via
+ * a recursive call, once the type/config pair is already consistent.
+ *
+ * When `type` is unchanged, this is where the configVersion boundary is enforced for arbitrary
+ * edits: bump ONLY when the patch changes a QUERY-AFFECTING config key (see
+ * `QUERY_AFFECTING_CONFIG_KEYS`) — never for `title`, `description`, `width`, `height`, or a
+ * cosmetic config key (e.g. bar's `orientation`) alone.
  */
 export function updateComponent(d: Dashboard, id: string, patch: Partial<Component>): Dashboard {
   const idx = d.components.findIndex(c => c.id === id);
   if (idx === -1) return d;
   const target = d.components[idx];
-  const next: Component = { ...target, ...patch };
 
-  const typeChanged = patch.type !== undefined && patch.type !== target.type;
-  const configChanged = patch.config !== undefined && !configsEqual(patch.config, target.config);
-  const queryAffected = typeChanged || configChanged;
+  if (patch.type !== undefined && patch.type !== target.type) {
+    const { type: _type, config: _config, ...rest } = patch;
+    const retyped = retypeComponent(d, id, patch.type);
+    return Object.keys(rest).length > 0 ? updateComponent(retyped, id, rest) : retyped;
+  }
+
+  const next: Component = { ...target, ...patch };
+  const configChanged = patch.config !== undefined
+    && queryAffectingConfigChanged(target.type, target.config, patch.config);
 
   const components = d.components.map((c, i) => (i === idx ? next : c));
-  return { ...d, components, configVersion: queryAffected ? d.configVersion + 1 : d.configVersion };
+  return { ...d, components, configVersion: configChanged ? d.configVersion + 1 : d.configVersion };
 }
 
 /**

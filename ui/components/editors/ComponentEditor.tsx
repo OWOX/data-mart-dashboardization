@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef } from 'react';
 import {
   duplicateComponent, moveComponent, removeComponent, resizeComponent, retypeComponent, updateComponent,
 } from '../../lib/edit';
@@ -27,6 +28,9 @@ const MAX_QUERY_LIMIT = 1000;
 const labelClass = 'flex flex-col gap-1 text-xs';
 const inputClass = 'rounded border px-2 py-1 text-sm';
 
+/** Everything the panel's own Tab-trap and initial-focus logic below treats as a stop. */
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
 /**
  * The editor sheet for one component, opened from its card's ⋯ menu. Every control routes
  * through `ui/lib/edit.ts` so the configVersion boundary lives in exactly one place: cosmetic
@@ -46,6 +50,57 @@ export function ComponentEditor({
   onChange: (next: Dashboard) => void;
   onClose: () => void;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const headingId = useId();
+  // `onClose` is read from a ref inside the keydown listener below so that listener doesn't need
+  // to be torn down and re-attached on every render just because the caller passed a new closure.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // DashboardView mounts a fresh `<ComponentEditor>` per open (`{editingId && <ComponentEditor
+  // .../>}`) and unmounts it to close, so mount/unmount here IS open/close. On mount: remember
+  // whatever had focus (the card's "⋯" trigger) and move focus into the panel. On unmount: give
+  // focus back to that trigger — without this the keyboard/screen-reader user is dropped onto
+  // <body> when the panel closes, with no indication of where they are.
+  useEffect(() => {
+    const trigger = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    const focusables = panel ? [...panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)] : [];
+    (focusables[0] ?? panel)?.focus();
+    return () => {
+      trigger?.focus();
+    };
+  }, []);
+
+  // Escape-to-close and a Tab focus trap. Listens on `document` (not the panel) so Escape/Tab work
+  // regardless of which descendant currently has focus. No dependency (e.g. Radix) is used here —
+  // this is the minimal dependency-free implementation of both behaviors.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)];
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const component = dashboard.components.find(c => c.id === componentId);
   if (!component) return null;
 
@@ -324,10 +379,10 @@ export function ComponentEditor({
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex justify-end bg-black/40" role="dialog" aria-label={`Edit ${component.title}`}>
-      <div className="dm-card h-full w-full max-w-sm overflow-y-auto rounded-none p-4">
+    <div className="fixed inset-0 z-30 flex justify-end bg-black/40" role="dialog" aria-modal="true" aria-labelledby={headingId}>
+      <div ref={panelRef} className="dm-card h-full w-full max-w-sm overflow-y-auto rounded-none p-4" tabIndex={-1}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-medium">Edit component</h2>
+          <h2 id={headingId} className="text-base font-medium">Edit {component.title}</h2>
           <button type="button" className="text-sm" onClick={onClose} aria-label="Close editor">✕</button>
         </div>
 
