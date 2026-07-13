@@ -279,4 +279,23 @@ describe('probeCardinality', () => {
     expect(spy).not.toHaveBeenCalled();
     expect(out.Raw).toBe(Number.POSITIVE_INFINITY);
   });
+
+  it('probes every dimension concurrently, not sequentially', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    vi.spyOn(owox, 'request').mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise(r => setTimeout(r, 5));
+      inFlight--;
+      return { columns: [], rows: [], truncated: false, totals: { [aggLabel('Source', 'COUNT_DISTINCT')]: 3 } };
+    });
+    const threeDims: MartField[] = [
+      { name: 'Source', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT', 'COUNT_DISTINCT'] },
+      { name: 'Campaign', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT', 'COUNT_DISTINCT'] },
+      { name: 'Medium', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT', 'COUNT_DISTINCT'] },
+    ];
+    await probeCardinality('m1', threeDims);
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
 });

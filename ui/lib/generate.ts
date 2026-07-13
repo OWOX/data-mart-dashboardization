@@ -35,16 +35,19 @@ const uid = () => crypto.randomUUID();
  *
  * Governance applies to probes too: a dimension whose `allowedAggregations` does not include
  * `COUNT_DISTINCT` must never be probed with it — it falls back to Infinity (prefer a bar).
+ *
+ * The probes run concurrently via `Promise.all`, each one individually try/caught, so one
+ * dimension's failure/rejection can never affect another's result — `Promise.all` rejecting on
+ * the FIRST rejection would be wrong here, which is exactly why each mapped promise catches
+ * internally before `Promise.all` ever sees a rejection.
  */
 export async function probeCardinality(
   martId: string,
   dimensions: MartField[]
 ): Promise<Record<string, number>> {
-  const out: Record<string, number> = {};
-  for (const dim of dimensions) {
+  const entries = await Promise.all(dimensions.map(async (dim): Promise<[string, number]> => {
     if (!dim.allowedAggregations.includes('COUNT_DISTINCT')) {
-      out[dim.name] = Number.POSITIVE_INFINITY;   // not allowed to probe -> treat as high, prefer a bar
-      continue;
+      return [dim.name, Number.POSITIVE_INFINITY];   // not allowed to probe -> treat as high, prefer a bar
     }
     try {
       const res = await queryDataMart(martId, {
@@ -52,12 +55,12 @@ export async function probeCardinality(
         aggregationConfig: [{ column: dim.name, function: 'COUNT_DISTINCT' }],
         limit: 1,
       });
-      out[dim.name] = Number(res.totals?.[aggLabel(dim.name, 'COUNT_DISTINCT')] ?? Number.POSITIVE_INFINITY);
+      return [dim.name, Number(res.totals?.[aggLabel(dim.name, 'COUNT_DISTINCT')] ?? Number.POSITIVE_INFINITY)];
     } catch {
-      out[dim.name] = Number.POSITIVE_INFINITY;   // unknown -> treat as high, prefer a bar
+      return [dim.name, Number.POSITIVE_INFINITY];   // unknown -> treat as high, prefer a bar
     }
-  }
-  return out;
+  }));
+  return Object.fromEntries(entries);
 }
 
 /**
