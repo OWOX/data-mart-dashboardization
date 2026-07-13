@@ -131,4 +131,52 @@ describe('PieChartView', () => {
     const { queryByRole } = render(<PieChartView component={pieComponent('pie')} data={data} />);
     expect(queryByRole('group')).toBeNull();
   });
+
+  // ---- Cross-filtering on a NON-STRING dimension (see BarChartView.test.tsx for full rationale):
+  // a numeric dimension is legal, and sending its stringified label as the `eq` filter value can
+  // silently zero-match server-side. emit() must send the slice's raw (uncoerced) value. ----
+
+  const numericPieComponent = (): Component => ({
+    id: 'c1', type: 'pie', title: 'Cost by rating', width: 2, height: 1,
+    config: { dimension: 'Rating', metric: 'Cost', aggregation: 'SUM', maxCategories: 8 },
+  });
+
+  const numericData: QueryResult = {
+    columns: ['Rating', 'Cost | SUM'],
+    rows: [[5, 30], [4, 20], [3, 10]],
+    truncated: false, totals: null,
+  };
+
+  it('clicking a slice on a NUMERIC dimension emits the raw number as the filter value, not its stringified label', () => {
+    const onSegmentFilter = vi.fn();
+    const { container } = render(
+      <PieChartView component={numericPieComponent()} data={numericData} onSegmentFilter={onSegmentFilter} />
+    );
+    const sectors = container.querySelectorAll('.recharts-sector');
+    fireEvent.click(sectors[0]);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Rating', operator: 'eq', value: 5 });
+    expect(onSegmentFilter.mock.calls[0][0].value).not.toBe('5');
+    expect(typeof onSegmentFilter.mock.calls[0][0].value).toBe('number');
+  });
+
+  it('clicking the accessible chip for a numeric dimension also emits the raw number, not a string — and still DISPLAYS the stringified label', () => {
+    const onSegmentFilter = vi.fn();
+    const { getByRole } = render(
+      <PieChartView component={numericPieComponent()} data={numericData} onSegmentFilter={onSegmentFilter} />
+    );
+    const chip = getByRole('button', { name: '4' });
+    expect(chip.textContent).toBe('4');
+    fireEvent.click(chip);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Rating', operator: 'eq', value: 4 });
+  });
+
+  it('a STRING dimension still emits the string value — no regression', () => {
+    const onSegmentFilter = vi.fn();
+    const { container } = render(
+      <PieChartView component={pieComponent('pie')} data={data} onSegmentFilter={onSegmentFilter} />
+    );
+    fireEvent.click(container.querySelectorAll('.recharts-sector')[1]);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Source', operator: 'eq', value: 'meta' });
+    expect(typeof onSegmentFilter.mock.calls[0][0].value).toBe('string');
+  });
 });

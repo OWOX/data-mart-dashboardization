@@ -19,6 +19,11 @@ const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--cha
  * `DashboardView` decides add-vs-toggle-off and pushes it into `compile()` for a SERVER-side
  * refetch. No slice is ever re-derived client-side from an already-fetched result.
  *
+ * `value` is `p.raw` — the point's UNCOERCED dimension cell — never `p.label` (`toPoints`'
+ * stringified display form). Same reasoning as `BarChartView`: a pie/donut dimension is not
+ * required to be a string, and sending the stringified label as `eq`'s value against a numeric
+ * server column can silently zero-match instead of throwing.
+ *
  * A11Y: recharts' `Pie` hard-codes `tabIndex: -1` on every rendered sector (verified against the
  * installed `recharts` — see `renderSectorsStatically` in `polar/Pie.js`) and manages focus itself
  * via its own Left/Right-arrow navigation between slices; a per-slice `tabIndex`/`onKeyDown` set
@@ -43,7 +48,7 @@ export function PieChartView({
   const activeFilter = filters.find(f => f.column === c.dimension && f.operator === 'eq');
   const activeValue = activeFilter ? String(activeFilter.value) : undefined;
 
-  const emit = (label: string) => onSegmentFilter?.({ column: c.dimension, operator: 'eq', value: label });
+  const emit = (raw: unknown) => onSegmentFilter?.({ column: c.dimension, operator: 'eq', value: raw });
 
   return (
     <div className="flex h-full flex-col gap-1">
@@ -59,7 +64,7 @@ export function PieChartView({
             // Same reasoning as Bar/Line — a tile can refetch on every filter change, and
             // re-animating slices in from zero on each refresh reads as flicker, not motion.
             isAnimationActive={false}
-            onClick={(p: { label?: string }) => p?.label !== undefined && emit(p.label)}
+            onClick={(p: { label?: string; raw?: unknown }) => p?.label !== undefined && emit(p.raw)}
           >
             {points.map((p, i) => {
               const isActive = activeValue !== undefined && activeValue === p.label;
@@ -88,7 +93,7 @@ export function PieChartView({
                 type="button"
                 className={`rounded border px-2 py-0.5 text-xs ${isActive ? 'border-foreground font-semibold underline' : ''}`}
                 aria-pressed={isActive}
-                onClick={() => emit(p.label)}
+                onClick={() => emit(p.raw)}
               >
                 {p.label}
               </button>

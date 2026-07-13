@@ -9,13 +9,19 @@ export function toPoints(
   data: QueryResult,
   labelColumn: string,
   valueColumn: string
-): { label: string; value: number }[] {
+): { label: string; value: number; raw: unknown }[] {
   const li = data.columns.indexOf(labelColumn);
   const vi = data.columns.indexOf(valueColumn);
   if (li === -1 || vi === -1) return [];
   return data.rows.map(r => ({
     label: String(r[li] ?? ''),
     value: Number(r[vi] ?? 0) || 0,
+    // The UNCOERCED dimension cell, kept alongside the display `label` — a dimension is not
+    // required to be a string (a numeric rating/day_of_week/store_id is a legal dimension; see
+    // ComponentEditor.tsx, which only requires role === 'dimension'). Bar/PieChartView's `emit()`
+    // sends this in a server-side `eq` filter; sending the stringified `label` instead would
+    // compare a string against a numeric column and can silently zero-match server-side.
+    raw: r[li],
   }));
 }
 

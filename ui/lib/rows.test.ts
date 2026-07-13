@@ -11,8 +11,8 @@ const data: QueryResult = {
 describe('toPoints', () => {
   it('maps rows positionally by column name', () => {
     expect(toPoints(data, 'Source', 'Cost | SUM')).toEqual([
-      { label: 'google', value: 30 },
-      { label: 'meta', value: 20 },
+      { label: 'google', value: 30, raw: 'google' },
+      { label: 'meta', value: 20, raw: 'meta' },
     ]);
   });
 
@@ -27,7 +27,7 @@ describe('toPoints', () => {
 
   it('coerces a null metric to 0 for plotting', () => {
     const withNull: QueryResult = { ...data, rows: [['x', null, 1]] };
-    expect(toPoints(withNull, 'Source', 'Cost | SUM')).toEqual([{ label: 'x', value: 0 }]);
+    expect(toPoints(withNull, 'Source', 'Cost | SUM')).toEqual([{ label: 'x', value: 0, raw: 'x' }]);
   });
 
   it('returns [] for empty rows', () => {
@@ -36,12 +36,29 @@ describe('toPoints', () => {
 
   it('coerces a non-numeric metric to 0', () => {
     const weird: QueryResult = { ...data, rows: [['x', 'not-a-number', 1]] };
-    expect(toPoints(weird, 'Source', 'Cost | SUM')).toEqual([{ label: 'x', value: 0 }]);
+    expect(toPoints(weird, 'Source', 'Cost | SUM')).toEqual([{ label: 'x', value: 0, raw: 'x' }]);
   });
 
   it('renders a single data point', () => {
     expect(toPoints({ ...data, rows: [['google', 30, 3]] }, 'Source', 'Cost | SUM')).toEqual([
-      { label: 'google', value: 30 },
+      { label: 'google', value: 30, raw: 'google' },
+    ]);
+  });
+
+  // Cross-filtering (Task 16 follow-up fix): a dimension isn't required to be a string (e.g. a
+  // numeric rating, day_of_week, store_id are legal dimensions — see ComponentEditor.tsx, which
+  // only filters on `role === 'dimension'`). `label` is a display-only stringification; the raw,
+  // uncoerced cell must also survive so a server-side `eq` filter can send the correctly-typed
+  // value instead of a string that silently zero-matches a numeric column.
+  it('preserves the raw, uncoerced dimension value alongside the stringified display label', () => {
+    const numericDim: QueryResult = {
+      columns: ['Rating', 'Cost | SUM'],
+      rows: [[5, 30], [4, 20]],
+      truncated: false, totals: null,
+    };
+    expect(toPoints(numericDim, 'Rating', 'Cost | SUM')).toEqual([
+      { label: '5', value: 30, raw: 5 },
+      { label: '4', value: 20, raw: 4 },
     ]);
   });
 });

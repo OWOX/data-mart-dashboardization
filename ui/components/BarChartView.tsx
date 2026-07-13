@@ -20,6 +20,12 @@ const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--cha
  * Nothing here filters, sorts or re-aggregates `points` — nothing CAN, without recomputing an
  * aggregate from an already-aggregated top-N subset, which is exactly what this plugin forbids.
  *
+ * `value` is `p.raw` — the point's UNCOERCED dimension cell — never `p.label` (`toPoints`'
+ * stringified display form). A bar's dimension is not required to be a string (a numeric rating,
+ * day_of_week, store_id is a legal dimension — see ComponentEditor.tsx, which only filters on
+ * `role === 'dimension'`); sending the stringified label as `eq`'s value against a numeric server
+ * column can silently zero-match, so the dashboard looks correctly filtered while showing nothing.
+ *
  * A11Y: recharts' bar shapes are plain SVG `<path>`s with no native keyboard semantics, and — more
  * importantly — hand-rolling `tabIndex`/`onKeyDown` per bar is fragile (recharts' sibling `Pie`
  * hard-codes `tabIndex: -1` on every sector internally and manages its own focus via arrow keys, so
@@ -45,7 +51,7 @@ export function BarChartView({
   const activeFilter = filters.find(f => f.column === c.dimension && f.operator === 'eq');
   const activeValue = activeFilter ? String(activeFilter.value) : undefined;
 
-  const emit = (label: string) => onSegmentFilter?.({ column: c.dimension, operator: 'eq', value: label });
+  const emit = (raw: unknown) => onSegmentFilter?.({ column: c.dimension, operator: 'eq', value: raw });
 
   return (
     <div className="flex h-full flex-col gap-1">
@@ -62,7 +68,7 @@ export function BarChartView({
             // states) — animating the bars in from zero on each refresh reads as flicker, not
             // motion, so keep it off.
             isAnimationActive={false}
-            onClick={(p: { label?: string }) => p?.label !== undefined && emit(p.label)}
+            onClick={(p: { label?: string; raw?: unknown }) => p?.label !== undefined && emit(p.raw)}
           >
             {points.map((p, i) => {
               const isActive = activeValue !== undefined && activeValue === p.label;
@@ -91,7 +97,7 @@ export function BarChartView({
                 type="button"
                 className={`rounded border px-2 py-0.5 text-xs ${isActive ? 'border-foreground font-semibold underline' : ''}`}
                 aria-pressed={isActive}
-                onClick={() => emit(p.label)}
+                onClick={() => emit(p.raw)}
               >
                 {p.label}
               </button>

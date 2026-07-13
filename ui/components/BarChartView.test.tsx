@@ -164,4 +164,57 @@ describe('BarChartView', () => {
     const { queryByRole } = render(<BarChartView component={barComponent()} data={data} />);
     expect(queryByRole('group')).toBeNull();
   });
+
+  // ---- Cross-filtering on a NON-STRING dimension: a numeric column (rating, day_of_week,
+  // store_id, ...) is a legal dimension — ComponentEditor.tsx only requires role === 'dimension'.
+  // toPoints stringifies for display (`label`), but sending that string as the `eq` filter value
+  // against a numeric server column can silently zero-match, showing an empty/zero dashboard that
+  // LOOKS correctly filtered. The fix: emit() must send the point's raw (uncoerced) value. ----
+
+  const numericComponent = (): Component => ({
+    id: 'c1', type: 'bar', title: 'Cost by rating', width: 2, height: 1,
+    config: {
+      dimension: 'Rating', metric: 'Cost', aggregation: 'SUM',
+      orientation: 'vertical', limit: 10,
+    },
+  });
+
+  const numericData: QueryResult = {
+    columns: ['Rating', 'Cost | SUM'],
+    rows: [[5, 30], [4, 20], [3, 10]],
+    truncated: false, totals: null,
+  };
+
+  it('clicking a bar on a NUMERIC dimension emits the raw number as the filter value, not its stringified label', () => {
+    const onSegmentFilter = vi.fn();
+    const { container } = render(
+      <BarChartView component={numericComponent()} data={numericData} onSegmentFilter={onSegmentFilter} />
+    );
+    const bars = container.querySelectorAll('.recharts-rectangle');
+    fireEvent.click(bars[0]);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Rating', operator: 'eq', value: 5 });
+    expect(onSegmentFilter.mock.calls[0][0].value).not.toBe('5');
+    expect(typeof onSegmentFilter.mock.calls[0][0].value).toBe('number');
+  });
+
+  it('clicking the accessible chip for a numeric dimension also emits the raw number, not a string — and still DISPLAYS the stringified label', () => {
+    const onSegmentFilter = vi.fn();
+    const { getByRole } = render(
+      <BarChartView component={numericComponent()} data={numericData} onSegmentFilter={onSegmentFilter} />
+    );
+    const chip = getByRole('button', { name: '4' });
+    expect(chip.textContent).toBe('4');
+    fireEvent.click(chip);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Rating', operator: 'eq', value: 4 });
+  });
+
+  it('a STRING dimension still emits the string value — no regression', () => {
+    const onSegmentFilter = vi.fn();
+    const { container } = render(
+      <BarChartView component={barComponent()} data={data} onSegmentFilter={onSegmentFilter} />
+    );
+    fireEvent.click(container.querySelectorAll('.recharts-rectangle')[1]);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Source', operator: 'eq', value: 'meta' });
+    expect(typeof onSegmentFilter.mock.calls[0][0].value).toBe('string');
+  });
 });
