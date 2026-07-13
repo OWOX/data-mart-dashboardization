@@ -1,8 +1,8 @@
 import { cloneElement, type ReactElement } from 'react';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { PieChartView } from './PieChartView';
-import type { Component, PieConfig, QueryResult } from '../lib/types';
+import type { Component, FilterRule, PieConfig, QueryResult } from '../lib/types';
 
 // Same rationale as BarChartView.test.tsx: happy-dom has no layout engine, so recharts'
 // <ResponsiveContainer> measurement always yields 0x0. Give the chart a fixed size directly.
@@ -75,5 +75,60 @@ describe('PieChartView', () => {
   it('surfaces truncated results', () => {
     const { getByText } = render(<PieChartView component={pieComponent('pie')} data={{ ...data, truncated: true }} />);
     expect(getByText(/truncated/i)).toBeInTheDocument();
+  });
+
+  // ---- Cross-filtering (Task 16) ----
+
+  it('clicking a slice reports an `eq` cross-filter on the component dimension, never `in`', () => {
+    const onSegmentFilter = vi.fn();
+    const { container } = render(
+      <PieChartView component={pieComponent('pie')} data={data} onSegmentFilter={onSegmentFilter} />
+    );
+    const sectors = container.querySelectorAll('.recharts-sector');
+    fireEvent.click(sectors[0]);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Source', operator: 'eq', value: 'google' });
+    expect(onSegmentFilter).not.toHaveBeenCalledWith(expect.objectContaining({ operator: 'in' }));
+  });
+
+  // recharts' Pie hard-codes tabIndex=-1 on every rendered sector and manages focus itself via its
+  // own arrow-key navigation (verified against the installed recharts — renderSectorsStatically in
+  // polar/Pie.js) — a per-slice tabIndex/onKeyDown is silently overridden and never fires. Instead
+  // every category gets a REAL <button> "chip" below the chart, independent of that internal model.
+
+  it('is keyboard-operable: each category has a real, natively-focusable button chip that reports the same filter a click on the slice would', () => {
+    const onSegmentFilter = vi.fn();
+    const { getByRole } = render(
+      <PieChartView component={pieComponent('donut')} data={data} onSegmentFilter={onSegmentFilter} />
+    );
+    const chip = getByRole('button', { name: 'meta' });
+    chip.focus();
+    expect(document.activeElement).toBe(chip);
+    fireEvent.click(chip);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Source', operator: 'eq', value: 'meta' });
+  });
+
+  it('renders one accessible chip per category, grouped under a labelled group', () => {
+    const { getByRole } = render(
+      <PieChartView component={pieComponent('pie')} data={data} onSegmentFilter={vi.fn()} />
+    );
+    const group = getByRole('group', { name: /filter by source/i });
+    expect(group.querySelectorAll('button')).toHaveLength(3);
+  });
+
+  it('conveys the active cross-filter to assistive tech via aria-pressed on the chip, plus a non-color stroke marker on the slice', () => {
+    const filters: FilterRule[] = [{ column: 'Source', operator: 'eq', value: 'tiktok' }];
+    const { getByRole, container } = render(
+      <PieChartView component={pieComponent('pie')} data={data} filters={filters} onSegmentFilter={vi.fn()} />
+    );
+    expect(getByRole('button', { name: 'google' }).getAttribute('aria-pressed')).toBe('false');
+    expect(getByRole('button', { name: 'tiktok' }).getAttribute('aria-pressed')).toBe('true');
+    const sectors = container.querySelectorAll('.recharts-sector');
+    expect(sectors[2].getAttribute('stroke')).toBeTruthy();
+    expect(sectors[0].getAttribute('stroke')).toBeFalsy();
+  });
+
+  it('without onSegmentFilter, no chip row is rendered — read-only rendering stays read-only', () => {
+    const { queryByRole } = render(<PieChartView component={pieComponent('pie')} data={data} />);
+    expect(queryByRole('group')).toBeNull();
   });
 });

@@ -58,7 +58,12 @@ describe('FilterBar', () => {
     );
   });
 
-  it('Reset filters restores the generated slices and clears global filters', () => {
+  // Task 16: "Reset filters" now routes through `ui/lib/edit.ts`'s `resetFilters`, which clears
+  // `filters` (manual AND cross-filters) but — per that function's explicit contract — leaves the
+  // date sliders' CURRENT values untouched. Resetting the slider itself back to the generated
+  // default is a separate, deliberate action ("Restore generated layout"), not something clearing a
+  // cross-filter should also silently do.
+  it('Reset filters clears global/cross filters but leaves the current date slice value untouched', () => {
     const onChange = vi.fn();
     const d = dashWithSlices();
     d.slices[0].value = { kind: 'this_year' };
@@ -68,7 +73,39 @@ describe('FilterBar', () => {
 
     expect(onChange).toHaveBeenCalledWith(
       [],
-      [{ column: 'Date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } }],
+      [{ column: 'Date', operator: 'relative_date', value: { kind: 'this_year' } }],
     );
+  });
+
+  // ---- Task 16: cross-filtering visibility — a filter must never be invisible/unreachable ----
+
+  it('renders (with a Reset filters button) when there are cross-filters but no date slices, so an active filter is never invisible', () => {
+    const d = { ...emptyDashboard('d1', 'm1', 'D'), filters: [{ column: 'Source', operator: 'eq', value: 'google' }] };
+    render(<FilterBar dashboard={d} onChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /reset filters/i })).toBeInTheDocument();
+    expect(screen.getByText(/Source = google/)).toBeInTheDocument();
+  });
+
+  it('Reset filters (with no date slices at all) clears the cross-filter and reports empty slices', () => {
+    const onChange = vi.fn();
+    const d = { ...emptyDashboard('d1', 'm1', 'D'), filters: [{ column: 'Source', operator: 'eq', value: 'google' }] };
+    render(<FilterBar dashboard={d} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /reset filters/i }));
+
+    expect(onChange).toHaveBeenCalledWith([], []);
+  });
+
+  it('surfaces every active filter/cross-filter as readable text, not merely via a control state', () => {
+    const d: Dashboard = {
+      ...dashWithSlices(),
+      filters: [
+        { column: 'Cost', operator: 'gt', value: 100 },
+        { column: 'Source', operator: 'eq', value: 'google' },
+      ],
+    };
+    render(<FilterBar dashboard={d} onChange={vi.fn()} />);
+    expect(screen.getByText(/Cost = 100/)).toBeInTheDocument();
+    expect(screen.getByText(/Source = google/)).toBeInTheDocument();
   });
 });

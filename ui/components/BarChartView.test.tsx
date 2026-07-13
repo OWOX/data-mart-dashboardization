@@ -1,8 +1,8 @@
 import { cloneElement, type ReactElement } from 'react';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { BarChartView } from './BarChartView';
-import type { BarConfig, Component, QueryResult } from '../lib/types';
+import type { BarConfig, Component, FilterRule, QueryResult } from '../lib/types';
 
 // recharts' <ResponsiveContainer> measures its DOM node (ResizeObserver + getBoundingClientRect)
 // to size its child chart; happy-dom has no layout engine, so real measurement always yields 0x0
@@ -102,5 +102,66 @@ describe('BarChartView', () => {
       <BarChartView component={barComponent()} data={{ ...data, truncated: true }} />
     );
     expect(getByText(/truncated/i)).toBeInTheDocument();
+  });
+
+  // ---- Cross-filtering (Task 16): clicking a bar (or its accessible chip) reports an `eq` filter,
+  // never `in` (the query service rejects `in`/`not_in` — see filterOps.ts) ----
+
+  it('clicking a bar reports an `eq` cross-filter on the component dimension, never `in`', () => {
+    const onSegmentFilter = vi.fn();
+    const { container } = render(
+      <BarChartView component={barComponent()} data={data} onSegmentFilter={onSegmentFilter} />
+    );
+    const bars = container.querySelectorAll('.recharts-rectangle');
+    fireEvent.click(bars[0]);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Source', operator: 'eq', value: 'google' });
+    expect(onSegmentFilter).not.toHaveBeenCalledWith(expect.objectContaining({ operator: 'in' }));
+  });
+
+  // recharts' bar shapes are plain SVG paths with no native keyboard semantics, and hand-rolling
+  // tabIndex/onKeyDown per bar is fragile against the library's own internals (see PieChartView,
+  // where the sibling Pie component hard-codes tabIndex=-1 on every sector). Instead every category
+  // gets a REAL <button> "chip" below the chart — natively Tab-reachable and screen-reader friendly
+  // regardless of recharts' internal focus model.
+
+  it('is keyboard-operable: each category has a real, natively-focusable button chip that reports the same filter a click on the bar would', () => {
+    const onSegmentFilter = vi.fn();
+    const { getByRole } = render(
+      <BarChartView component={barComponent()} data={data} onSegmentFilter={onSegmentFilter} />
+    );
+    const chip = getByRole('button', { name: 'meta' });
+    chip.focus();
+    expect(document.activeElement).toBe(chip);
+    fireEvent.click(chip);
+    expect(onSegmentFilter).toHaveBeenCalledWith({ column: 'Source', operator: 'eq', value: 'meta' });
+  });
+
+  it('renders one accessible chip per category, grouped under a labelled group', () => {
+    const { getByRole } = render(
+      <BarChartView component={barComponent()} data={data} onSegmentFilter={vi.fn()} />
+    );
+    const group = getByRole('group', { name: /filter by source/i });
+    const chips = group.querySelectorAll('button');
+    expect(chips).toHaveLength(3);
+  });
+
+  it('conveys the active cross-filter to assistive tech via aria-pressed on the chip (not by color alone)', () => {
+    const filters: FilterRule[] = [{ column: 'Source', operator: 'eq', value: 'meta' }];
+    const { getByRole, container } = render(
+      <BarChartView component={barComponent()} data={data} filters={filters} onSegmentFilter={vi.fn()} />
+    );
+    expect(getByRole('button', { name: 'google' }).getAttribute('aria-pressed')).toBe('false');
+    expect(getByRole('button', { name: 'meta' }).getAttribute('aria-pressed')).toBe('true');
+    expect(getByRole('button', { name: 'tiktok' }).getAttribute('aria-pressed')).toBe('false');
+    // Beyond aria-pressed, the active chart segment also gets a non-color visual marker (a stroke
+    // ring) so the distinction isn't conveyed by fill color alone.
+    const bars = container.querySelectorAll('.recharts-rectangle');
+    expect(bars[1].getAttribute('stroke')).toBeTruthy();
+    expect(bars[0].getAttribute('stroke')).toBeFalsy();
+  });
+
+  it('without onSegmentFilter, no chip row is rendered — read-only rendering stays read-only', () => {
+    const { queryByRole } = render(<BarChartView component={barComponent()} data={data} />);
+    expect(queryByRole('group')).toBeNull();
   });
 });

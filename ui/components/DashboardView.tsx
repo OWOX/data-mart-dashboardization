@@ -4,7 +4,7 @@ import { getDashboard, saveDashboard } from '../lib/dashboards';
 import { queryDataMart, getMartFields } from '../lib/api';
 import { compile } from '../lib/compile';
 import { useLayerData } from '../lib/freshness';
-import { addComponent, restoreGenerated } from '../lib/edit';
+import { addComponent, addGlobalFilter, removeGlobalFilter, restoreGenerated } from '../lib/edit';
 import { probeCardinality } from '../lib/generate';
 import { Grid } from './Grid';
 import { ComponentCard } from './ComponentCard';
@@ -30,9 +30,10 @@ export function useComponentData(dashboard: Dashboard, component: Component) {
 }
 
 function Cell({
-  dashboard, component, onEdit,
+  dashboard, component, onEdit, onSegmentFilter,
 }: {
   dashboard: Dashboard; component: Component; onEdit: (id: string) => void;
+  onSegmentFilter: (f: FilterRule) => void;
 }) {
   const { data, status, error, refresh } = useComponentData(dashboard, component);
   return (
@@ -49,7 +50,7 @@ function Cell({
         </button>
       }
     >
-      {renderComponent(component, data)}
+      {renderComponent(component, data, dashboard.filters, onSegmentFilter)}
     </ComponentCard>
   );
 }
@@ -78,6 +79,27 @@ export function DashboardView() {
   // A filter change bumps configVersion, which refetches EVERY component. Filters are global.
   const applyFilters = (filters: FilterRule[], slices: FilterRule[]) => {
     setDashboard(d => (d ? { ...d, filters, slices, configVersion: d.configVersion + 1 } : d));
+  };
+
+  /**
+   * Cross-filtering (Task 16): a click/keypress on a bar/pie segment reports
+   * `{ column, operator: 'eq', value }` here. Clicking the SAME already-active segment again is a
+   * toggle-off (removes the filter) rather than a no-op re-apply — matched by column, operator AND
+   * value so a different value on the same column always REPLACES, never toggles off, the existing
+   * one. Either branch goes through `ui/lib/edit.ts` (`addGlobalFilter`/`removeGlobalFilter`), which
+   * always bumps `configVersion` — the SAME refetch key `useComponentData`/`useLayerData` key every
+   * component's query on, so one click refetches the whole dashboard (with each tile's own preload
+   * state) rather than leaving any tile showing stale pre-filter numbers.
+   */
+  const onSegmentFilter = (f: FilterRule) => {
+    setDashboard(d => {
+      if (!d) return d;
+      const existing = d.filters.find(x => x.column === f.column);
+      const isToggleOff =
+        existing !== undefined && existing.operator === f.operator
+        && JSON.stringify(existing.value) === JSON.stringify(f.value);
+      return isToggleOff ? removeGlobalFilter(d, f.column) : addGlobalFilter(d, f);
+    });
   };
 
   const addNewComponent = (type: ComponentType) => {
@@ -141,7 +163,12 @@ export function DashboardView() {
           </div>
         </div>
         <Grid dashboard={dashboard}>
-          {c => <Cell key={c.id} dashboard={dashboard} component={c} onEdit={setEditingId} />}
+          {c => (
+            <Cell
+              key={c.id} dashboard={dashboard} component={c} onEdit={setEditingId}
+              onSegmentFilter={onSegmentFilter}
+            />
+          )}
         </Grid>
         <button
           className="rounded border px-3 py-1.5 text-sm"

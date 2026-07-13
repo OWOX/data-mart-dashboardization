@@ -1,4 +1,5 @@
 import { RELATIVE_PRESETS } from '../lib/filterOps';
+import { resetFilters } from '../lib/edit';
 import type { Dashboard, FilterRule } from '../lib/types';
 
 type RelativeValue = { kind: string; n?: number };
@@ -29,6 +30,16 @@ const needsN = (kind: string): boolean => RELATIVE_PRESETS.find(p => p.kind === 
  * never hand-rolled, so a rejected operator (`this_week`, `in_next_n_days`, ...) can never reach
  * the wire. Changing a control reports the FULL updated `filters`/`slices` pair to `onChange`;
  * `DashboardView` bumps `configVersion` from there, which refetches every component.
+ *
+ * Cross-filtering (Task 16): `dashboard.filters` now also holds cross-filters set by clicking a
+ * bar/pie segment (see `DashboardView`'s `onSegmentFilter`), so this bar must render whenever
+ * EITHER `slices` OR `filters` is non-empty — a dashboard with no date fields (no slices) but an
+ * active cross-filter must still show a way to see/clear it, or the filter is invisible and stuck
+ * on (the "worst possible outcome" this plugin explicitly guards against: a filtered dashboard that
+ * looks unfiltered). "Reset filters" now goes through `ui/lib/edit.ts`'s `resetFilters` — it clears
+ * `filters` (manual AND cross-filters) but, per that function's contract, leaves the date sliders'
+ * current values alone; it is not "restore the generated defaults" (that's a wholesale, deliberate
+ * user action = "Restore generated layout", not what a filter-clear button should also silently do).
  */
 export function FilterBar({
   dashboard,
@@ -37,8 +48,8 @@ export function FilterBar({
   dashboard: Dashboard;
   onChange: (filters: FilterRule[], slices: FilterRule[]) => void;
 }) {
-  const { slices } = dashboard;
-  if (slices.length === 0) return null;
+  const { slices, filters } = dashboard;
+  if (slices.length === 0 && filters.length === 0) return null;
 
   const updateSlice = (index: number, value: RelativeValue) => {
     const next = slices.map((s, i) => (i === index ? { ...s, operator: 'relative_date', value } : s));
@@ -46,8 +57,8 @@ export function FilterBar({
   };
 
   const reset = () => {
-    const restored = slices.map(s => ({ column: s.column, operator: 'relative_date', value: { ...DEFAULT_PRESET } }));
-    onChange([], restored);
+    const next = resetFilters(dashboard);
+    onChange(next.filters, next.slices);
   };
 
   return (
@@ -85,6 +96,11 @@ export function FilterBar({
           </label>
         );
       })}
+      {filters.length > 0 && (
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          Filtered by: {filters.map(f => `${f.column} = ${String(f.value)}`).join(', ')}
+        </p>
+      )}
       <button className="rounded border px-3 py-1.5 text-sm" onClick={reset}>Reset filters</button>
     </div>
   );

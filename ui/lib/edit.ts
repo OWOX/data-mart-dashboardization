@@ -1,7 +1,7 @@
 import { generate, PIE_MAX_CATEGORIES } from './generate';
 import type {
   AggregateFunction, BarConfig, Component, ComponentConfig, ComponentType, Dashboard,
-  MartField, PieConfig, ScorecardConfig, TableConfig, TimeSeriesConfig,
+  FilterRule, MartField, PieConfig, ScorecardConfig, TableConfig, TimeSeriesConfig,
 } from './types';
 
 const uid = () => crypto.randomUUID();
@@ -328,4 +328,55 @@ export function restoreGenerated(
 ): Dashboard {
   const fresh = generate(d.$entity.id, d.name, fields, cardinality);
   return { ...fresh, id: d.id, name: d.name, $entity: d.$entity, configVersion: d.configVersion + 1 };
+}
+
+// ---------- Cross-filtering (Task 16) ----------
+//
+// A "slice" (clicking a bar/pie segment) is just another entry in `d.filters` — the SAME global,
+// post-join array a manually-added filter would land in (see the `Dashboard.filters` doc in
+// types.ts: "GLOBAL — applied to every component. No per-component overrides by design."). There
+// is deliberately no separate "cross-filter" storage: `compile()` already merges `d.filters` into
+// every component's query, so putting the clicked value there is what makes the SERVER recompute
+// every tile's aggregates under the filter — nothing here ever touches already-fetched rows.
+//
+// The operator is always `eq` (an exact match on the clicked category) — never `in`/`not_in`,
+// which `filterOps.ts` documents as REJECTED by the query service.
+
+/**
+ * Cross-filter: clicking a bar/slice sets a GLOBAL filter — filters are never per-component.
+ * Replaces (never stacks) any existing filter on the same column, so re-clicking a DIFFERENT
+ * segment of the same dimension moves the filter rather than ANDing two values on one column
+ * together (which would match zero rows for an equality filter). Always bumps `configVersion` —
+ * a filter change always changes what the server must compute, so every component must refetch.
+ */
+export function addGlobalFilter(d: Dashboard, f: FilterRule): Dashboard {
+  return {
+    ...d,
+    filters: [...d.filters.filter(x => x.column !== f.column), f],
+    configVersion: d.configVersion + 1,
+  };
+}
+
+/**
+ * The other half of the click-to-toggle interaction: clicking the SAME already-active segment
+ * again clears that column's filter instead of re-applying it (see `DashboardView`'s
+ * `onSegmentFilter`, which decides add-vs-remove by comparing the clicked value against the
+ * currently active filter for that column). A no-op (including no `configVersion` bump) when the
+ * column has no active filter, mirroring `removeComponent`'s unknown-id no-op.
+ */
+export function removeGlobalFilter(d: Dashboard, column: string): Dashboard {
+  if (!d.filters.some(f => f.column === column)) return d;
+  return { ...d, filters: d.filters.filter(f => f.column !== column), configVersion: d.configVersion + 1 };
+}
+
+/**
+ * Clears every global/cross filter but leaves `d.slices` (the generated date-range controls)
+ * completely untouched — "reset filters" undoes ad-hoc filtering, it is not "reset the whole
+ * dashboard to its generated defaults" (that is `restoreGenerated`'s job). Always bumps
+ * `configVersion`: even clearing to an empty filter set changes the compiled query whenever a
+ * filter was actually present, and clearing an already-empty list is a harmless extra bump (same
+ * "always bump, let `configVersion` be a stamp not a diff" spirit as `addComponent`).
+ */
+export function resetFilters(d: Dashboard): Dashboard {
+  return { ...d, filters: [], configVersion: d.configVersion + 1 };
 }
