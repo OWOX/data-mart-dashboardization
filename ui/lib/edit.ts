@@ -117,7 +117,7 @@ function bestAggregation(d: Dashboard, prefer?: Component): AggregateFunction {
 /** Builds a config for `type`, borrowing values from `source` (if retyping) and the rest of `d`. */
 function buildConfig(type: ComponentType, d: Dashboard, source?: Component): ComponentConfig {
   const metric = bestMetric(d, source);
-  const dimension = bestDimension(d, source) || metric;
+  const dimension = bestDimension(d, source);
   const aggregation = bestAggregation(d, source);
 
   switch (type) {

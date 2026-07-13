@@ -238,6 +238,34 @@ describe('edit', () => {
     expect(cfg.columns).toEqual(expect.arrayContaining(['d', 'x']));
   });
 
+  // ---- buildConfig must never fall back to dimension = metric (I3a) ----
+
+  it('buildConfig leaves dimension empty (never falls back to metric) when the dashboard has no dimension anywhere', () => {
+    const d: Dashboard = {
+      ...base(),
+      components: [
+        { id: 'a', type: 'scorecard', title: 'A', width: 1, height: 1, config: { metric: 'Cost', aggregation: 'SUM' } },
+      ],
+    };
+    const next = addComponent(d, 'bar');
+    const cfg = next.components.at(-1)!.config as BarConfig;
+    expect(cfg.dimension).toBe('');
+    expect(cfg.metric).toBe('Cost');
+  });
+
+  it('buildConfig leaves timeseries.dateField empty (never falls back to metric) when the dashboard has no dimension anywhere', () => {
+    const d: Dashboard = {
+      ...base(),
+      components: [
+        { id: 'a', type: 'scorecard', title: 'A', width: 1, height: 1, config: { metric: 'Cost', aggregation: 'SUM' } },
+      ],
+    };
+    const next = addComponent(d, 'timeseries');
+    const cfg = next.components.at(-1)!.config as TimeSeriesConfig;
+    expect(cfg.dateField).toBe('');
+    expect(cfg.metric).toBe('Cost');
+  });
+
   // ---- addComponent: sane per-type size defaults, clamped to the grid ----
 
   it('addComponent picks sane default sizes per type', () => {
