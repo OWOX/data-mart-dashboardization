@@ -102,8 +102,15 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TOKEN_FILE = path.join(ROOT, '.owox-dev', 'mcp-token.json');
+
+// The REST API and the MCP server are DIFFERENT hosts, each with its own auth:
+//   - app.owox.com  — REST, authenticated by the API key (the broker already does this).
+//   - mcp.owox.com  — MCP, an OAuth protected resource. Its own /.well-known advertises
+//     resource "https://mcp.owox.com/mcp" and its own authorization server. Registering or
+//     minting a token against app.owox.com fails with "requires an MCP resource host".
 const UPSTREAM = 'https://app.owox.com';
-const MCP_URL = `${UPSTREAM}/mcp`;
+const MCP_HOST = 'https://mcp.owox.com';
+const MCP_URL = `${MCP_HOST}/mcp`;
 const RESOURCE = MCP_URL;
 const SHIM_PORT = 5300;
 const CALLBACK_PORT = 5301;
@@ -125,7 +132,7 @@ const writeToken = tok => {
 };
 
 async function discover() {
-  const r = await fetch(`${UPSTREAM}/.well-known/oauth-authorization-server`);
+  const r = await fetch(`${MCP_HOST}/.well-known/oauth-authorization-server`);
   if (!r.ok) throw new Error(`oauth discovery failed: ${r.status}`);
   return r.json();
 }
