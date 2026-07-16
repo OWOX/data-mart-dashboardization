@@ -1,5 +1,8 @@
 import { owox } from '@owox/plugin-sdk';
 import type { AggregateFunction, MartField, MartRef, QueryRequest, QueryResult } from './types';
+import {
+  buildHttpDataQuery, parseNdjson, rowsToQueryResult, needsGrandTotal, grandTotalFromRow, shouldKeepPolling,
+} from './httpData';
 
 /** List routes wrap their array in different envelopes depending on the route; accept them all. */
 function toArray<T>(res: unknown): T[] {
@@ -41,11 +44,48 @@ export async function getMartFields(id: string): Promise<MartField[]> {
   });
 }
 
+const DEFAULT_LIMIT = 20;
+const TOTALS_POLL_TRIES = 6;
+const TOTALS_POLL_DELAY_MS = 1200;
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 /**
- * The ONE data call. Aggregation is entirely server-side: a projected field WITH an aggregation
- * rule is a metric, one WITHOUT is a grouping key. `totals` comes back computed over all matching
- * rows, ignoring `limit` — that is what scorecards read.
+ * The run's grand totals are a SEPARATE async DWH query, bridged via the `x-owox-run-id` header
+ * the stream returns. Poll the run until it carries totals or reaches a terminal status. Best
+ * effort — a scorecard falls back to its single streamed row if this yields nothing.
+ */
+async function fetchRunTotals(id: string, runId: string): Promise<QueryResult['totals']> {
+  for (let i = 0; i < TOTALS_POLL_TRIES; i++) {
+    let run: { status?: unknown; totals?: QueryResult['totals'] };
+    try { run = (await owox.request('GET', `/api/data-marts/${id}/runs/${runId}`)) as typeof run; }
+    catch { return null; }
+    if (run?.totals) return run.totals;
+    if (!shouldKeepPolling(run?.status)) return null;
+    await sleep(TOTALS_POLL_DELAY_MS);
+  }
+  return null;
+}
+
+/**
+ * The ONE data call. Aggregation is entirely server-side via the OWOX HTTP Data API: a projected
+ * field WITH an aggregation rule is a metric, one WITHOUT is a grouping key; `sort` and `limit`
+ * are applied by the server (ORDER BY before LIMIT). For a scorecard (aggregation, no grouping)
+ * we also fetch the run's grand totals via `x-owox-run-id` — that is what the scorecard reads.
  */
 export async function queryDataMart(id: string, body: QueryRequest): Promise<QueryResult> {
-  return (await owox.request('POST', `/api/data-marts/${id}/query`, body)) as QueryResult;
+  const askedLimit = body.limit ?? DEFAULT_LIMIT;
+  const qs = buildHttpDataQuery(body, askedLimit + 1); // over-read by one to detect truncation
+  const { headers, body: raw } = await owox.requestWithHeaders(
+    'GET',
+    `/api/external/http-data/data-marts/${id}.ndjson?${qs}`,
+  );
+  const objs = parseNdjson(typeof raw === 'string' ? raw : '');
+
+  let totals: QueryResult['totals'] = null;
+  if (needsGrandTotal(body)) {
+    const runId = headers['x-owox-run-id'];
+    if (runId) totals = await fetchRunTotals(id, runId);
+    if (!totals) totals = grandTotalFromRow(objs.slice(0, askedLimit), body);
+  }
+  return rowsToQueryResult(objs, body, askedLimit, totals);
 }

@@ -91,6 +91,16 @@ export const owox = {
     console.info('[owox dev mock] owox.request', method, path, body);
     return null;
   },
+  // Mirrors the real SDK: `{ headers, body }`, headers an allowlisted slice (today just
+  // `x-owox-run-id`, set by the HTTP Data stream so the caller can fetch that run's totals).
+  requestWithHeaders: async (
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<{ headers: Record<string, string>; body: unknown }> => {
+    console.info('[owox dev mock] owox.requestWithHeaders', method, path, body);
+    return { headers: {}, body: null };
+  },
 };
 // `ai` returns the real capability's shape ({ text, model, raw }) so UI that reads reply.text works
 // in mock mode too. Use `npm run dev:broker` for a real model reply.
