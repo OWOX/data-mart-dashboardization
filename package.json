@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "css": "tailwindcss -i ui/styles.src.css -o ui/styles.css --minify",
     "css:check": "tailwindcss -i ui/styles.src.css -o /tmp/dmd-styles-check.css --minify && diff -q /tmp/dmd-styles-check.css ui/styles.css || (echo '\n✗ ui/styles.css is STALE. The host serves only this precompiled file, so any Tailwind class missing from it renders unstyled. Run: npm run css — and commit the result.\n' && exit 1)",
-    "predev:broker": "test -e node_modules/@owox/plugin-sdk || ./scripts/link-monorepo.sh"
+    "predev:broker": "test -e node_modules/@owox/plugin-sdk || ./scripts/link-monorepo.sh",
+    "postinstall": "./scripts/link-monorepo.sh || true"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.0",
