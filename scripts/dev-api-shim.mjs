@@ -1,26 +1,26 @@
 // DEV-ONLY scaffolding for the "Data Mart Dashboards" plugin.
 //
-// The plugin compiles every dashboard component into ONE server-side aggregated query and
-// calls `POST /api/data-marts/:id/query`. That REST endpoint exists in our owox-data-marts
-// branch but is NOT deployed on app.owox.com. However, the SAME server-side aggregation IS
-// deployed, on the API key, through the HTTP Data API:
+// The plugin compiles every dashboard component into ONE server-side aggregated query and calls
+// `POST /api/data-marts/:id/query`. That REST endpoint exists in our owox-data-marts branch but is
+// NOT deployed on app.owox.com. The same server-side capability IS deployed, through the OWOX
+// HTTP Data API, and reached here via the official @owox/api-client:
 //
-//   GET /api/external/http-data/data-marts/:id.ndjson?column=…&aggregation=…&sort=…&limit=…
+//   client.dataMarts.traverseData(id, { column, filter, sort, aggregation, dateTrunc, limit })
+//     -> streams NDJSON rows, and exposes the run id from the `x-owox-run-id` response header.
+//   client.getJson(`/api/data-marts/:id/runs/:runId`)
+//     -> the run's grand-totals summary (a SEPARATE DWH query, keyed by `<column> | <FN>`),
+//        which the scorecard reads.
 //
-// It supports aggregation, date buckets, filters and server-side sort (ORDER BY before LIMIT),
-// using the SAME domain config schemas our compile.ts already targets — so the mapping is 1:1.
-// This shim speaks our REST contract and translates to that endpoint on the same API-key auth
-// the broker already attaches. No OAuth, no MCP. Everything else proxies straight through.
-//
-// Delete this file once `POST /api/data-marts/:id/query` ships. It must never be imported by
-// anything under `ui/` — it is a dev-only Node script, not part of the plugin's bundle.
+// This shim translates our REST contract to those calls on the API key alone (no OAuth). Everything
+// else proxies straight to app.owox.com. Delete this file once `POST /api/data-marts/:id/query`
+// ships. It must never be imported by anything under `ui/` — it is a dev-only Node script.
 
-// ---------- pure mapping logic (unit-tested) ----------
+// ---------- pure mapping logic (unit-tested, no network) ----------
 
 /**
- * The HTTP Data API names an aggregated output column `<column> | <TOKEN>`, sanitising dots to
- * `_` — identical to the plugin's own `aggLabel` and to the backend's aggregation-labels.ts.
- * The plugin reads results back by this key, so it must match byte-for-byte.
+ * The HTTP Data API names an aggregated output column `<column> | <TOKEN>` (dots -> `_`), and the
+ * run's `totals` object uses the same keys — identical to the plugin's own `aggLabel` and to the
+ * backend's aggregation-labels.ts. The plugin reads results back by this key, so it must match.
  */
 export const AGG_TOKEN = {
   SUM: 'SUM', AVG: 'AVG', MIN: 'MIN', MAX: 'MAX', COUNT: 'COUNT',
@@ -32,7 +32,7 @@ export function aggLabel(column, fn) {
   return `${column.replace(/\./g, '_')} | ${AGG_TOKEN[fn]}`;
 }
 
-const b64 = obj => Buffer.from(JSON.stringify(obj)).toString('base64url');
+const ROW_COUNT_KEY = 'Row Count'; // grouping metadata the endpoint appends; not a plugin column
 
 /** The output column names the plugin expects, in the order it projected them. */
 export function expectedColumns(body) {
@@ -40,84 +40,125 @@ export function expectedColumns(body) {
   return (body.fields ?? []).map(f => (agg.has(f) ? aggLabel(f, agg.get(f)) : f));
 }
 
-/**
- * Our QueryRequest -> HTTP Data API query string. `overLimit` is the row cap we actually send:
- * we over-read by one (like the backend's own query service) so we can detect truncation.
- * The four config arrays are our compile.ts output verbatim — the endpoint's domain schemas
- * use the same `column`/`function`/`unit`/`direction`/`operator` field names, so no renaming.
- */
-export function buildHttpDataQuery(body, overLimit) {
-  const p = new URLSearchParams();
-  for (const f of body.fields ?? []) p.append('column', f);
-  if (body.filterConfig?.length) p.set('filter', b64(body.filterConfig));
-  if (body.aggregationConfig?.length) p.set('aggregation', b64(body.aggregationConfig));
-  if (body.dateTruncConfig?.length) p.set('dateTrunc', b64(body.dateTruncConfig));
-  if (body.sortConfig?.length) p.set('sort', b64(body.sortConfig));
-  if (overLimit != null) p.set('limit', String(overLimit));
-  return p.toString();
+/** A scorecard compiles to an aggregation with no grouping dimension; only then does it read totals. */
+export function needsGrandTotal(body) {
+  if (!body.aggregationConfig?.length) return false;
+  const aggCols = new Set(body.aggregationConfig.map(a => a.column));
+  return (body.fields ?? []).every(f => aggCols.has(f));
 }
 
-const ROW_COUNT_KEY = 'Row Count'; // grouping metadata the endpoint appends; not a plugin column
+/**
+ * Fallback grand total when the run lookup can't deliver one: a no-grouping aggregate stream
+ * returns a single row that IS the total. Used only when `needsGrandTotal(body)` and the run's
+ * own totals were unavailable.
+ */
+export function grandTotalFromRow(rowObjects, body) {
+  if (!needsGrandTotal(body) || !rowObjects.length) return null;
+  const totals = {};
+  for (const [k, v] of Object.entries(rowObjects[0])) if (k !== ROW_COUNT_KEY) totals[k] = v;
+  return totals;
+}
 
 /**
- * NDJSON body -> our QueryResult. `askedLimit` is the limit the PLUGIN requested (we fetched one
- * more): if more rows came back, the result is truncated and we slice to askedLimit. `totals` is
- * populated only for a grand-total query (aggregation with no grouping dimension) — the single
- * returned row IS the total — which is exactly what the scorecard reads.
+ * NDJSON row objects (from api-client's rowChunks) -> our QueryResult. `askedLimit` is what the
+ * PLUGIN requested; we over-read by one, so more rows than that means the result is truncated and
+ * we slice back. Row values are already typed (JSON), so no coercion.
  */
-export function ndjsonToQueryResult(text, body, askedLimit) {
-  const objs = text.split('\n').map(l => l.trim()).filter(Boolean).map(l => JSON.parse(l));
-  const truncated = askedLimit != null && objs.length > askedLimit;
-  const kept = truncated ? objs.slice(0, askedLimit) : objs;
-
+export function rowsToQueryResult(rowObjects, body, askedLimit, totals = null) {
+  const truncated = askedLimit != null && rowObjects.length > askedLimit;
+  const kept = truncated ? rowObjects.slice(0, askedLimit) : rowObjects;
   const columns = kept.length
     ? Object.keys(kept[0]).filter(k => k !== ROW_COUNT_KEY)
     : expectedColumns(body);
   const rows = kept.map(o => columns.map(c => (o[c] ?? null)));
-
-  let totals = null;
-  const aggCols = new Set((body.aggregationConfig ?? []).map(a => a.column));
-  const dimensions = (body.fields ?? []).filter(f => !aggCols.has(f));
-  if (body.aggregationConfig?.length && dimensions.length === 0 && kept.length) {
-    totals = {};
-    for (const c of columns) totals[c] = kept[0][c];
-  }
   return { columns, rows, truncated, totals };
 }
 
-// ---------- runtime: REST translation proxy ----------
+const NON_TERMINAL_RUN_STATUS = new Set(['PENDING', 'RUNNING']);
+/** Keep polling the run only while it is still working. SUCCESS/FAILED/CANCELLED/… are terminal. */
+export function shouldKeepPolling(status) {
+  return NON_TERMINAL_RUN_STATUS.has(status);
+}
+
+// ---------- runtime: @owox/api-client translation proxy ----------
 
 import http from 'node:http';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { OWOXApiClient } from '@owox/api-client';
 
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const UPSTREAM = 'https://app.owox.com';
 const SHIM_PORT = 5300;
 const DEFAULT_LIMIT = 20;
+const TOTALS_POLL_TRIES = 6;
+const TOTALS_POLL_DELAY_MS = 1200;
 
-const QUERY_ROUTE = /^\/api\/data-marts\/([^/]+)\/query\/?$/;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/** Translate one compiled QueryRequest into an HTTP Data API call and map the reply back. */
-async function handleQuery(martId, body, reqHeaders, res) {
+/** The raw OWOX API key lives in the (gitignored) dev config; the client does its own exchange. */
+function readApiKey() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT, 'owox.dev.json'), 'utf8'))?.owox?.apiKey ?? null;
+  } catch { return null; }
+}
+
+let clientPromise = null;
+function getClient() {
+  if (!clientPromise) {
+    const apiKey = readApiKey();
+    if (!apiKey) return null;
+    const client = new OWOXApiClient({ apiKey });
+    clientPromise = client.authenticate().then(() => client);
+  }
+  return clientPromise;
+}
+
+/** The run's grand totals are a separate async DWH query, bridged via the run id; poll until ready. */
+async function fetchRunTotals(client, martId, runId) {
+  for (let i = 0; i < TOTALS_POLL_TRIES; i++) {
+    let run;
+    try { run = await client.getJson(`/api/data-marts/${encodeURIComponent(martId)}/runs/${encodeURIComponent(runId)}`); }
+    catch { return null; }
+    if (run?.totals) return run.totals;
+    if (!shouldKeepPolling(run?.status)) return null; // terminal without totals (e.g. no numeric field)
+    await sleep(TOTALS_POLL_DELAY_MS);
+  }
+  return null;
+}
+
+/** Translate one compiled QueryRequest into an api-client traversal and map the reply back. */
+async function handleQuery(martId, body, res) {
+  const client = await getClient();
+  if (!client) {
+    res.writeHead(500, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'dev shim: no owox.apiKey in owox.dev.json' }));
+  }
+
   const askedLimit = body.limit ?? DEFAULT_LIMIT;
-  const qs = buildHttpDataQuery(body, askedLimit + 1); // over-read by one to detect truncation
-  const url = `${UPSTREAM}/api/external/http-data/data-marts/${encodeURIComponent(martId)}.ndjson?${qs}`;
+  const traversal = await client.dataMarts.traverseData(martId, {
+    column: body.fields ?? [],
+    filter: body.filterConfig ?? undefined,
+    sort: body.sortConfig ?? undefined,
+    aggregation: body.aggregationConfig ?? undefined,
+    dateTrunc: body.dateTruncConfig ?? undefined,
+    limit: askedLimit + 1, // over-read by one to detect truncation, like the backend query service
+  });
 
-  // Reuse the auth the broker already attached; the endpoint streams NDJSON.
-  const headers = {};
-  for (const h of ['x-owox-authorization', 'authorization', 'x-owox-api-key-id', 'cookie']) {
-    if (reqHeaders[h]) headers[h] = reqHeaders[h];
-  }
-  const up = await fetch(url, { headers });
-  const text = await up.text();
-  if (!up.ok) {
-    console.error(`  ✗ http-data ${up.status}: ${text.slice(0, 200)}`);
-    res.writeHead(up.status, { 'content-type': 'application/json' });
-    return res.end(text || JSON.stringify({ error: 'http-data call failed' }));
+  const objs = [];
+  for await (const chunk of traversal.rowChunks()) objs.push(...chunk);
+
+  // Totals are only consumed by the scorecard (aggregation, no grouping). Fetch them via the run id
+  // for that case; skip the extra round-trip for grouped charts, which ignore totals.
+  let totals = null;
+  if (needsGrandTotal(body)) {
+    if (traversal.runId) totals = await fetchRunTotals(client, martId, traversal.runId);
+    if (!totals) totals = grandTotalFromRow(objs.slice(0, askedLimit), body); // fallback: single row is the total
   }
 
-  const result = ndjsonToQueryResult(text, body, askedLimit);
-  console.log(`  → ${result.rows.length} row(s), truncated=${result.truncated}${result.totals ? ', total' : ''}`);
+  const result = rowsToQueryResult(objs, body, askedLimit, totals);
+  console.log(`  → ${result.rows.length} row(s), truncated=${result.truncated}${totals ? ', totals' : ''}${traversal.runId ? ` (run ${traversal.runId.slice(0, 8)})` : ''}`);
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify(result));
 }
@@ -143,6 +184,8 @@ async function passThrough(req, res, bodyBuf) {
   res.end(buf);
 }
 
+const QUERY_ROUTE = /^\/api\/data-marts\/([^/]+)\/query\/?$/;
+
 function serve() {
   const server = http.createServer((req, res) => {
     const chunks = [];
@@ -160,11 +203,11 @@ function serve() {
 
       console.log(`query ${martId} fields=[${(body.fields ?? []).join(',')}] aggs=${body.aggregationConfig?.length ?? 0} sort=${body.sortConfig?.length ?? 0} limit=${body.limit ?? '-'}`);
       try {
-        await handleQuery(martId, body, req.headers, res);
+        await handleQuery(martId, body, res);
       } catch (e) {
         console.error(`  ✗ ${e.message}`);
         if (!res.headersSent) res.writeHead(502, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: 'shim → http-data call failed', detail: e.message }));
+        res.end(JSON.stringify({ error: 'shim → OWOX API call failed', detail: e.message }));
       }
     })().catch(e => {
       console.error(e);
@@ -174,10 +217,11 @@ function serve() {
   });
 
   server.listen(SHIM_PORT, '127.0.0.1', () => {
-    console.log(`\n  dev shim → ${UPSTREAM} (OWOX REST, API-key auth)`);
+    console.log(`\n  dev shim → ${UPSTREAM} (via @owox/api-client, API-key auth)`);
     console.log(`  listening on http://127.0.0.1:${SHIM_PORT}`);
-    console.log(`  POST /api/data-marts/:id/query  →  GET …/http-data/:id.ndjson (server-side aggregation + sort)`);
-    console.log(`  everything else                 →  proxied to ${UPSTREAM}\n`);
+    console.log(`  POST /api/data-marts/:id/query  →  traverseData + run totals (aggregation, sort, limit, dateTrunc, filter)`);
+    console.log(`  everything else                 →  proxied to ${UPSTREAM}`);
+    console.log(readApiKey() ? '  api key: present\n' : '  api key: MISSING — set owox.apiKey in owox.dev.json\n');
   });
 }
 
