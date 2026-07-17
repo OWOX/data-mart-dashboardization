@@ -30,7 +30,20 @@ export function DashboardList() {
       <div className="dm-page-content">
         <div className="dm-card">
           <div className="flex justify-end p-4">
-            <button className="rounded border px-3 py-1.5 text-sm" onClick={() => setCreating(true)}>
+            <button
+              type="button"
+              className="border-muted dark:border-muted/50 inline-flex cursor-pointer items-center gap-2 rounded-md border bg-white px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-white dark:bg-white/4 dark:hover:bg-white/8"
+              onClick={() => setCreating(true)}
+            >
+              {/* Plus glyph — matches the host's lucide `Plus` without pulling in the icon dep. */}
+              <svg
+                xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                className="h-4 w-4" aria-hidden="true"
+              >
+                <path d="M5 12h14" />
+                <path d="M12 5v14" />
+              </svg>
               New dashboard
             </button>
           </div>
