@@ -27,6 +27,18 @@ export default {
           DEFAULT: 'var(--primary)',
           foreground: 'var(--primary-foreground)',
         },
+        popover: {
+          DEFAULT: 'var(--popover)',
+          foreground: 'var(--popover-foreground)',
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          foreground: 'var(--accent-foreground)',
+        },
+        destructive: {
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)',
+        },
         chart: {
           1: 'var(--chart-1)',
           2: 'var(--chart-2)',

@@ -18,6 +18,12 @@
     --input: oklch(0.922 0 0);
     --primary: oklch(0.6179 0.2295 250.87);
     --primary-foreground: oklch(0.985 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.3346 0.0123 279.25);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.3346 0.0123 279.25);
+    --destructive: oklch(0.577 0.245 27.325);
+    --destructive-foreground: oklch(0.985 0 0);
     --ring: oklch(0.708 0 0);
     --radius: 0.625rem;
     --chart-1: oklch(0.646 0.222 41.116);
@@ -38,6 +44,12 @@
     --input: oklch(0.269 0 0);
     --primary: oklch(0.6179 0.2295 250.87);
     --primary-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --destructive-foreground: oklch(0.985 0 0);
     --ring: oklch(0.556 0 0);
     --chart-1: oklch(0.488 0.243 264.376);
     --chart-2: oklch(0.696 0.17 162.48);
@@ -93,12 +105,12 @@
 .dm-card {
   padding: 1rem;
   border-radius: 8px; /* host --radius (0.625rem) − 2px; NOT default rounded-md (6px) */
-  border-bottom: 1px solid #e5e7eb; /* gray-200; a single bottom border, not a full box */
-  background-color: color-mix(in oklch, oklch(0.97 0 0) 50%, transparent); /* ≈ muted/50 */
+  border: 1px solid var(--border); /* full box, matching the host's list cards */
+  background-color: var(--card); /* white surface (dark: elevated card) */
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
 .dark .dm-card {
-  border-bottom-color: rgba(255, 255, 255, 0.04);
-  background-color: rgba(255, 255, 255, 0.04);
+  box-shadow: none;
 }
 
 /* ── Dashboard grid + component card affordances (Task 12) ─────────────── */

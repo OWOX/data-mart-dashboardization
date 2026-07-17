@@ -93,6 +93,8 @@ describe('api', () => {
           { name: 'Date', type: 'DATE', aggregationRole: 'dimension', allowedAggregations: ['MIN', 'MAX'] },
           { name: 'Cost', type: 'FLOAT', aggregationRole: 'metric', allowedAggregations: ['SUM', 'AVG'] },
           { name: 'Src', type: 'STRING' },
+          // Hidden-for-reporting fields 400 on the HTTP Data endpoint, so they must be dropped.
+          { name: 'pk_id', type: 'INTEGER', isHiddenForReporting: true },
         ],
       },
     });

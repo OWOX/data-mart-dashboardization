@@ -68,27 +68,28 @@ describe('DashboardList', () => {
     expect(screen.queryByText('Author')).not.toBeInTheDocument();
   });
 
-  it('duplicates a dashboard via the row action and refreshes the list', async () => {
+  it('opens the row kebab and offers Edit and Delete', async () => {
     const dash = emptyDashboard('d1', 'm1', 'Sales');
     vi.spyOn(db, 'listDashboards').mockResolvedValue([dash]);
-    const dup = vi.spyOn(db, 'duplicateDashboard').mockResolvedValue({ ...dash, id: 'd2', name: 'Sales (copy)' });
 
     renderApp();
     await screen.findByText('Sales');
-    fireEvent.click(screen.getByRole('button', { name: /duplicate/i }));
+    fireEvent.click(screen.getByRole('button', { name: /actions/i }));
 
-    await waitFor(() => expect(dup).toHaveBeenCalledWith(dash));
-    await waitFor(() => expect(db.listDashboards).toHaveBeenCalledTimes(2));
+    // The menu is portaled to <body>; screen queries the whole document.
+    expect(screen.getByRole('menuitem', { name: /edit/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /delete/i })).toBeInTheDocument();
   });
 
-  it('deletes a dashboard via the row action and refreshes the list', async () => {
+  it('deletes a dashboard via the row kebab and refreshes the list', async () => {
     const dash = emptyDashboard('d1', 'm1', 'Sales');
     vi.spyOn(db, 'listDashboards').mockResolvedValue([dash]);
     const del = vi.spyOn(db, 'deleteDashboard').mockResolvedValue(undefined);
 
     renderApp();
     await screen.findByText('Sales');
-    fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    fireEvent.click(screen.getByRole('button', { name: /actions/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }));
 
     await waitFor(() => expect(del).toHaveBeenCalledWith('d1'));
     await waitFor(() => expect(db.listDashboards).toHaveBeenCalledTimes(2));

@@ -31,9 +31,12 @@ export async function listMarts(): Promise<MartRef[]> {
 
 export async function getMartFields(id: string): Promise<MartField[]> {
   const res = (await owox.request('GET', `/api/data-marts/${id}`)) as {
-    schema?: { fields?: Array<{ name: string; type: string; aggregationRole?: MartField['role']; allowedAggregations?: AggregateFunction[] }> };
+    schema?: { fields?: Array<{ name: string; type: string; aggregationRole?: MartField['role']; allowedAggregations?: AggregateFunction[]; isHiddenForReporting?: boolean }> };
   };
-  return (res.schema?.fields ?? []).map(f => {
+  // The HTTP Data (reporting) endpoint 400s on any column flagged isHiddenForReporting — e.g. a
+  // hidden primary key — so drop them here, at the one boundary fields enter the plugin, or the
+  // generator builds components on columns that can never be queried.
+  return (res.schema?.fields ?? []).filter(f => !f.isHiddenForReporting).map(f => {
     const d = defaultsFor(f.type);
     return {
       name: f.name,
