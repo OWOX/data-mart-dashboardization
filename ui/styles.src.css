@@ -24,6 +24,7 @@
     --accent-foreground: oklch(0.3346 0.0123 279.25);
     --destructive: oklch(0.577 0.245 27.325);
     --destructive-foreground: oklch(0.985 0 0);
+    --destructive-soft: oklch(0.955 0.025 25); /* ≈ red-50; danger-item hover (opacity modifiers don't compile on these vars) */
     --ring: oklch(0.708 0 0);
     --radius: 0.625rem;
     --chart-1: oklch(0.646 0.222 41.116);
@@ -50,6 +51,7 @@
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
     --destructive-foreground: oklch(0.985 0 0);
+    --destructive-soft: oklch(0.29 0.06 25); /* dark: subtle red wash behind the danger item */
     --ring: oklch(0.556 0 0);
     --chart-1: oklch(0.488 0.243 264.376);
     --chart-2: oklch(0.696 0.17 162.48);
@@ -107,10 +109,9 @@
   border-radius: 8px; /* host --radius (0.625rem) − 2px; NOT default rounded-md (6px) */
   border: 1px solid var(--border); /* full box, matching the host's list cards */
   background-color: var(--card); /* white surface (dark: elevated card) */
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-}
-.dark .dm-card {
-  box-shadow: none;
+  /* No box-shadow here: .dm-card is unlayered, so a shadow would outrank a `shadow-*` utility on
+     any element that also uses .dm-card (e.g. the AddComponentButton popover's shadow-lg). Elevation
+     is applied per-element with a utility instead. */
 }
 
 /* ── Dashboard grid + component card affordances (Task 12) ─────────────── */

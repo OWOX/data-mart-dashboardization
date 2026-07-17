@@ -56,7 +56,7 @@ export function DashboardList() {
               </thead>
               <tbody>
                 {items.map(d => (
-                  <tr key={d.id} className="border-b border-border last:border-0 hover:bg-accent/50">
+                  <tr key={d.id} className="border-b border-border last:border-0 hover:bg-accent">
                     <td className="px-4 py-2.5">
                       <Link to={`/d/${d.id}`} className="font-medium hover:underline">{d.name}</Link>
                     </td>

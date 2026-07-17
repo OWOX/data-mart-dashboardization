@@ -38,6 +38,7 @@ export default {
         destructive: {
           DEFAULT: 'var(--destructive)',
           foreground: 'var(--destructive-foreground)',
+          soft: 'var(--destructive-soft)',
         },
         chart: {
           1: 'var(--chart-1)',
