@@ -1,8 +1,8 @@
-// Translates a compiled QueryRequest into an OWOX HTTP Data API call and maps the NDJSON reply
-// back to a QueryResult. This is the ONE place that knows the wire shape of the deployed
-// `GET /api/external/http-data/data-marts/:id.ndjson` endpoint (aggregation, sort, filter,
-// dateTrunc, limit — all server-side), plus the run's grand-totals summary. Pure functions only;
-// the SDK call itself lives in api.ts. Kept separate so it can be unit-tested without the SDK.
+// Maps a data-mart run's NDJSON rows (as returned by the typed client's `traverseData(...).rows()`)
+// back to a QueryResult, plus the run's grand-totals summary. The query STRING is built by the SDK's
+// typed client now (owox.dataMarts.traverseData); this module is only the result-shaping half — pure
+// functions, no SDK — so it can be unit-tested in isolation. The output-column aliasing here still
+// mirrors the endpoint's `<column> | <TOKEN>` naming, since that is how rows/totals come keyed.
 import type { AggregateFunction, QueryRequest, QueryResult } from './types';
 
 /**
@@ -21,32 +21,6 @@ export function aggLabel(column: string, fn: AggregateFunction): string {
 }
 
 const ROW_COUNT_KEY = 'Row Count'; // grouping metadata the endpoint appends; not a plugin column
-
-function b64url(value: unknown): string {
-  // btoa over a JSON string, made URL-safe. Configs are ASCII JSON, so no unicode handling needed.
-  return btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-/**
- * QueryRequest -> the endpoint's query string. `overLimit` is the row cap actually sent: we
- * over-read by one (like the backend query service) so `rowsToQueryResult` can detect truncation.
- * The four config arrays are compile.ts output verbatim — the endpoint's domain schemas use the
- * same `column`/`function`/`unit`/`direction`/`operator` field names, so no renaming.
- */
-export function buildHttpDataQuery(body: QueryRequest, overLimit?: number): string {
-  const p = new URLSearchParams();
-  for (const f of body.fields ?? []) p.append('column', f);
-  if (body.filterConfig?.length) p.set('filter', b64url(body.filterConfig));
-  if (body.aggregationConfig?.length) p.set('aggregation', b64url(body.aggregationConfig));
-  if (body.dateTruncConfig?.length) p.set('dateTrunc', b64url(body.dateTruncConfig));
-  if (body.sortConfig?.length) p.set('sort', b64url(body.sortConfig));
-  if (overLimit != null) p.set('limit', String(overLimit));
-  return p.toString();
-}
-
-export function parseNdjson(text: string): Record<string, unknown>[] {
-  return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => JSON.parse(l) as Record<string, unknown>);
-}
 
 /** The output column names the plugin expects, in projection order — used when the result is empty. */
 export function expectedColumns(body: QueryRequest): string[] {

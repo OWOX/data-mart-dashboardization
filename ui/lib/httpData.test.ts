@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  aggLabel, buildHttpDataQuery, parseNdjson, expectedColumns,
+  aggLabel, expectedColumns,
   needsGrandTotal, grandTotalFromRow, rowsToQueryResult, shouldKeepPolling,
 } from './httpData';
-
-const decode = (v: string) => JSON.parse(atob(v.replace(/-/g, '+').replace(/_/g, '/')));
 
 describe('aggLabel', () => {
   it('matches the backend output-column naming', () => {
@@ -12,39 +10,6 @@ describe('aggLabel', () => {
     expect(aggLabel('user_id', 'COUNT_DISTINCT')).toBe('user_id | COUNTUNIQUE');
     expect(aggLabel('latency', 'P50')).toBe('latency | MEDIAN');
     expect(aggLabel('metrics.revenue', 'SUM')).toBe('metrics_revenue | SUM');
-  });
-});
-
-describe('buildHttpDataQuery', () => {
-  it('emits repeated columns, base64url configs, and the over-read limit', () => {
-    const p = new URLSearchParams(buildHttpDataQuery({
-      fields: ['channel', 'cost'],
-      aggregationConfig: [{ column: 'cost', function: 'SUM' }],
-      sortConfig: [{ column: 'cost', direction: 'desc' }],
-      filterConfig: [{ column: 'paid', operator: 'eq', value: true }],
-      dateTruncConfig: [{ column: 'ts', unit: 'MONTH', timeZone: 'UTC' }],
-      limit: 5,
-    }, 6));
-    expect(p.getAll('column')).toEqual(['channel', 'cost']);
-    expect(p.get('limit')).toBe('6');
-    expect(decode(p.get('aggregation')!)).toEqual([{ column: 'cost', function: 'SUM' }]);
-    expect(decode(p.get('sort')!)).toEqual([{ column: 'cost', direction: 'desc' }]);
-    expect(decode(p.get('filter')!)).toEqual([{ column: 'paid', operator: 'eq', value: true }]);
-    expect(decode(p.get('dateTrunc')!)).toEqual([{ column: 'ts', unit: 'MONTH', timeZone: 'UTC' }]);
-  });
-
-  it('omits empty configs and the limit when unset', () => {
-    const p = new URLSearchParams(buildHttpDataQuery({ fields: ['a'] }));
-    expect(p.getAll('column')).toEqual(['a']);
-    expect(p.has('aggregation')).toBe(false);
-    expect(p.has('limit')).toBe(false);
-  });
-});
-
-describe('parseNdjson', () => {
-  it('parses one JSON object per non-blank line', () => {
-    expect(parseNdjson('{"a":1}\n{"a":2}\n')).toEqual([{ a: 1 }, { a: 2 }]);
-    expect(parseNdjson('')).toEqual([]);
   });
 });
 

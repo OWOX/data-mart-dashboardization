@@ -84,15 +84,15 @@ const stub = (name: string) =>
     },
   ) as any;
 
-// Concrete (not a Proxy stub) so `vi.spyOn(sdk.owox, 'request')` works — a Proxy's `get` trap
-// fabricates a fresh function on every access, which spyOn can't intercept.
+// Concrete (not a Proxy stub) so `vi.spyOn(sdk.owox.dataMarts, 'list')` etc. work — a Proxy's `get`
+// trap fabricates a fresh function on every access, which spyOn can't intercept. Mirrors the real
+// SDK's typed client surface (owox.dataMarts / .storages / .destinations); plugin code uses these,
+// not the low-level request primitives (which stay only for parity with the real SDK export).
 export const owox = {
   request: async (method: string, path: string, body?: unknown): Promise<unknown> => {
     console.info('[owox dev mock] owox.request', method, path, body);
     return null;
   },
-  // Mirrors the real SDK: `{ headers, body }`, headers an allowlisted slice (today just
-  // `x-owox-run-id`, set by the HTTP Data stream so the caller can fetch that run's totals).
   requestWithHeaders: async (
     method: string,
     path: string,
@@ -101,6 +101,25 @@ export const owox = {
     console.info('[owox dev mock] owox.requestWithHeaders', method, path, body);
     return { headers: {}, body: null };
   },
+  dataMarts: {
+    list: async (): Promise<any[]> => { console.info('[owox dev mock] dataMarts.list'); return []; },
+    getById: async (id: string): Promise<any> => { console.info('[owox dev mock] dataMarts.getById', id); return {}; },
+    // Returns the traversal shape the plugin reads (`runId`, `rows()`); dev mode yields no rows.
+    // The opts type mirrors the real SDK's TraverseDataOptions (this mock is the plugin's typecheck source).
+    traverseData: async (
+      id: string,
+      opts?: { columns?: '*' | '**'; column?: string[]; aggregation?: unknown[] | null; dateTrunc?: unknown[] | null; filter?: unknown[] | null; sort?: unknown[] | null; limit?: number },
+    ): Promise<{ runId: string | undefined; rows: () => Promise<any[]> }> => {
+      console.info('[owox dev mock] dataMarts.traverseData', id, opts);
+      return { runId: undefined, rows: async () => [] };
+    },
+    getRun: async (id: string, runId: string): Promise<{ status: string; totals: any }> => {
+      console.info('[owox dev mock] dataMarts.getRun', id, runId);
+      return { status: 'UNKNOWN', totals: null };
+    },
+  },
+  storages: { list: async (): Promise<any[]> => { console.info('[owox dev mock] storages.list'); return []; } },
+  destinations: { list: async (): Promise<any[]> => { console.info('[owox dev mock] destinations.list'); return []; } },
 };
 // `ai` returns the real capability's shape ({ text, model, raw }) so UI that reads reply.text works
 // in mock mode too. Use `npm run dev:broker` for a real model reply.

@@ -1,15 +1,8 @@
 import { owox } from '@owox/plugin-sdk';
 import type { AggregateFunction, MartField, MartRef, QueryRequest, QueryResult } from './types';
 import {
-  buildHttpDataQuery, parseNdjson, rowsToQueryResult, needsGrandTotal, grandTotalFromRow, shouldKeepPolling,
+  rowsToQueryResult, needsGrandTotal, grandTotalFromRow, shouldKeepPolling,
 } from './httpData';
-
-/** List routes wrap their array in different envelopes depending on the route; accept them all. */
-function toArray<T>(res: unknown): T[] {
-  const r = res as { items?: T[]; data?: T[]; rows?: T[] } | T[] | null | undefined;
-  if (Array.isArray(r)) return r;
-  return r?.items ?? r?.data ?? r?.rows ?? [];
-}
 
 const NUMERIC = /^(INT|FLOAT|NUMERIC|BIGNUMERIC|DECIMAL|DOUBLE|LONG)/i;
 const TEMPORAL = /^(DATE|DATETIME|TIMESTAMP|TIME)$/i;
@@ -23,20 +16,20 @@ function defaultsFor(type: string): { role: MartField['role']; allowedAggregatio
 
 /** Marts a dashboard may be built on. The broker has already filtered to what the user can see. */
 export async function listMarts(): Promise<MartRef[]> {
-  const res = await owox.request('GET', '/api/data-marts');
-  return toArray<{ id: string; title?: string; status?: string; availableForReporting?: boolean }>(res)
+  const marts = await owox.dataMarts.list();
+  return marts
     .filter(m => m.status === 'PUBLISHED' && m.availableForReporting)
-    .map(m => ({ id: m.id, title: m.title ?? m.id }));
+    .map(m => ({ id: String(m.id), title: m.title ?? String(m.id) }));
 }
 
 export async function getMartFields(id: string): Promise<MartField[]> {
-  const res = (await owox.request('GET', `/api/data-marts/${id}`)) as {
+  const mart = (await owox.dataMarts.getById(id)) as {
     schema?: { fields?: Array<{ name: string; type: string; aggregationRole?: MartField['role']; allowedAggregations?: AggregateFunction[]; isHiddenForReporting?: boolean }> };
   };
   // The HTTP Data (reporting) endpoint 400s on any column flagged isHiddenForReporting — e.g. a
   // hidden primary key — so drop them here, at the one boundary fields enter the plugin, or the
   // generator builds components on columns that can never be queried.
-  return (res.schema?.fields ?? []).filter(f => !f.isHiddenForReporting).map(f => {
+  return (mart.schema?.fields ?? []).filter(f => !f.isHiddenForReporting).map(f => {
     const d = defaultsFor(f.type);
     return {
       name: f.name,
@@ -52,42 +45,47 @@ const TOTALS_POLL_TRIES = 6;
 const TOTALS_POLL_DELAY_MS = 1200;
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+/** Drop empty arrays so traverseData omits the param entirely (an empty `aggregation=` etc. is invalid). */
+const nonEmpty = <T>(a: T[] | null | undefined): T[] | undefined => (a && a.length ? a : undefined);
+
 /**
- * The run's grand totals are a SEPARATE async DWH query, bridged via the `x-owox-run-id` header
- * the stream returns. Poll the run until it carries totals or reaches a terminal status. Best
- * effort — a scorecard falls back to its single streamed row if this yields nothing.
+ * The run's grand totals are a SEPARATE async DWH query, bridged via the run's `x-owox-run-id`
+ * (`traverseData(...).runId`). Poll the run until it carries totals or reaches a terminal status.
+ * Best effort — a scorecard falls back to its single streamed row if this yields nothing.
  */
 async function fetchRunTotals(id: string, runId: string): Promise<QueryResult['totals']> {
   for (let i = 0; i < TOTALS_POLL_TRIES; i++) {
-    let run: { status?: unknown; totals?: QueryResult['totals'] };
-    try { run = (await owox.request('GET', `/api/data-marts/${id}/runs/${runId}`)) as typeof run; }
+    let run: { status: string; totals: QueryResult['totals'] };
+    try { run = await owox.dataMarts.getRun(id, runId); }
     catch { return null; }
-    if (run?.totals) return run.totals;
-    if (!shouldKeepPolling(run?.status)) return null;
+    if (run.totals) return run.totals;
+    if (!shouldKeepPolling(run.status)) return null;
     await sleep(TOTALS_POLL_DELAY_MS);
   }
   return null;
 }
 
 /**
- * The ONE data call. Aggregation is entirely server-side via the OWOX HTTP Data API: a projected
- * field WITH an aggregation rule is a metric, one WITHOUT is a grouping key; `sort` and `limit`
- * are applied by the server (ORDER BY before LIMIT). For a scorecard (aggregation, no grouping)
- * we also fetch the run's grand totals via `x-owox-run-id` — that is what the scorecard reads.
+ * The ONE data call, via the typed client's `traverseData`. Aggregation is entirely server-side:
+ * a projected field WITH an aggregation rule is a metric, one WITHOUT is a grouping key; `sort` and
+ * `limit` are applied by the server (ORDER BY before LIMIT). For a scorecard (aggregation, no
+ * grouping) we also fetch the run's grand totals via `.runId` — that is what the scorecard reads.
  */
 export async function queryDataMart(id: string, body: QueryRequest): Promise<QueryResult> {
   const askedLimit = body.limit ?? DEFAULT_LIMIT;
-  const qs = buildHttpDataQuery(body, askedLimit + 1); // over-read by one to detect truncation
-  const { headers, body: raw } = await owox.requestWithHeaders(
-    'GET',
-    `/api/external/http-data/data-marts/${id}.ndjson?${qs}`,
-  );
-  const objs = parseNdjson(typeof raw === 'string' ? raw : '');
+  const traversal = await owox.dataMarts.traverseData(id, {
+    column: body.fields,
+    aggregation: nonEmpty(body.aggregationConfig),
+    dateTrunc: nonEmpty(body.dateTruncConfig),
+    filter: nonEmpty(body.filterConfig),
+    sort: nonEmpty(body.sortConfig),
+    limit: askedLimit + 1, // over-read by one to detect truncation
+  });
+  const objs = await traversal.rows();
 
   let totals: QueryResult['totals'] = null;
   if (needsGrandTotal(body)) {
-    const runId = headers['x-owox-run-id'];
-    if (runId) totals = await fetchRunTotals(id, runId);
+    if (traversal.runId) totals = await fetchRunTotals(id, traversal.runId);
     if (!totals) totals = grandTotalFromRow(objs.slice(0, askedLimit), body);
   }
   return rowsToQueryResult(objs, body, askedLimit, totals);

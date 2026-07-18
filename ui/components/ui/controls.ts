@@ -11,6 +11,11 @@ const BTN_BASE =
 /** Outline / secondary button — the default CTA (matches the host's "New …" buttons). */
 export const BTN = `${BTN_BASE} border border-muted bg-card text-foreground hover:bg-accent hover:text-accent-foreground`;
 
+/** Text input (search, forms) — mirrors the host's INPUT. */
+export const INPUT =
+  `h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm ` +
+  `transition-[color,box-shadow] placeholder:text-muted-foreground ${FOCUS}`;
+
 /** Square ghost icon button — the kebab trigger. */
 export const ICON_BTN =
   `inline-flex size-8 items-center justify-center rounded-md text-muted-foreground cursor-pointer ` +
