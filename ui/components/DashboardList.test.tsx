@@ -68,7 +68,7 @@ describe('DashboardList', () => {
     expect(screen.queryByText('Author')).not.toBeInTheDocument();
   });
 
-  it('opens the row kebab and offers Edit and Delete', async () => {
+  it('opens the row kebab and offers Edit, Duplicate and Delete', async () => {
     const dash = emptyDashboard('d1', 'm1', 'Sales');
     vi.spyOn(db, 'listDashboards').mockResolvedValue([dash]);
 
@@ -78,7 +78,22 @@ describe('DashboardList', () => {
 
     // The menu is portaled to <body>; screen queries the whole document.
     expect(screen.getByRole('menuitem', { name: /edit/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /duplicate/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /delete/i })).toBeInTheDocument();
+  });
+
+  it('duplicates a dashboard via the row kebab and refreshes the list', async () => {
+    const dash = emptyDashboard('d1', 'm1', 'Sales');
+    vi.spyOn(db, 'listDashboards').mockResolvedValue([dash]);
+    const dup = vi.spyOn(db, 'duplicateDashboard').mockResolvedValue({ ...dash, id: 'd2', name: 'Sales (copy)' });
+
+    renderApp();
+    await screen.findByText('Sales');
+    fireEvent.click(screen.getByRole('button', { name: /actions/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /duplicate/i }));
+
+    await waitFor(() => expect(dup).toHaveBeenCalledWith(dash));
+    await waitFor(() => expect(db.listDashboards).toHaveBeenCalledTimes(2));
   });
 
   it('deletes a dashboard via the row kebab and refreshes the list', async () => {
