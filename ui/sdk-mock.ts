@@ -113,9 +113,11 @@ export const owox = {
       console.info('[owox dev mock] dataMarts.traverseData', id, opts);
       return { runId: undefined, rows: async () => [] };
     },
-    getRun: async (id: string, runId: string): Promise<{ status: string; totals: any }> => {
+    // Mirrors the real client's OWOXDataMartRun: { status, totals, sql }. `totals` is the scorecard
+    // number (grand-totals over the full filtered set); `sql` is the run's executed statement (best-effort).
+    getRun: async (id: string, runId: string): Promise<{ status: string; totals: any; sql: string | null }> => {
       console.info('[owox dev mock] dataMarts.getRun', id, runId);
-      return { status: 'UNKNOWN', totals: null };
+      return { status: 'UNKNOWN', totals: null, sql: null };
     },
   },
   storages: { list: async (): Promise<any[]> => { console.info('[owox dev mock] storages.list'); return []; } },

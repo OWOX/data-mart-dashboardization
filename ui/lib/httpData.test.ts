@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   aggLabel, expectedColumns,
-  needsGrandTotal, grandTotalFromRow, rowsToQueryResult, shouldKeepPolling,
+  needsGrandTotal, rowsToQueryResult, shouldKeepPolling,
 } from './httpData';
 
 describe('aggLabel', () => {
@@ -13,7 +13,7 @@ describe('aggLabel', () => {
   });
 });
 
-describe('expectedColumns / needsGrandTotal / grandTotalFromRow', () => {
+describe('expectedColumns / needsGrandTotal', () => {
   const scorecard = { fields: ['revenue'], aggregationConfig: [{ column: 'revenue', function: 'SUM' as const }] };
   const grouped = { fields: ['channel', 'revenue'], aggregationConfig: [{ column: 'revenue', function: 'SUM' as const }] };
 
@@ -24,10 +24,6 @@ describe('expectedColumns / needsGrandTotal / grandTotalFromRow', () => {
     expect(needsGrandTotal(scorecard)).toBe(true);
     expect(needsGrandTotal(grouped)).toBe(false);
     expect(needsGrandTotal({ fields: ['a'] })).toBe(false);
-  });
-  it('uses the single no-grouping row as the total, dropping Row Count', () => {
-    expect(grandTotalFromRow([{ 'revenue | SUM': 1575.93, 'Row Count': 10 }], scorecard)).toEqual({ 'revenue | SUM': 1575.93 });
-    expect(grandTotalFromRow([{ channel: 'x', 'revenue | SUM': 5 }], grouped)).toBeNull();
   });
 });
 

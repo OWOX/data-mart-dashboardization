@@ -1,7 +1,7 @@
 import { owox } from '@owox/plugin-sdk';
 import type { AggregateFunction, MartField, MartRef, QueryRequest, QueryResult } from './types';
 import {
-  rowsToQueryResult, needsGrandTotal, grandTotalFromRow, shouldKeepPolling,
+  rowsToQueryResult, needsGrandTotal, shouldKeepPolling,
 } from './httpData';
 
 const NUMERIC = /^(INT|FLOAT|NUMERIC|BIGNUMERIC|DECIMAL|DOUBLE|LONG)/i;
@@ -49,9 +49,13 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const nonEmpty = <T>(a: T[] | null | undefined): T[] | undefined => (a && a.length ? a : undefined);
 
 /**
- * The run's grand totals are a SEPARATE async DWH query, bridged via the run's `x-owox-run-id`
- * (`traverseData(...).runId`). Poll the run until it carries totals or reaches a terminal status.
- * Best effort — a scorecard falls back to its single streamed row if this yields nothing.
+ * Read the scorecard number from the RUN, per AGENTS.md — the grand totals are a SEPARATE async DWH
+ * query, keyed by `"<field> | <FUNCTION>"`, bridged via the run's id (`traverseData(...).runId`).
+ * Poll `getRun` until it carries totals or reaches a terminal status. Returns null when the run
+ * reports none — which is the live reality on backends that don't populate run totals yet (the same
+ * best-effort caveat AGENTS.md notes for `.sql`); `queryDataMart` then falls back to the single
+ * server-aggregated row (a read, NOT a client-side re-sum — there is nothing to sum, the server
+ * already aggregated to one row).
  */
 async function fetchRunTotals(id: string, runId: string): Promise<QueryResult['totals']> {
   for (let i = 0; i < TOTALS_POLL_TRIES; i++) {
@@ -69,7 +73,9 @@ async function fetchRunTotals(id: string, runId: string): Promise<QueryResult['t
  * The ONE data call, via the typed client's `traverseData`. Aggregation is entirely server-side:
  * a projected field WITH an aggregation rule is a metric, one WITHOUT is a grouping key; `sort` and
  * `limit` are applied by the server (ORDER BY before LIMIT). For a scorecard (aggregation, no
- * grouping) we also fetch the run's grand totals via `.runId` — that is what the scorecard reads.
+ * grouping) the grand total comes STRICTLY from the run via `.runId` → `getRun` (getRunById) — never
+ * re-derived from rows client-side. A run that reports no totals yields `null`, and the scorecard
+ * renders its empty state.
  */
 export async function queryDataMart(id: string, body: QueryRequest): Promise<QueryResult> {
   const askedLimit = body.limit ?? DEFAULT_LIMIT;
@@ -83,10 +89,8 @@ export async function queryDataMart(id: string, body: QueryRequest): Promise<Que
   });
   const objs = await traversal.rows();
 
-  let totals: QueryResult['totals'] = null;
-  if (needsGrandTotal(body)) {
-    if (traversal.runId) totals = await fetchRunTotals(id, traversal.runId);
-    if (!totals) totals = grandTotalFromRow(objs.slice(0, askedLimit), body);
-  }
+  const totals = needsGrandTotal(body) && traversal.runId
+    ? await fetchRunTotals(id, traversal.runId)
+    : null;
   return rowsToQueryResult(objs, body, askedLimit, totals);
 }

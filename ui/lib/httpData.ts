@@ -28,21 +28,14 @@ export function expectedColumns(body: QueryRequest): string[] {
   return (body.fields ?? []).map(f => (agg.has(f) ? aggLabel(f, agg.get(f)!) : f));
 }
 
-/** A scorecard compiles to an aggregation with no grouping dimension; only then does it read totals. */
+/**
+ * A scorecard compiles to an aggregation with no grouping dimension; only then does the caller read
+ * totals — which come STRICTLY from the run (getRunById), never re-derived from the streamed rows.
+ */
 export function needsGrandTotal(body: QueryRequest): boolean {
   if (!body.aggregationConfig?.length) return false;
   const aggCols = new Set(body.aggregationConfig.map(a => a.column));
   return (body.fields ?? []).every(f => aggCols.has(f));
-}
-
-/** Fallback grand total: a no-grouping aggregate stream returns a single row that IS the total. */
-export function grandTotalFromRow(rowObjects: Record<string, unknown>[], body: QueryRequest): QueryResult['totals'] {
-  if (!needsGrandTotal(body) || !rowObjects.length) return null;
-  const totals: Record<string, number | string | boolean | null> = {};
-  for (const [k, v] of Object.entries(rowObjects[0])) {
-    if (k !== ROW_COUNT_KEY) totals[k] = v as number | string | boolean | null;
-  }
-  return totals;
 }
 
 /** NDJSON row objects -> QueryResult. Over-read by one, so more rows than `askedLimit` => truncated. */

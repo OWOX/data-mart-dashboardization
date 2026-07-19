@@ -43,7 +43,7 @@ describe('api', () => {
       runId: 'run-9',
       rows: async () => [{ 'cost | SUM': 42, 'Row Count': 3 }],
     } as any);
-    const runSpy = vi.spyOn(owox.dataMarts, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: { 'cost | SUM': 42, 'cost | AVG': 14 } });
+    const runSpy = vi.spyOn(owox.dataMarts, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: { 'cost | SUM': 42, 'cost | AVG': 14 }, sql: null });
 
     const out = await queryDataMart('dm1', {
       fields: ['cost'],
@@ -55,12 +55,14 @@ describe('api', () => {
     expect(out.totals).toEqual({ 'cost | SUM': 42, 'cost | AVG': 14 });
   });
 
-  it('queryDataMart falls back to the single streamed row when the run yields no totals', async () => {
+  it('queryDataMart returns null totals when the run reports none — no client-side fallback', async () => {
+    // Strict getRunById-only: even though the streamed row carries the aggregate, totals come ONLY
+    // from the run. A run with null totals ⇒ null totals (scorecard shows its empty state).
     vi.spyOn(owox.dataMarts, 'traverseData').mockResolvedValue({
       runId: 'run-9',
       rows: async () => [{ 'cost | SUM': 42, 'Row Count': 3 }],
     } as any);
-    vi.spyOn(owox.dataMarts, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: null });
+    vi.spyOn(owox.dataMarts, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: null, sql: null });
 
     const out = await queryDataMart('dm1', {
       fields: ['cost'],
@@ -68,7 +70,7 @@ describe('api', () => {
       limit: 1,
     });
 
-    expect(out.totals).toEqual({ 'cost | SUM': 42 });
+    expect(out.totals).toBeNull();
   });
 
   it('listMarts keeps only published, reportable marts', async () => {
