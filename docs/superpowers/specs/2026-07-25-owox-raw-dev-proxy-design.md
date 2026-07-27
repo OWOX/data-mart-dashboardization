@@ -21,14 +21,16 @@ We need a temporary bridge so the plugin can keep working — chiefly **streamin
 - ❌ A synthetic key with a **path-bearing** `apiOrigin` (`…/host/owox-raw`) is rejected — api-client's
   `parseApiOrigin` requires a bare origin (`pathname === '/'`). So the plugin uses a **bare placeholder
   origin** + a custom `fetchImpl` that rewrites each request to the same-origin proxy mount.
-- ✅ `@owox/api-client` (built from current source, **v0.29.0**, incl. `#1420 "stream aggregations and
-  date buckets"`) encodes `aggregation`/`dateTrunc`; an aggregated `traverseData` returns aggregated
-  rows (`{"country | COUNTUNIQUE":18}`) through the proxy. **No query-injection workaround needed.**
+- ✅ `@owox/api-client` encodes `aggregation`/`dateTrunc` (`#1420 "stream aggregations and date
+  buckets"`); an aggregated `traverseData` returns aggregated rows (`{"country | COUNTUNIQUE":18}`)
+  through the proxy. **No query-injection workaround needed.** NOTE: the feasibility test built from
+  current source (labeled v0.29.0), but the PUBLISHED npm package only carries `aggregation`/`dateTrunc`
+  in its types from **0.30.0** onward — so the real floor is **≥ 0.30.0** (the plugin pins `^0.30.1`).
 - ✅ The `IN` operator is honored server-side (`filter:[{column, operator:'in', value:[…]}]` returned
   exactly the listed values). The plugin's `types.ts` note *"`in`/`not_in` are REJECTED"* is **stale**.
 - ✅ Gap methods (`getById` schema, `getRun` totals) work as plain fetches through the same proxy.
-- **Consequence:** the api-client build MUST be ≥ 0.29.0 (the vendored `dist` was stale and dropped
-  `aggregation` silently). The plan pins/builds a current one.
+- **Consequence:** the api-client build MUST be **≥ 0.30.0** (published 0.29.x lacks `aggregation`
+  types; the vendored `dist` was also stale). The plugin pins `^0.30.1`.
 
 ## Decision summary
 
@@ -83,8 +85,10 @@ SPA), with three differences:
 3. **No grant check, no PII strip** — the deliberate, temporary exposure. Any caller reaching the
    route gets the active dev project's full access.
 
-Everything else mirrors `owox-proxy.ts`: resolve active project, mint token, pipe upstream **status +
-headers (including `x-owox-run-id`) + body** straight through (streaming NDJSON untouched). Reuses the
+Everything else mirrors `owox-proxy.ts`: resolve active project, mint token, forward upstream **status +
+headers (including `x-owox-run-id`) + body**. It reuses `callOwoxApiRaw`, which BUFFERS the body
+(`res.text()`) rather than piping bytes — fine for a dev tool at these data sizes, not true streaming.
+A null/empty upstream body is forwarded as an empty response (never the literal `"null"`). Reuses the
 host's existing OWOX request plumbing (token mint + `http(s).request` pipe); it does **not** import
 `@owox/api-client` — a path proxy cannot use api-client's method-based API, and the host plumbing
 already does exactly this. (This is the one deviation from the literal "wrapper over api-client":
@@ -93,9 +97,9 @@ api-client runs in the *plugin*, not the host.)
 ## Component 2 — Plugin: `rawClient.ts`
 
 **File:** `ui/lib/rawClient.ts` (in `data-mart-dashboardization`).
-**Dependency:** add `@owox/api-client` (**≥ 0.29.0**) to the plugin (deliberate & temporary — overrides
-the AGENTS.md "do not import `@owox/api-client`" rule for the duration of this workaround). The version
-floor matters: builds before #1420 silently drop `aggregation`/`dateTrunc` and return raw rows.
+**Dependency:** add `@owox/api-client` (**≥ 0.30.0**, plugin pins `^0.30.1`) — deliberate & temporary,
+overrides the AGENTS.md "do not import `@owox/api-client`" rule for this workaround. The floor matters:
+published builds before 0.30.0 lack `aggregation`/`dateTrunc` in `TraverseDataOptions` and return raw rows.
 
 Exposes an object **shaped exactly like the SDK's `owox.dataMarts`** — `list`, `getById`,
 `traverseData`, `getRun` — so `api.ts` swaps its data source with a single import change and everything
@@ -106,8 +110,8 @@ downstream (`httpData.ts`, `sdk-mock.ts`, tests) is untouched.
   **`fetchImpl` that is a pure origin-rewriter**: it takes api-client's would-be URL and refetches
   `location.origin + '/host/owox-raw' + pathname + search`, same-origin. Stateless → concurrency-safe.
 - `traverseData(id, opts)` → `client.dataMarts.traverseData(id, opts)` passing the **full** options
-  (`column/aggregation/dateTrunc/filter/sort/limit`) verbatim; api-client v0.29.0 encodes them all
-  (verified). Returns api-client's own `DataMartDataTraversal` (`runId`, `rows()`, `rowChunks()`) — the
+  (`column/aggregation/dateTrunc/filter/sort/limit`) verbatim; api-client ≥0.30.0 encodes them all
+  (verified). Returns api-client's own `DataMartDataTraversal` (`runId`, `rowChunks()`) — the
   shape `api.ts` already consumes. No manual query building, no `getStream`, no injection.
 - `list()` / `getById(id)` / `getRun(id, runId)` → plain `fetch('/host/owox-raw/api/…')` and parse
   JSON (the coverage gaps api-client doesn't provide). `getRun` reads the top-level `totals`

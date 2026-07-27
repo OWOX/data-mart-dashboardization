@@ -544,3 +544,11 @@ git commit -m "docs(types): IN/NOT_IN are supported by the HTTP Data service (ve
 **Placeholders:** none — every step has runnable commands or complete code.
 
 **Type consistency:** `rawClient` methods (`list`/`getById`/`traverseData`/`getRun`) match across Task 3 (definition), Task 4 (consumption), and the existing `api.ts` call sites. `traverseData` returns `{ runId, rows() }` (Task 3) which `api.ts` consumes as `traversal.runId` + `traversal.rows()` (unchanged). `getRun` returns `{ status, totals, sql }` matching `fetchRunTotals`'s existing usage. `owoxRawRouter(deps)` signature is identical in Task 1 (produce) and Task 2 (consume).
+
+---
+
+## Post-implementation corrections (2026-07-26)
+
+- **api-client version floor is ≥ 0.30.0, not 0.29.0.** The published npm `@owox/api-client@0.29.x` lacks `aggregation`/`dateTrunc` in `TraverseDataOptions` (they land in 0.30.0). The feasibility test had built 0.29.0 from source, which was ahead of npm. Task 3 pinned `^0.30.1` (published latest); ignore the `^0.29.0` in Task 3/5 above.
+- **owox-raw buffers, not streams.** It reuses `callOwoxApiRaw` (`res.text()`), so the body is buffered — fine for a dev tool, not true streaming as §2 loosely implied.
+- **Empty-result fix (final review).** `owox-raw` originally sent `JSON.stringify(null)` = `"null"` for an empty upstream body, which the plugin parsed into a `[null]` row and crashed on `Object.keys(null)`. Fixed to forward a null/empty body as an empty response, with a regression test (commit `1ee42cf`).
