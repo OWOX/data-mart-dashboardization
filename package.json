@@ -33,6 +33,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
+    "@owox/api-client": "^0.30.1",
     "clsx": "^2.1.0",
     "recharts": "^2.13.0",
     "tailwind-merge": "^2.5.0"
