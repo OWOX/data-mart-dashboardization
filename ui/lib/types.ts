@@ -11,7 +11,7 @@ export type AggregationRule = { column: string; function: AggregateFunction };
 export type DateTruncRule = { column: string; unit: DateTruncUnit; timeZone?: string };
 export type SortRule = { column: string; direction: 'asc' | 'desc' };
 
-/** `in`/`not_in`/`this_week` are REJECTED by the service — never emit them. */
+/** `in`/`not_in` ARE supported by the HTTP Data service (verified 2026-07-26). `this_week` is not — never emit it. */
 export type FilterRule = {
   column: string;
   operator: string;
