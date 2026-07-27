@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { owox } from '@owox/plugin-sdk';
+import { rawClient } from './rawClient';
 import { generate, probeCardinality, PIE_MAX_CATEGORIES } from './generate';
 import { aggLabel } from './compile';
 import type { BarConfig, MartField, PieConfig, ScorecardConfig, TimeSeriesConfig } from './types';
@@ -219,10 +219,10 @@ describe('probeCardinality', () => {
   const distinctTotals = (col: string, n: number) => ({ [aggLabel(col, 'COUNT_DISTINCT')]: n });
   const traversal = () => ({ runId: 'run-1', rows: async () => [] }) as any;
   const mockRunTotals = (totals: Record<string, unknown> | null) =>
-    vi.spyOn(owox.dataMarts, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: totals as any, sql: null });
+    vi.spyOn(rawClient, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: totals as any, sql: null });
 
   it('asks the SERVER for the distinct count via an aggregated COUNT_DISTINCT read (no raw-row probing)', async () => {
-    const spy = vi.spyOn(owox.dataMarts, 'traverseData').mockResolvedValue(traversal());
+    const spy = vi.spyOn(rawClient, 'traverseData').mockResolvedValue(traversal());
     mockRunTotals(distinctTotals('Source', 2));
     await probeCardinality('m1', [dims[0]]);
     expect(spy).toHaveBeenCalledOnce();
@@ -233,7 +233,7 @@ describe('probeCardinality', () => {
   });
 
   it('reads the distinct count from the run totals, keyed by aggLabel — never from rows.length', async () => {
-    vi.spyOn(owox.dataMarts, 'traverseData').mockResolvedValue(traversal());
+    vi.spyOn(rawClient, 'traverseData').mockResolvedValue(traversal());
     mockRunTotals(distinctTotals('Source', 4));
     const out = await probeCardinality('m1', [dims[0]]);
     expect(out.Source).toBe(4);
@@ -242,7 +242,7 @@ describe('probeCardinality', () => {
   it('reports a genuinely low cardinality even when the mart has far more than PIE_MAX_CATEGORIES total rows', async () => {
     // The old (buggy) probe counted raw rows and would misclassify this as high-cardinality.
     // A COUNT_DISTINCT read is immune to total row count.
-    vi.spyOn(owox.dataMarts, 'traverseData').mockResolvedValue(traversal());
+    vi.spyOn(rawClient, 'traverseData').mockResolvedValue(traversal());
     mockRunTotals(distinctTotals('Campaign', 2));
     const out = await probeCardinality('m1', [dims[1]]);
     expect(out.Campaign).toBe(2);
@@ -250,34 +250,34 @@ describe('probeCardinality', () => {
   });
 
   it('reports Infinity when the run totals miss the COUNT_DISTINCT key (unexpected server shape)', async () => {
-    vi.spyOn(owox.dataMarts, 'traverseData').mockResolvedValue(traversal());
+    vi.spyOn(rawClient, 'traverseData').mockResolvedValue(traversal());
     mockRunTotals({ other: 1 });
     const out = await probeCardinality('m1', [dims[0]]);
     expect(out.Source).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('reports Infinity when the run reports no totals at all (strict getRunById-only)', async () => {
-    vi.spyOn(owox.dataMarts, 'traverseData').mockResolvedValue(traversal());
+    vi.spyOn(rawClient, 'traverseData').mockResolvedValue(traversal());
     mockRunTotals(null);
     const out = await probeCardinality('m1', [dims[0]]);
     expect(out.Source).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('reports Infinity (prefers a bar over a wrong pie) when the query fails', async () => {
-    vi.spyOn(owox.dataMarts, 'traverseData').mockRejectedValue(new Error('boom'));
+    vi.spyOn(rawClient, 'traverseData').mockRejectedValue(new Error('boom'));
     const out = await probeCardinality('m1', [dims[0]]);
     expect(out.Source).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('probes every requested dimension independently, one query each', async () => {
-    const spy = vi.spyOn(owox.dataMarts, 'traverseData').mockResolvedValue(traversal());
+    const spy = vi.spyOn(rawClient, 'traverseData').mockResolvedValue(traversal());
     mockRunTotals(null);
     await probeCardinality('m1', dims);
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it('returns an empty map for an empty dimension list without calling the server', async () => {
-    const spy = vi.spyOn(owox.dataMarts, 'traverseData');
+    const spy = vi.spyOn(rawClient, 'traverseData');
     const out = await probeCardinality('m1', []);
     expect(out).toEqual({});
     expect(spy).not.toHaveBeenCalled();
@@ -285,7 +285,7 @@ describe('probeCardinality', () => {
 
   it('never sends COUNT_DISTINCT for a dimension whose allowedAggregations forbids it; treats it as high-cardinality (bar, not pie)', async () => {
     const noDistinct: MartField = { name: 'Raw', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT'] };
-    const spy = vi.spyOn(owox.dataMarts, 'traverseData');
+    const spy = vi.spyOn(rawClient, 'traverseData');
     const out = await probeCardinality('m1', [noDistinct]);
     expect(spy).not.toHaveBeenCalled();
     expect(out.Raw).toBe(Number.POSITIVE_INFINITY);
@@ -294,7 +294,7 @@ describe('probeCardinality', () => {
   it('probes every dimension concurrently, not sequentially', async () => {
     let inFlight = 0;
     let maxInFlight = 0;
-    vi.spyOn(owox.dataMarts, 'traverseData').mockImplementation(async () => {
+    vi.spyOn(rawClient, 'traverseData').mockImplementation(async () => {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
       await new Promise(r => setTimeout(r, 5));
