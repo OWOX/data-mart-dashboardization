@@ -1,6 +1,6 @@
 # owox-raw dev proxy — design
 
-**Date:** 2026-07-25
+**Date:** 2026-07-25 (feasibility-verified 2026-07-26)
 **Status:** approved, ready for planning
 **Scope:** temporary workaround, dev broker only
 
@@ -15,6 +15,20 @@ but its coverage is incomplete — `DataMartsApi` has only `list()` and `travers
 
 We need a temporary bridge so the plugin can keep working — chiefly **streaming Data Mart rows**
 (https://docs.owox.com/docs/api/api-client/#stream-data-mart-rows) — until the SDK typed client ships.
+
+## Feasibility (verified 2026-07-26, against a mock `owox-raw` forwarding to real `app.owox.com`)
+
+- ❌ A synthetic key with a **path-bearing** `apiOrigin` (`…/host/owox-raw`) is rejected — api-client's
+  `parseApiOrigin` requires a bare origin (`pathname === '/'`). So the plugin uses a **bare placeholder
+  origin** + a custom `fetchImpl` that rewrites each request to the same-origin proxy mount.
+- ✅ `@owox/api-client` (built from current source, **v0.29.0**, incl. `#1420 "stream aggregations and
+  date buckets"`) encodes `aggregation`/`dateTrunc`; an aggregated `traverseData` returns aggregated
+  rows (`{"country | COUNTUNIQUE":18}`) through the proxy. **No query-injection workaround needed.**
+- ✅ The `IN` operator is honored server-side (`filter:[{column, operator:'in', value:[…]}]` returned
+  exactly the listed values). The plugin's `types.ts` note *"`in`/`not_in` are REJECTED"* is **stale**.
+- ✅ Gap methods (`getById` schema, `getRun` totals) work as plain fetches through the same proxy.
+- **Consequence:** the api-client build MUST be ≥ 0.29.0 (the vendored `dist` was stale and dropped
+  `aggregation` silently). The plan pins/builds a current one.
 
 ## Decision summary
 
@@ -79,21 +93,28 @@ api-client runs in the *plugin*, not the host.)
 ## Component 2 — Plugin: `rawClient.ts`
 
 **File:** `ui/lib/rawClient.ts` (in `data-mart-dashboardization`).
-**Dependency:** add `@owox/api-client` to the plugin (deliberate & temporary — overrides the AGENTS.md
-"do not import `@owox/api-client`" rule for the duration of this workaround).
+**Dependency:** add `@owox/api-client` (**≥ 0.29.0**) to the plugin (deliberate & temporary — overrides
+the AGENTS.md "do not import `@owox/api-client`" rule for the duration of this workaround). The version
+floor matters: builds before #1420 silently drop `aggregation`/`dateTrunc` and return raw rows.
 
 Exposes an object **shaped exactly like the SDK's `owox.dataMarts`** — `list`, `getById`,
 `traverseData`, `getRun` — so `api.ts` swaps its data source with a single import change and everything
 downstream (`httpData.ts`, `sdk-mock.ts`, tests) is untouched.
 
-- `traverseData(id, opts)` → an `OWOXApiClient` built from a **synthetic key**
-  (`apiOrigin = location.origin + '/host/owox-raw'`, `apiKeyId = 'dev'`, `apiKeySecret = 'dev'`) →
-  `.dataMarts.traverseData(id, opts)`. Returns api-client's own `DataMartDataTraversal`
-  (`runId`, `rows()`, `rowChunks()`) — the same shape `api.ts` already consumes.
+- One shared `OWOXApiClient` built from a **synthetic key with a bare placeholder origin**
+  (`apiOrigin = 'http://localhost'`, `apiKeyId/secret = 'dev'` — the origin is never used) plus a custom
+  **`fetchImpl` that is a pure origin-rewriter**: it takes api-client's would-be URL and refetches
+  `location.origin + '/host/owox-raw' + pathname + search`, same-origin. Stateless → concurrency-safe.
+- `traverseData(id, opts)` → `client.dataMarts.traverseData(id, opts)` passing the **full** options
+  (`column/aggregation/dateTrunc/filter/sort/limit`) verbatim; api-client v0.29.0 encodes them all
+  (verified). Returns api-client's own `DataMartDataTraversal` (`runId`, `rows()`, `rowChunks()`) — the
+  shape `api.ts` already consumes. No manual query building, no `getStream`, no injection.
 - `list()` / `getById(id)` / `getRun(id, runId)` → plain `fetch('/host/owox-raw/api/…')` and parse
-  JSON (these are the coverage gaps api-client doesn't provide). `getRun` reads the top-level `totals`
+  JSON (the coverage gaps api-client doesn't provide). `getRun` reads the top-level `totals`
   and `additionalParams.httpData.executionSqlQuery`/`reportDefinition.executionSqlQuery` for `sql`,
   matching the SDK client's `{ status, totals, sql }` shape.
+- The exchange short-circuit in `owox-raw` (§2) lets `client.authenticate()` succeed with the throwaway
+  key before the first data call.
 
 **`api.ts` change:** replace `owox.dataMarts` (from `@owox/plugin-sdk`) with `rawClient`. That is the
 only edit to the existing data layer. The strict getRunById-only totals behavior is preserved (totals
