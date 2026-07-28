@@ -1,0 +1,17 @@
+<!doctype html><html><head><title>PENDING</title></head><body><div id="out">running…</div>
+<script type="module">
+import { rawClient } from '/lib/rawClient.ts';
+(async () => {
+  try {
+    const t = await rawClient.traverseData('aba99dcb-f68c-4109-893b-5e795bc53255', {
+      column: ['Views Last 30d'],
+      aggregation: [{ column: 'Views Last 30d', function: 'SUM' }],
+      limit: 2,
+    });
+    const rows = await t.rows();
+    document.title = 'OK runId=' + t.runId + ' rows=' + JSON.stringify(rows);
+  } catch (e) {
+    document.title = 'ERR ' + (e && e.name) + ': ' + (e && e.message) + ' @@ ' + String(e && e.stack || '').replace(/\n/g,' | ').slice(0, 400);
+  }
+})();
+</script></body></html>
