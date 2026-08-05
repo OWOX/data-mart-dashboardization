@@ -1,4 +1,4 @@
-import { rawClient } from './rawClient';
+import { pluginClient } from './plugin-client';
 import type { AggregateFunction, MartField, MartRef, QueryRequest, QueryResult } from './types';
 import {
   rowsToQueryResult, needsGrandTotal, shouldKeepPolling,
@@ -16,14 +16,14 @@ function defaultsFor(type: string): { role: MartField['role']; allowedAggregatio
 
 /** Marts a dashboard may be built on. The broker has already filtered to what the user can see. */
 export async function listMarts(): Promise<MartRef[]> {
-  const marts = await rawClient.list();
+  const marts = await pluginClient.list();
   return marts
     .filter(m => m.status === 'PUBLISHED' && m.availableForReporting)
     .map(m => ({ id: String(m.id), title: m.title ?? String(m.id) }));
 }
 
 export async function getMartFields(id: string): Promise<MartField[]> {
-  const mart = (await rawClient.getById(id)) as {
+  const mart = (await pluginClient.getById(id)) as {
     schema?: { fields?: Array<{ name: string; type: string; aggregationRole?: MartField['role']; allowedAggregations?: AggregateFunction[]; isHiddenForReporting?: boolean }> };
   };
   // The HTTP Data (reporting) endpoint 400s on any column flagged isHiddenForReporting — e.g. a
@@ -60,7 +60,7 @@ const nonEmpty = <T>(a: T[] | null | undefined): T[] | undefined => (a && a.leng
 async function fetchRunTotals(id: string, runId: string): Promise<QueryResult['totals']> {
   for (let i = 0; i < TOTALS_POLL_TRIES; i++) {
     let run: { status: string; totals: QueryResult['totals'] };
-    try { run = await rawClient.getRun(id, runId); }
+    try { run = await pluginClient.getRun(id, runId); }
     catch { return null; }
     if (run.totals) return run.totals;
     if (!shouldKeepPolling(run.status)) return null;
@@ -79,7 +79,7 @@ async function fetchRunTotals(id: string, runId: string): Promise<QueryResult['t
  */
 export async function queryDataMart(id: string, body: QueryRequest): Promise<QueryResult> {
   const askedLimit = body.limit ?? DEFAULT_LIMIT;
-  const traversal = await rawClient.traverseData(id, {
+  const traversal = await pluginClient.traverseData(id, {
     column: body.fields,
     aggregation: nonEmpty(body.aggregationConfig),
     dateTrunc: nonEmpty(body.dateTruncConfig),

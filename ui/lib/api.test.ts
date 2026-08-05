@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { rawClient } from './rawClient';
+import { pluginClient } from './plugin-client';
 import { listMarts, getMartFields, queryDataMart } from './api';
 
 describe('api', () => {
   beforeEach(() => vi.restoreAllMocks());
 
   it('queryDataMart traverses via the typed client with the configs, over-reading by one', async () => {
-    const spy = vi.spyOn(rawClient, 'traverseData').mockResolvedValue({
+    const spy = vi.spyOn(pluginClient, 'traverseData').mockResolvedValue({
       runId: undefined,
       rows: async () => [
         { channel: 'Paid', 'cost | SUM': 7, 'Row Count': 7 },
@@ -39,11 +39,11 @@ describe('api', () => {
   });
 
   it('queryDataMart fetches scorecard totals via the run id (getRun)', async () => {
-    vi.spyOn(rawClient, 'traverseData').mockResolvedValue({
+    vi.spyOn(pluginClient, 'traverseData').mockResolvedValue({
       runId: 'run-9',
       rows: async () => [{ 'cost | SUM': 42, 'Row Count': 3 }],
     } as any);
-    const runSpy = vi.spyOn(rawClient, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: { 'cost | SUM': 42, 'cost | AVG': 14 }, sql: null });
+    const runSpy = vi.spyOn(pluginClient, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: { 'cost | SUM': 42, 'cost | AVG': 14 }, sql: null });
 
     const out = await queryDataMart('dm1', {
       fields: ['cost'],
@@ -58,11 +58,11 @@ describe('api', () => {
   it('queryDataMart returns null totals when the run reports none — no client-side fallback', async () => {
     // Strict getRunById-only: even though the streamed row carries the aggregate, totals come ONLY
     // from the run. A run with null totals ⇒ null totals (scorecard shows its empty state).
-    vi.spyOn(rawClient, 'traverseData').mockResolvedValue({
+    vi.spyOn(pluginClient, 'traverseData').mockResolvedValue({
       runId: 'run-9',
       rows: async () => [{ 'cost | SUM': 42, 'Row Count': 3 }],
     } as any);
-    vi.spyOn(rawClient, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: null, sql: null });
+    vi.spyOn(pluginClient, 'getRun').mockResolvedValue({ status: 'SUCCESS', totals: null, sql: null });
 
     const out = await queryDataMart('dm1', {
       fields: ['cost'],
@@ -74,7 +74,7 @@ describe('api', () => {
   });
 
   it('listMarts keeps only published, reportable marts', async () => {
-    const spy = vi.spyOn(rawClient, 'list').mockResolvedValue([
+    const spy = vi.spyOn(pluginClient, 'list').mockResolvedValue([
       { id: '1', title: 'A', status: 'PUBLISHED', availableForReporting: true },
       { id: '2', title: 'B', status: 'DRAFT', availableForReporting: true },
       { id: '3', title: 'C', status: 'PUBLISHED', availableForReporting: false },
@@ -85,7 +85,7 @@ describe('api', () => {
   });
 
   it('getMartFields maps schema fields to roles and allowed aggregations, dropping hidden ones', async () => {
-    const spy = vi.spyOn(rawClient, 'getById').mockResolvedValue({
+    const spy = vi.spyOn(pluginClient, 'getById').mockResolvedValue({
       schema: {
         fields: [
           { name: 'Date', type: 'DATE', aggregationRole: 'dimension', allowedAggregations: ['MIN', 'MAX'] },

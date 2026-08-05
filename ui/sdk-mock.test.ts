@@ -1,18 +1,44 @@
-import { describe, it, expect } from 'vitest';
-import * as sdk from './sdk-mock';
+import { describe, expect, it } from 'vitest';
+import { connect } from './sdk-mock';
 
 describe('sdk-mock', () => {
-  it('exposes no identity or storage', () => {
-    expect((sdk as Record<string, unknown>).identity).toBeUndefined();
-    expect((sdk as Record<string, unknown>).storage).toBeUndefined();
+  it('exposes capabilities through connect() like the real SDK', async () => {
+    const ctx = await connect();
+    expect(ctx.owox).toBeDefined();
+    expect(ctx.collections).toBeTypeOf('function');
   });
 
-  it('round-trips a collection doc', async () => {
-    await sdk.collections('canvas').put('state', { marts: ['a'] });
-    expect(await sdk.collections('canvas').get('state')).toMatchObject({ id: 'state', marts: ['a'] });
+  it('stores collection envelopes with parent metadata', async () => {
+    const ctx = await connect();
+    const db = ctx.collections<{ name: string }>('dashboard-envelope-test');
+
+    const saved = await db.put('d1', { name: 'A' }, { parentId: 'mart-1' });
+
+    expect(saved).toMatchObject({
+      id: 'd1',
+      parentId: 'mart-1',
+      document: { name: 'A' },
+    });
+    expect(saved.createdAt).toBeTruthy();
+    await expect(db.get('d1')).resolves.toEqual(saved);
   });
 
-  it('returns null for a missing doc (matching the real capability)', async () => {
-    expect(await sdk.collections('canvas').get('nope')).toBeNull();
+  it('paginates list() using the collection cursor contract', async () => {
+    const db = (await connect()).collections<{ order: number }>('dashboard-pagination-test');
+    await db.put('a', { order: 1 });
+    await db.put('b', { order: 2 });
+
+    const first = await db.list({ limit: 1 });
+    const second = await db.list({ limit: 1, cursor: first.nextCursor! });
+
+    expect(first.items.map(item => item.id)).toEqual(['a']);
+    expect(second.items.map(item => item.id)).toEqual(['b']);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('returns null for a missing document and delete resolves void', async () => {
+    const db = (await connect()).collections('dashboard-missing-test');
+    await expect(db.get('missing')).resolves.toBeNull();
+    await expect(db.delete('missing')).resolves.toBeUndefined();
   });
 });

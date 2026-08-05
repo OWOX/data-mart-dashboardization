@@ -1,52 +1,100 @@
-import { collections } from '@owox/plugin-sdk';
+import { getPluginContext } from './plugin-runtime';
 import type { Dashboard } from './types';
 
 const COLLECTION = 'dashboards';
-const db = () => collections(COLLECTION);
+const PAGE_SIZE = 100;
 
-/**
- * Strip host-owned `$`-prefixed fields before a write. `$createdBy` never reaches the plugin in the
- * first place (the host strips it before the doc arrives — see types.ts), so this delete is a no-op
- * for it; `$createdAt`/`$updatedAt` DO reach the plugin as read-only timestamps and must not be
- * echoed back on a put. The host ignores plugin-supplied values for these anyway, but sending them
- * back is still wrong, so every write path routes through here first.
- */
-function stripHostFields<T extends object>(doc: T): T {
-  const copy = { ...doc } as Record<string, unknown>;
-  delete copy.$createdBy;
-  delete copy.$createdAt;
-  delete copy.$updatedAt;
-  return copy as T;
+type DashboardDocument = Omit<
+  Dashboard,
+  'id' | '$entity' | '$createdAt' | '$updatedAt'
+>;
+
+type DashboardEnvelope = {
+  id: string;
+  parentId?: string;
+  document: DashboardDocument;
+  createdAt: string;
+  updatedAt: string;
+};
+
+async function collection() {
+  return (await getPluginContext()).collections<DashboardDocument>(COLLECTION);
+}
+
+/** The host owns identity, entity binding and timestamps; only the dashboard body is persisted. */
+function toDocument(dashboard: Dashboard): DashboardDocument {
+  const { id: _id, $entity: _entity, $createdAt: _createdAt, $updatedAt: _updatedAt, ...document } =
+    dashboard;
+  return document;
+}
+
+/** Keep the existing UI model while translating the collection envelope at one boundary. */
+function fromEnvelope(envelope: DashboardEnvelope): Dashboard {
+  if (!envelope.parentId) {
+    throw new Error(`Dashboard ${envelope.id} has no Data Mart binding`);
+  }
+  return {
+    ...envelope.document,
+    id: envelope.id,
+    $entity: { type: 'data-mart', id: envelope.parentId },
+    $createdAt: envelope.createdAt,
+    $updatedAt: envelope.updatedAt,
+  };
 }
 
 /**
- * The host filters `list()` by each doc's `$entity` ACL, so this returns exactly the dashboards
- * whose data mart the current user can access. There is no authz code in this plugin.
+ * Read all pages because the existing dashboard table is an in-memory searchable list. The host
+ * has already filtered the collection by the current member's SEE permission on each Data Mart.
  */
 export async function listDashboards(): Promise<Dashboard[]> {
-  return (await db().list()) as Dashboard[];
+  const db = await collection();
+  const dashboards: Dashboard[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+
+  do {
+    const page = await db.list({ limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) });
+    dashboards.push(...page.items.map(envelope => fromEnvelope(envelope as DashboardEnvelope)));
+    if (!page.nextCursor) break;
+    if (seenCursors.has(page.nextCursor)) {
+      throw new Error('Dashboard collection returned a repeated cursor');
+    }
+    seenCursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+  } while (cursor);
+
+  return dashboards;
 }
 
 export async function getDashboard(id: string): Promise<Dashboard | null> {
-  return (await db().get(id)) as Dashboard | null;
+  const envelope = await (await collection()).get(id);
+  return envelope ? fromEnvelope(envelope as DashboardEnvelope) : null;
 }
 
 /** Every save bumps configVersion — it is both the concurrency stamp and the refetch key. */
-export async function saveDashboard(d: Dashboard): Promise<Dashboard> {
-  const next = stripHostFields({ ...d, configVersion: d.configVersion + 1 });
-  return (await db().put(next.id, next)) as Dashboard;
+export async function saveDashboard(dashboard: Dashboard): Promise<Dashboard> {
+  const next = { ...dashboard, configVersion: dashboard.configVersion + 1 };
+  const envelope = await (await collection()).put(next.id, toDocument(next), {
+    parentId: next.$entity.id,
+  });
+  return fromEnvelope(envelope as DashboardEnvelope);
 }
 
 export async function deleteDashboard(id: string): Promise<void> {
-  await db().delete(id);
+  await (await collection()).delete(id);
 }
 
-export async function duplicateDashboard(d: Dashboard): Promise<Dashboard> {
-  const copy = stripHostFields<Dashboard>({
-    ...d,
+export async function duplicateDashboard(dashboard: Dashboard): Promise<Dashboard> {
+  const copy: Dashboard = {
+    ...dashboard,
     id: crypto.randomUUID(),
-    name: `${d.name} (copy)`,
+    name: `${dashboard.name} (copy)`,
     configVersion: 0,
+    $createdAt: undefined,
+    $updatedAt: undefined,
+  };
+  const envelope = await (await collection()).put(copy.id, toDocument(copy), {
+    parentId: copy.$entity.id,
   });
-  return (await db().put(copy.id, copy)) as Dashboard;
+  return fromEnvelope(envelope as DashboardEnvelope);
 }

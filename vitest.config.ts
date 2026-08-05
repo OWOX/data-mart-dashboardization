@@ -7,7 +7,7 @@ export default defineConfig({
     globals: true,
     environment: 'happy-dom',
     setupFiles: ['./src/test-setup.ts'],
-    // Resolve the externalized SDK import to the local mock during tests.
+    // Resolve the host-dependent SDK import to the local contract mock during tests.
     alias: { '@owox/plugin-sdk': new URL('./ui/sdk-mock.ts', import.meta.url).pathname },
   },
 });

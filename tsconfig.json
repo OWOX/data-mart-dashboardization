@@ -10,9 +10,8 @@
     "noEmit": true,
     "types": ["vitest/globals", "@testing-library/jest-dom"],
     "baseUrl": ".",
-    // @owox/plugin-sdk is host-provided at runtime and NOT an npm dependency (it's unpublished).
-    // Type the import against the local mock so `npm run typecheck` works with no install. When the
-    // SDK is published, drop this alias and add it back as a devDependency.
+    // The mock mirrors the SDK's current plugin/collections contract and keeps local development
+    // independent of a host iframe. Production builds resolve the installed package in Vite.
     "paths": { "@owox/plugin-sdk": ["./ui/sdk-mock"] }
   },
   "include": ["ui", "src"]

@@ -1,9 +1,23 @@
 {
-  "id": "data-mart-dashboards",
-  "name": "Dashboards",
-  "version": "0.1.0",
-  "ui": { "entry": "ui/index.html" },
-  "menu": [{ "title": "Dashboards", "path": "" }],
-  "credentials": [{ "type": "data-mart", "scope": "all", "actions": ["view"] }],
-  "collections": [{ "name": "dashboards", "scope": "project" }]
+  "name": "Data Mart Dashboards",
+  "description": "Create and save interactive dashboards for OWOX Data Marts.",
+  "delivery": {
+    "type": "remote",
+    "url": "https://owox.github.io/data-mart-dashboardization/odm-plugin/"
+  },
+  "collections": [
+    {
+      "name": "dashboards",
+      "scope": "project",
+      "entityBinding": {
+        "type": "data-mart",
+        "actions": {
+          "read": "SEE",
+          "create": "SEE",
+          "update": "SEE",
+          "delete": "SEE"
+        }
+      }
+    }
+  ]
 }

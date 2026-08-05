@@ -1,95 +1,149 @@
-import { describe, it, expect, vi } from 'vitest';
-import { collections } from '@owox/plugin-sdk';
-import { saveDashboard, duplicateDashboard, listDashboards, deleteDashboard, getDashboard } from './dashboards';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getPluginContext } from './plugin-runtime';
+import {
+  deleteDashboard,
+  duplicateDashboard,
+  getDashboard,
+  listDashboards,
+  saveDashboard,
+} from './dashboards';
 import { emptyDashboard } from './types';
 
-// Automock the SDK module: `collections` is a plain exported function in ui/sdk-mock.ts, so Vitest
-// replaces it with a vi.fn() whose return value each test controls via mockReturnValue.
-vi.mock('@owox/plugin-sdk');
+vi.mock('./plugin-runtime');
 
-describe('dashboards', () => {
-  it('saveDashboard bumps configVersion and keeps the $entity mart binding', async () => {
-    const put = vi.fn().mockImplementation((_id, doc) => Promise.resolve(doc));
-    vi.mocked(collections).mockReturnValue({ put } as never);
+const collections = vi.fn();
 
-    const d = { ...emptyDashboard('d1', 'mart1', 'A'), configVersion: 3 };
-    const saved = await saveDashboard(d);
+function envelope(id: string, parentId: string, document: Record<string, unknown>) {
+  return {
+    id,
+    parentId,
+    document,
+    createdAt: '2026-08-05T10:00:00.000Z',
+    updatedAt: '2026-08-05T11:00:00.000Z',
+  };
+}
+
+describe('dashboards collection adapter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getPluginContext).mockResolvedValue({ collections } as never);
+  });
+
+  it('saves only the document body and maps $entity to parentId', async () => {
+    const put = vi.fn().mockImplementation((id, document, options) =>
+      Promise.resolve(envelope(id, options.parentId, document)),
+    );
+    collections.mockReturnValue({ put });
+    const dashboard = { ...emptyDashboard('d1', 'mart1', 'A'), configVersion: 3 };
+
+    const saved = await saveDashboard(dashboard);
 
     expect(collections).toHaveBeenCalledWith('dashboards');
-    expect(put).toHaveBeenCalledWith('d1', expect.objectContaining({
+    expect(put).toHaveBeenCalledWith(
+      'd1',
+      expect.objectContaining({ name: 'A', configVersion: 4 }),
+      { parentId: 'mart1' },
+    );
+    const [, sentDocument] = put.mock.calls[0];
+    expect(sentDocument).not.toHaveProperty('id');
+    expect(sentDocument).not.toHaveProperty('$entity');
+    expect(saved).toMatchObject({
       id: 'd1',
       $entity: { type: 'data-mart', id: 'mart1' },
       configVersion: 4,
-    }));
-    expect(saved.configVersion).toBe(4);
+      $createdAt: '2026-08-05T10:00:00.000Z',
+      $updatedAt: '2026-08-05T11:00:00.000Z',
+    });
   });
 
-  it('duplicateDashboard produces a new id and a copied name', async () => {
-    const put = vi.fn().mockImplementation((_id, doc) => Promise.resolve(doc));
-    vi.mocked(collections).mockReturnValue({ put } as never);
+  it('never stores timestamps owned by the host envelope', async () => {
+    const put = vi.fn().mockImplementation((id, document, options) =>
+      Promise.resolve(envelope(id, options.parentId, document)),
+    );
+    collections.mockReturnValue({ put });
+    const dashboard = {
+      ...emptyDashboard('d1', 'mart1', 'A'),
+      $createdAt: 'old-created',
+      $updatedAt: 'old-updated',
+    };
 
-    const source = emptyDashboard('d1', 'mart1', 'Sales');
-    const copy = await duplicateDashboard(source);
+    await saveDashboard(dashboard);
+
+    const [, sentDocument] = put.mock.calls[0];
+    expect(sentDocument).not.toHaveProperty('$createdAt');
+    expect(sentDocument).not.toHaveProperty('$updatedAt');
+  });
+
+  it('duplicates through the same parent-bound collection mapping', async () => {
+    const put = vi.fn().mockImplementation((id, document, options) =>
+      Promise.resolve(envelope(id, options.parentId, document)),
+    );
+    collections.mockReturnValue({ put });
+
+    const copy = await duplicateDashboard(emptyDashboard('d1', 'mart1', 'Sales'));
 
     expect(copy.id).not.toBe('d1');
     expect(copy.name).toBe('Sales (copy)');
     expect(copy.$entity).toEqual({ type: 'data-mart', id: 'mart1' });
+    expect(put).toHaveBeenCalledWith(
+      copy.id,
+      expect.objectContaining({ name: 'Sales (copy)', configVersion: 0 }),
+      { parentId: 'mart1' },
+    );
   });
 
-  it('duplicateDashboard never sends host-owned $-prefixed fields from source dashboard on a write', async () => {
-    const put = vi.fn().mockImplementation((_id, doc) => Promise.resolve(doc));
-    vi.mocked(collections).mockReturnValue({ put } as never);
+  it('loads every collection page and rebuilds the existing Dashboard model', async () => {
+    const firstDocument = { ...emptyDashboard('ignored', 'ignored', 'A') } as Record<string, unknown>;
+    delete firstDocument.id;
+    delete firstDocument.$entity;
+    const secondDocument = { ...firstDocument, name: 'B' };
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        items: [envelope('d1', 'mart1', firstDocument)],
+        nextCursor: 'next',
+      })
+      .mockResolvedValueOnce({
+        items: [envelope('d2', 'mart2', secondDocument)],
+        nextCursor: null,
+      });
+    collections.mockReturnValue({ list });
 
-    const source = {
-      ...emptyDashboard('d1', 'mart1', 'Sales'),
-      $createdAt: '2020-01-01T00:00:00Z',
-      $updatedAt: '2020-01-02T00:00:00Z',
-    };
-    await duplicateDashboard(source);
+    const result = await listDashboards();
 
-    const [, sentDoc] = put.mock.calls[0];
-    expect(sentDoc.$createdAt).toBeUndefined();
-    expect(sentDoc.$updatedAt).toBeUndefined();
-    expect('$createdBy' in sentDoc).toBe(false);
+    expect(list).toHaveBeenNthCalledWith(1, { limit: 100 });
+    expect(list).toHaveBeenNthCalledWith(2, { limit: 100, cursor: 'next' });
+    expect(result).toEqual([
+      expect.objectContaining({ id: 'd1', name: 'A', $entity: { type: 'data-mart', id: 'mart1' } }),
+      expect.objectContaining({ id: 'd2', name: 'B', $entity: { type: 'data-mart', id: 'mart2' } }),
+    ]);
   });
 
-  it('listDashboards returns whatever the host made visible', async () => {
-    const list = vi.fn().mockResolvedValue([emptyDashboard('d1', 'm1', 'A')]);
-    vi.mocked(collections).mockReturnValue({ list } as never);
-    expect(await listDashboards()).toHaveLength(1);
+  it('rejects a dashboard envelope without the required Data Mart binding', async () => {
+    const document = { ...emptyDashboard('ignored', 'ignored', 'A') } as Record<string, unknown>;
+    delete document.id;
+    delete document.$entity;
+    collections.mockReturnValue({
+      get: vi.fn().mockResolvedValue({
+        ...envelope('d1', 'unused', document),
+        parentId: undefined,
+      }),
+    });
+
+    await expect(getDashboard('d1')).rejects.toThrow('has no Data Mart binding');
   });
 
-  it('deleteDashboard calls delete on the collection with the given id', async () => {
-    const del = vi.fn().mockResolvedValue({ ok: true });
-    vi.mocked(collections).mockReturnValue({ delete: del } as never);
-
-    await deleteDashboard('d1');
-
-    expect(del).toHaveBeenCalledWith('d1');
-  });
-
-  it('getDashboard returns null when the host has no such doc', async () => {
+  it('returns null for a missing dashboard', async () => {
     const get = vi.fn().mockResolvedValue(null);
-    vi.mocked(collections).mockReturnValue({ get } as never);
-
-    expect(await getDashboard('missing')).toBeNull();
+    collections.mockReturnValue({ get });
+    await expect(getDashboard('missing')).resolves.toBeNull();
     expect(get).toHaveBeenCalledWith('missing');
   });
 
-  it('saveDashboard never sends host-owned $-prefixed fields back on a write', async () => {
-    const put = vi.fn().mockImplementation((_id, doc) => Promise.resolve(doc));
-    vi.mocked(collections).mockReturnValue({ put } as never);
-
-    const d = {
-      ...emptyDashboard('d1', 'mart1', 'A'),
-      $createdAt: '2020-01-01T00:00:00Z',
-      $updatedAt: '2020-01-02T00:00:00Z',
-    };
-    await saveDashboard(d);
-
-    const [, sentDoc] = put.mock.calls[0];
-    expect(sentDoc.$createdAt).toBeUndefined();
-    expect(sentDoc.$updatedAt).toBeUndefined();
-    expect('$createdBy' in sentDoc).toBe(false);
+  it('deletes through the collection client', async () => {
+    const del = vi.fn().mockResolvedValue(undefined);
+    collections.mockReturnValue({ delete: del });
+    await deleteDashboard('d1');
+    expect(del).toHaveBeenCalledWith('d1');
   });
 });

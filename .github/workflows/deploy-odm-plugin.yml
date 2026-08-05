@@ -1,0 +1,47 @@
+name: Deploy ODM plugin preview
+
+on:
+  push:
+    branches:
+      - feat/odm-plugin-collections-6788
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-mart-dashboardization-odm-plugin-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin branch
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify plugin
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      # Publish into one directory of the existing Pages branch. `keep_files` is intentional: the
+      # original demo remains at the site root while this feature branch owns only /odm-plugin/.
+      - name: Publish /odm-plugin/
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist/odm-plugin
+          destination_dir: odm-plugin
+          keep_files: true
+
