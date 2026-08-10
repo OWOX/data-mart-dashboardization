@@ -1,6 +1,6 @@
 {
   "name": "data-mart-dashboards",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -31,7 +31,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
-    "@owox/plugin-sdk": "^0.30.1",
+    "@owox/plugin-sdk": "0.32.0-next-20260810110450",
     "clsx": "^2.1.0",
     "recharts": "^2.13.0",
     "tailwind-merge": "^2.5.0"
