@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "npm run css && vite",
     "build": "npm run verify:sdk && vite build",
     "verify:sdk": "node scripts/verify-plugin-sdk.mjs",
     "test": "vitest run --maxWorkers=4",

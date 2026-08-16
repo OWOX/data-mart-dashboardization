@@ -1,11 +1,63 @@
-# ODM plugin branch
+# ODM plugin
 
-This feature branch adapts the existing dashboard demo into an installable OWOX Data Marts plugin.
-It does not replace the original demo from `main`.
+The dashboard demo as an installable OWOX Data Marts plugin: dashboards are persisted in a
+host-owned `dashboards` collection bound to the Data Mart they visualise, and every query goes
+through the SDK client returned by `connect()`.
 
 The production build is published at `/data-mart-dashboardization/odm-plugin/`, and `plugin.json`
-points to that branch-specific path. The Pages workflow updates only the `odm-plugin` directory and
-keeps the existing site files.
+points to that path. The Pages workflow updates only the `odm-plugin` directory and keeps the
+existing site files.
+
+## Local development
+
+```bash
+npm install
+npm run dev              # http://localhost:5174 — @owox/plugin-sdk aliased to ui/sdk-mock.ts
+OWOX_HOST=1 npm run dev  # real SDK handshake; use when the page is loaded through a running host
+npm test                 # vitest run --maxWorkers=4
+npm run typecheck        # tsc --noEmit
+npm run css:check        # fails if the committed ui/styles.css is stale
+```
+
+**The port is 5174 and only 5174** (`strictPort`) — 5173 belongs to `odm-usage-stat`, and a host
+install pins a fixed URL, so a second instance must fail loudly rather than drift to another port.
+
+Plain `npm run dev` never talks to a host: it aliases `@owox/plugin-sdk` to
+[`ui/sdk-mock.ts`](../ui/sdk-mock.ts), which serves two sample Data Marts, an in-memory collections
+store (persisted to `localStorage`), and generated rows for every query shape the plugin compiles —
+grouped, date-bucketed, ordered-then-limited, plus scorecard grand totals on the run. The sample
+schema is deliberately shaped so `generate()` emits all five component types, and the numbers are
+deterministic, so a reload redraws the same chart.
+
+Set `OWOX_HOST=1` when the page is loaded *by* OWOX — otherwise the mock silently wins and you are
+looking at sample data inside a real frame.
+
+[`ui/local-dev.test.ts`](../ui/local-dev.test.ts) guards this loop: it runs the real
+`listMarts → generate → compile → queryDataMart` path against the mock, so the offline experience
+cannot rot unnoticed.
+
+### Loading it in a real host
+
+A plugin only runs inside the OWOX iframe and `delivery.url` must be public HTTPS — localhost is
+rejected. The working loop is a stable public tunnel to the dev server: put the tunnel URL in
+`plugin.json`, publish and install once, then edit locally and refresh the frame. The install pins
+the URL, not the files, so code changes need no new release — only `plugin.json` changes do.
+
+The dev server already binds the LAN (`server.host`) and sends `Access-Control-Allow-Origin: *`
+(`server.cors`), because the iframe has an opaque origin and fetches even its own bundle
+cross-origin. Vite rejects unknown `Host` headers, so name the tunnel when starting it:
+
+```bash
+OWOX_TUNNEL_HOST=data-mart-dashboards.example.keenetic.pro npm run dev
+```
+
+### Editing styles
+
+The host compiles plugin CSS with the default Tailwind theme and ignores `tailwind.config`, so
+[`ui/styles.css`](../ui/styles.css) is **precompiled and committed**: `ui/styles.src.css` is the
+source, `npm run css` compiles it, and `npm run dev`/`npm run build` run it for you. Commit the
+regenerated file. Because `tailwind.config` scans `ui/**/*.{ts,tsx,html}`, a bare utility name used
+as an identifier or in a comment leaks a real rule into the bundle — `npm run css:check` catches it.
 
 ## SDK release prerequisite
 
