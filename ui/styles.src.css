@@ -63,8 +63,19 @@
   * {
     @apply border-border outline-ring;
   }
+  /* No background here on purpose. The host's page container (`SidebarInset`, `rounded-xl` = 14px)
+     paints the surface this plugin sits on, and the iframe stacks ON TOP of it — so any opaque
+     background of our own repaints that surface as a square and squares off the host's corners.
+     Host-native pages (Models, Storages, Destinations) don't paint it either; they let the inset
+     show. Staying transparent inherits the host's exact corner radius and surface color for free,
+     in both themes, with nothing to keep in sync. See docs/odm-plugin.md → Page surface. */
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+  }
+  /* …except standalone (`npm run dev`), where there is no host surface behind the page and the
+     canvas would fall back to the browser's white — unreadable once the dark theme is on. */
+  .dm-standalone {
+    @apply bg-background;
   }
 }
 

@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "noEmit": true,
-    "types": ["vitest/globals", "@testing-library/jest-dom"],
+    "types": ["vitest/globals", "@testing-library/jest-dom", "node"],
     "baseUrl": ".",
     // The mock mirrors the SDK's current plugin/collections contract and keeps local development
     // independent of a host iframe. Production builds resolve the installed package in Vite.

@@ -333,7 +333,11 @@ export async function connect(): Promise<PluginContext> {
     installationId: 'local',
     projectId: 'local',
     userId: 'local',
-    theme: 'light',
+    // The host decides this; locally `?theme=dark` is the only way to see the dark surface at all.
+    theme:
+      typeof location !== 'undefined' && new URLSearchParams(location.search).get('theme') === 'dark'
+        ? 'dark'
+        : 'light',
     owox,
     collections,
     ui: {
