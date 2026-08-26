@@ -105,4 +105,5 @@ describe('api', () => {
       { name: 'Src', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT', 'COUNT_DISTINCT'] },
     ]);
   });
+
 });

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Component, FilterRule, QueryResult } from '../lib/types';
+import type { Component, FilterRule, MartField, QueryResult } from '../lib/types';
 import { Scorecard } from './Scorecard';
 import { DataTable } from './DataTable';
 import { TimeSeriesChart } from './TimeSeriesChart';
@@ -27,10 +27,12 @@ export function renderComponent(
   data: QueryResult | null,
   filters: FilterRule[],
   onSegmentFilter: (f: FilterRule) => void,
+  /** The mart schema, so every column can be shown by its alias rather than its query name. */
+  fields: MartField[] = [],
 ): ReactNode {
   switch (component.type) {
     case 'scorecard': return <Scorecard component={component} data={data} />;
-    case 'table': return <DataTable component={component} data={data} />;
+    case 'table': return <DataTable component={component} data={data} fields={fields} />;
     case 'timeseries': return <TimeSeriesChart component={component} data={data} />;
     case 'bar':
       return <BarChartView component={component} data={data} filters={filters} onSegmentFilter={onSegmentFilter} />;

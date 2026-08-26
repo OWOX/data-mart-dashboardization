@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { listMarts, getMartFields } from '../lib/api';
 import { generate, probeCardinality } from '../lib/generate';
 import { saveDashboard } from '../lib/dashboards';
+import { describeError } from '../lib/errors';
 import type { MartRef } from '../lib/types';
 
 const isDateField = (type: string) => /^(DATE|DATETIME|TIMESTAMP)$/i.test(type);
@@ -18,9 +19,10 @@ const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea, input, se
  */
 export function CreateDashboardDialog({ onClose }: { onClose: () => void }) {
   const [marts, setMarts] = useState<MartRef[] | null>(null);
+  const [query, setQuery] = useState('');
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [createFailed, setCreateFailed] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -86,22 +88,32 @@ export function CreateDashboardDialog({ onClose }: { onClose: () => void }) {
 
   async function create(mart: MartRef) {
     setBusy(true);
-    setCreateFailed(false);
+    setCreateError(null);
+    // Which host call is in flight. Only two of these steps can throw — `probeCardinality` catches
+    // every probe itself and `generate` is pure — and they fail for unrelated reasons (reading a
+    // Data Mart's schema vs. writing to the bound `dashboards` collection), so the message has to
+    // say which one, or a failure is indistinguishable from the other on screen.
+    let step = 'reading the Data Mart schema';
     try {
       const fields = await getMartFields(mart.id);
       const dims = fields.filter(f => f.role === 'dimension' && !isDateField(f.type));
       const cardinality = await probeCardinality(mart.id, dims);
+      step = 'saving the dashboard';
       const saved = await saveDashboard(generate(mart.id, mart.title, fields, cardinality));
       navigate(`/d/${saved.id}`);
       onClose();
-    } catch {
-      // Leave the dialog open on failure — closing silently here would be a dead end with no
-      // way back to try a different mart or retry.
-      setCreateFailed(true);
+    } catch (error) {
+      // Leave the dialog open on failure — closing silently here would be a dead end with no way
+      // back to try a different mart or retry.
+      console.error(`[dashboards] create failed for mart ${mart.id} "${mart.title}" while ${step}`, error);
+      setCreateError(`${step}: ${describeError(error)}`);
     } finally {
       setBusy(false);
     }
   }
+
+  const needle = query.trim().toLowerCase();
+  const matches = (marts ?? []).filter(m => m.title.toLowerCase().includes(needle));
 
   return (
     <div className="fixed inset-0 grid place-items-center bg-black/40" role="dialog" aria-modal="true" aria-labelledby={headingId}>
@@ -110,8 +122,10 @@ export function CreateDashboardDialog({ onClose }: { onClose: () => void }) {
 
         {busy && <p className="text-sm">Analysing the data mart…</p>}
 
-        {!busy && createFailed && (
-          <p className="mb-3 text-sm text-red-600">Couldn&rsquo;t create the dashboard. Try again.</p>
+        {!busy && createError !== null && (
+          <p className="mb-3 text-sm text-red-600">
+            Couldn&rsquo;t create the dashboard: {createError}
+          </p>
         )}
 
         {!busy && marts === null && !loadFailed && <p className="text-sm">Loading data marts…</p>}
@@ -131,15 +145,31 @@ export function CreateDashboardDialog({ onClose }: { onClose: () => void }) {
         )}
 
         {!busy && !loadFailed && marts !== null && marts.length > 0 && (
-          <ul className="max-h-80 overflow-auto">
-            {marts.map(m => (
-              <li key={m.id}>
-                <button className="w-full p-2 text-left text-sm hover:bg-black/5" onClick={() => void create(m)}>
-                  {m.title}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <>
+            {/* First focusable in the panel, so the initial-focus effect above lands here and the
+                list is filterable by typing straight after opening the dialog. */}
+            <input
+              type="search"
+              className="mb-2 w-full rounded border p-2 text-sm"
+              placeholder="Search data marts"
+              aria-label="Search data marts"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
+            {matches.length === 0 ? (
+              <p className="p-2 text-sm">No data marts match &ldquo;{query}&rdquo;.</p>
+            ) : (
+              <ul className="max-h-80 overflow-auto">
+                {matches.map(m => (
+                  <li key={m.id}>
+                    <button className="w-full p-2 text-left text-sm hover:bg-black/5" onClick={() => void create(m)}>
+                      {m.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
 
         <button className="mt-3 text-sm" onClick={onClose}>Cancel</button>

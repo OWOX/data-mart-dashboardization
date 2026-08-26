@@ -45,10 +45,11 @@ function Harness({ onCloseSpy }: { onCloseSpy: () => void }) {
 }
 
 describe('ComponentEditor accessibility', () => {
-  it('is a labeled, modal dialog', () => {
+  it('is a labeled, non-modal drawer — the dashboard stays visible and clickable behind it', () => {
     render(<ComponentEditor dashboard={dash()} componentId="a" fields={fields} onChange={vi.fn()} onClose={vi.fn()} />);
     const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    // Not aria-modal: it is a side panel, dismissed by clicking the dashboard behind it.
+    expect(dialog).not.toHaveAttribute('aria-modal');
     const labelledBy = dialog.getAttribute('aria-labelledby');
     expect(labelledBy).toBeTruthy();
     expect(document.getElementById(labelledBy!)).toHaveTextContent(/edit/i);

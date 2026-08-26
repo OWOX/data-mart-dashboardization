@@ -34,6 +34,12 @@ export type QueryRequest = {
 };
 
 export type QueryResult = {
+  /**
+   * The run this result came from, when there was one. Kept so "Copy SQL" can ask the run for its
+   * SQL at the moment it is clicked — fetching it eagerly would add a request per component per
+   * refetch, for a menu item almost nobody opens.
+   */
+  runId?: string | null;
   columns: string[];
   rows: unknown[][];
   truncated: boolean;
@@ -49,6 +55,16 @@ export type MartField = {
   type: string;
   role: FieldRole;
   allowedAggregations: AggregateFunction[];
+  /** Marks the mart's primary key, whose distinct count the product publishes as "Unique Count". */
+  isPrimaryKey?: boolean;
+  /** The mart's own display name for the column ("First LogIn Date Time"). Never sent in a query. */
+  alias?: string;
+  /**
+   * Set on a field contributed by a JOINED Data Mart. Absent means the field is the mart's own.
+   * `aliasPath` is the join path the host addresses the source by; `title` is its Data Mart name,
+   * which is what the Fields panel groups on.
+   */
+  source?: { aliasPath: string; title: string };
 };
 
 export type MartRef = { id: string; title: string };
@@ -77,6 +93,8 @@ export type ComponentConfig =
 
 export type Component = {
   id: string;
+  /** Hidden components stay in the document but neither render nor query. */
+  hidden?: boolean;
   type: ComponentType;
   title: string;
   description?: string;

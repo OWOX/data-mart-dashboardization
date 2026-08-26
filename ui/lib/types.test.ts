@@ -57,12 +57,14 @@ describe('type-level contracts', () => {
     expectTypeOf<QueryRequest['limit']>().toEqualTypeOf<number | undefined>();
   });
 
-  it('QueryResult carries only server-computed shape: columns, rows, truncated, totals', () => {
+  it('QueryResult carries only server-computed shape: columns, rows, truncated, totals (+ the run id)', () => {
     expectTypeOf<QueryResult>().toEqualTypeOf<{
       columns: string[];
       rows: unknown[][];
       truncated: boolean;
       totals: Record<string, number | string | boolean | null> | null;
+      // Provenance only: the run to ask for SQL on demand. Never computed here.
+      runId?: string | null;
     }>();
   });
 

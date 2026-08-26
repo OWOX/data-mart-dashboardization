@@ -19,14 +19,6 @@ const DEFAULT_SIZE: Record<ComponentType, { width: number; height: number }> = {
   table: { width: 5, height: 3 },
 };
 
-const DEFAULT_TITLE: Record<ComponentType, string> = {
-  scorecard: 'New scorecard',
-  timeseries: 'New time series',
-  bar: 'New bar chart',
-  pie: 'New pie chart',
-  donut: 'New donut chart',
-  table: 'New table',
-};
 
 /**
  * A non-finite `width`/`height` (e.g. `Number('')` from a cleared editor input) would otherwise
@@ -164,21 +156,16 @@ function buildConfig(type: ComponentType, d: Dashboard, source?: Component): Com
 // ---------- Public transforms — every one clones, never mutates `d` or its nested arrays. ----------
 
 /**
- * Appends a component of `type` at the end, with a sane per-type default size (clamped to the
- * grid) and a best-effort config borrowed from the rest of the dashboard (see `buildConfig`).
- * A brand-new query is being introduced, so this bumps `configVersion`.
+ * Hide or show a component. A hidden component keeps its configuration and its place in the
+ * document — it just stops rendering and stops querying — so ticking its field again in the Fields
+ * panel brings back the tile the user had, not a fresh default one.
  */
-export function addComponent(d: Dashboard, type: ComponentType): Dashboard {
-  const size = DEFAULT_SIZE[type];
-  const component: Component = {
-    id: uid(),
-    type,
-    title: DEFAULT_TITLE[type],
-    width: clampWidth(size.width, d.gridColumns),
-    height: clampHeight(size.height),
-    config: buildConfig(type, d),
-  };
-  return { ...d, components: [...d.components, component], configVersion: d.configVersion + 1 };
+export function setComponentHidden(d: Dashboard, id: string, hidden: boolean): Dashboard {
+  const target = d.components.find(c => c.id === id);
+  if (!target || Boolean(target.hidden) === hidden) return d;
+  const components = d.components.map(c =>
+    c.id === id ? { ...c, ...(hidden ? { hidden: true } : { hidden: undefined }) } : c);
+  return { ...d, components, configVersion: d.configVersion + 1 };
 }
 
 /** Drops the target component (including the last remaining one, leaving an empty grid). */
@@ -348,29 +335,6 @@ export function restoreGenerated(
 // `resetFilters` below is UNCHANGED and still Dashboard-level: `d.filters` can still hold
 // deliberately-persisted filters that were already on the doc when it was loaded, and those still
 // need a Dashboard-level clear.
-
-/**
- * Toggles a cross-filter into a bare `FilterRule[]` (never a `Dashboard` — see the section comment
- * above). Replaces (never stacks) any existing filter on the same column, so re-clicking a
- * DIFFERENT segment of the same dimension moves the filter rather than ANDing two values on one
- * column together (which would match zero rows for an equality filter). Pure — never mutates
- * `filters`.
- */
-export function addGlobalFilter(filters: FilterRule[], f: FilterRule): FilterRule[] {
-  return [...filters.filter(x => x.column !== f.column), f];
-}
-
-/**
- * The other half of the click-to-toggle interaction: clicking the SAME already-active segment
- * again clears that column's filter instead of re-applying it (see `DashboardView`'s
- * `onSegmentFilter`, which decides add-vs-remove by comparing the clicked value against the
- * currently active filter for that column). A no-op (returns the SAME array reference) when the
- * column has no active filter, mirroring `removeComponent`'s unknown-id no-op.
- */
-export function removeGlobalFilter(filters: FilterRule[], column: string): FilterRule[] {
-  if (!filters.some(f => f.column === column)) return filters;
-  return filters.filter(f => f.column !== column);
-}
 
 /**
  * Clears every global/cross filter but leaves `d.slices` (the generated date-range controls)

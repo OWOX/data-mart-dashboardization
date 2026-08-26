@@ -2,6 +2,7 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Cell } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from './ui/chart';
 import { aggLabel } from '../lib/compile';
 import { toPoints } from '../lib/rows';
+import { isSelected, selectedValues } from '../lib/filterOps';
 import type { BarConfig, Component, FilterRule, QueryResult } from '../lib/types';
 
 const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
@@ -50,7 +51,8 @@ export function BarChartView({
   if (points.length === 0) return <p className="text-xs text-muted-foreground">No rows.</p>;
   const horizontal = c.orientation === 'horizontal';
 
-  const activeFilter = filters.find(f => f.column === c.dimension && f.operator === 'eq');
+  // Multi-select: any number of this dimension's values may be active at once.
+  const anyActive = selectedValues(filters, c.dimension).length > 0;
 
   const emit = (raw: unknown) => onSegmentFilter?.({ column: c.dimension, operator: 'eq', value: raw });
 
@@ -72,12 +74,12 @@ export function BarChartView({
             onClick={(p: { label?: string; raw?: unknown }) => p?.label !== undefined && emit(p.raw)}
           >
             {points.map((p, i) => {
-              const isActive = activeFilter !== undefined && activeFilter.value === p.raw;
+              const isActive = isSelected(filters, c.dimension, p.raw);
               return (
                 <Cell
                   key={i}
                   fill={COLORS[i % COLORS.length]}
-                  fillOpacity={activeFilter !== undefined && !isActive ? 0.4 : 1}
+                  fillOpacity={anyActive && !isActive ? 0.4 : 1}
                   stroke={isActive ? 'var(--foreground)' : undefined}
                   strokeWidth={isActive ? 2 : undefined}
                   style={{ cursor: onSegmentFilter ? 'pointer' : undefined }}
@@ -91,7 +93,7 @@ export function BarChartView({
         <div className="flex flex-wrap items-center gap-1" role="group" aria-label={`Filter by ${c.dimension}`}>
           <span className="text-xs text-muted-foreground">Filter by {c.dimension}:</span>
           {points.map(p => {
-            const isActive = activeFilter !== undefined && activeFilter.value === p.raw;
+            const isActive = isSelected(filters, c.dimension, p.raw);
             return (
               <button
                 key={p.label}

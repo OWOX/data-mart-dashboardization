@@ -1,3 +1,4 @@
+import { describeError } from './errors';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** Config edits apply (and refetch) after this idle delay, so dragging a slider isn't N queries. */
@@ -73,7 +74,7 @@ export function useLayerData<T>(
         })
         .catch((err: unknown) => {
           if (cancelled) return;
-          setError(err instanceof Error ? err.message : String(err));
+          setError(describeError(err));
           setStatus('stale'); // last-good `data` is deliberately retained
         });
     };

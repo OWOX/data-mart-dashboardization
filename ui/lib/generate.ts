@@ -6,20 +6,36 @@ import type { AggregateFunction, Component, Dashboard, MartField } from './types
 /** A pie is only readable up to this many slices; above it, a ranked bar wins. */
 export const PIE_MAX_CATEGORIES = 8;
 const MAX_SCORECARDS = 5;
-const BAR_LIMIT = 10;
+export const BAR_LIMIT = 10;
 const TABLE_LIMIT = 100;
 
-const isDate = (f: MartField) => /^(DATE|DATETIME|TIMESTAMP)$/i.test(f.type);
+export const isDate = (f: MartField) => /^(DATE|DATETIME|TIMESTAMP)$/i.test(f.type);
 /**
  * Picks the first preferred aggregation the field actually allows, else the field's own first
  * allowed aggregation. `pick` is only ever called on fields already filtered to have at least one
  * allowed aggregation (see `metrics` below), so the `?? 'COUNT'` is an unreachable safety net, not
  * a real fallback — it must never fire and hand out an aggregation the field doesn't allow.
  */
-const pick = (f: MartField, ...prefer: AggregateFunction[]): AggregateFunction =>
+export const pick = (f: MartField, ...prefer: AggregateFunction[]): AggregateFunction =>
   prefer.find(p => f.allowedAggregations.includes(p)) ?? f.allowedAggregations[0] ?? 'COUNT';
 
 const uid = () => crypto.randomUUID();
+
+/**
+ * How a column is named on screen: the mart's own alias when it has one, the raw column name only
+ * as a fallback — `firstLogInDateTime` is a query identifier, "First LogIn Date Time" is what the
+ * product calls it everywhere else. A primary key reads as its product name, "Unique Count".
+ *
+ * Display only. Every query, config key and filter rule keeps using `name`.
+ */
+export const fieldLabel = (f: MartField) => (f.isPrimaryKey ? 'Unique Count' : (f.alias ?? f.name));
+
+/** Label for a bare column name, when only the schema list is at hand. */
+export const columnLabel = (fields: MartField[], column: string) => {
+  const field = fields.find(f => f.name === column);
+  return field ? fieldLabel(field) : column;
+};
+
 
 /**
  * Distinct-count each candidate dimension, server-side, to decide pie-vs-bar. This is the spec's
@@ -67,6 +83,15 @@ export async function probeCardinality(
  * Turn a mart's schema (+ cardinality probes) into a starting dashboard. Deterministic.
  * Order follows the spec: date filters, scorecards, time series, bars, pie, table.
  */
+/**
+ * The mart's primary key as a metric: "Unique Count", counted by the backend with COUNT_DISTINCT.
+ * Returned as an array so callers can splat it — a mart without a primary key contributes nothing.
+ */
+export function uniqueCountMetric(fields: MartField[]): MartField[] {
+  const key = fields.find(f => f.isPrimaryKey);
+  return key ? [{ ...key, role: 'metric', allowedAggregations: ['COUNT_DISTINCT'] }] : [];
+}
+
 export function generate(
   martId: string,
   martTitle: string,
@@ -75,20 +100,41 @@ export function generate(
 ): Dashboard {
   const d = emptyDashboard(uid(), martId, martTitle);
   const dates = fields.filter(isDate);
+  const primaryDate = dates[0];
+  // "Unique Count" — the product's own name for how many records a mart holds, counted by its
+  // primary key. The number is computed by the BACKEND, never here: the reporting endpoint has no
+  // selectable `Unique Count` column (probed live: `column=Unique Count` → 400 Unknown column, the
+  // pseudo-column exists on the report path only), and its one way to ask for that figure is an
+  // aggregation rule. `COUNT_DISTINCT` over the key is the same SQL the host renders for its own
+  // Unique Count — `renderCountDistinctPrimaryKey(...) AS "Unique Count"` — so this asks for that
+  // calculation rather than reproducing it.
+  //
+  // It LEADS the metric list: how many records there are is the headline figure of any mart that
+  // has a primary key, so it takes the first scorecard, the time series and the bar/pie value.
+  const uniqueCount = uniqueCountMetric(fields);
   // A metric with an empty `allowedAggregations` cannot be aggregated at all — there is no legal
   // AggregateFunction to send. Excluding it here (rather than falling back to some default) is
   // what keeps every generated scorecard/timeseries/bar/pie inside the field's declared
   // governance; it still shows up as a raw column in the detail table below, which never
   // aggregates anything.
-  const metrics = fields.filter(f => f.role === 'metric' && f.allowedAggregations.length > 0);
-  const dims = fields.filter(f => f.role === 'dimension' && !isDate(f));
+  const metrics = [
+    ...uniqueCount,
+    ...fields.filter(f => f.role === 'metric' && f.allowedAggregations.length > 0),
+  ];
+  // The primary key is excluded as a DIMENSION: it is unique per row by definition, so grouping by
+  // it yields one group per row — a "top 10" of arbitrary ids. It stays a raw column in the table.
+  const dims = fields.filter(f => f.role === 'dimension' && !isDate(f) && !f.isPrimaryKey);
 
-  // 2. Global date slice (pre-join) for each date field.
-  d.slices = dates.map(f => ({
-    column: f.name,
-    operator: 'relative_date',
-    value: { kind: 'last_n_days', n: 30 },
-  }));
+  // 2. Global date slice (pre-join) — the FIRST date field only.
+  //
+  // One slice per date field ANDs them together, and on a mart whose dates mark different events
+  // (created / first login / first paid …) that intersection is empty: every row must satisfy all
+  // of them at once, and a NULL fails a range filter outright. Measured on 🥈 User | Entity: 95,986
+  // rows, 153 with `created` in the last 30 days, 0 with all eight of its date columns sliced.
+  // The remaining date fields stay available as filters the user can add deliberately.
+  d.slices = primaryDate
+    ? [{ column: primaryDate.name, operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } }]
+    : [];
 
   const components: Component[] = [];
   const add = (c: Omit<Component, 'id'>) => components.push({ ...c, id: uid() });
@@ -96,17 +142,16 @@ export function generate(
   // 3. Up to five scorecards.
   for (const m of metrics.slice(0, MAX_SCORECARDS)) {
     add({
-      type: 'scorecard', title: m.name, width: 1, height: 1,
+      type: 'scorecard', title: fieldLabel(m), width: 1, height: 1,
       config: { metric: m.name, aggregation: pick(m, 'SUM', 'AVG', 'COUNT') },
     });
   }
 
   // 4. Time series over the primary date field.
-  const primaryDate = dates[0];
   const primaryMetric = metrics[0];
   if (primaryDate && primaryMetric) {
     add({
-      type: 'timeseries', title: `${primaryMetric.name} over time`, width: 5, height: 2,
+      type: 'timeseries', title: `${fieldLabel(primaryMetric)} over time`, width: 5, height: 2,
       config: {
         dateField: primaryDate.name, metric: primaryMetric.name,
         aggregation: pick(primaryMetric, 'SUM', 'AVG'), unit: 'DAY',
@@ -119,7 +164,7 @@ export function generate(
     const agg = pick(primaryMetric, 'SUM', 'AVG');
     for (const dim of dims.filter(x => (cardinality[x.name] ?? Infinity) > PIE_MAX_CATEGORIES)) {
       add({
-        type: 'bar', title: `${primaryMetric.name} by ${dim.name}`, width: 3, height: 2,
+        type: 'bar', title: `${fieldLabel(primaryMetric)} by ${fieldLabel(dim)}`, width: 3, height: 2,
         config: {
           dimension: dim.name, metric: primaryMetric.name, aggregation: agg,
           orientation: 'vertical', limit: BAR_LIMIT, sort: 'desc',
@@ -128,7 +173,7 @@ export function generate(
     }
     for (const dim of dims.filter(x => (cardinality[x.name] ?? Infinity) <= PIE_MAX_CATEGORIES)) {
       add({
-        type: 'pie', title: `${primaryMetric.name} by ${dim.name}`, width: 2, height: 2,
+        type: 'pie', title: `${fieldLabel(primaryMetric)} by ${fieldLabel(dim)}`, width: 2, height: 2,
         config: {
           dimension: dim.name, metric: primaryMetric.name, aggregation: agg,
           maxCategories: PIE_MAX_CATEGORIES,

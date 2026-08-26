@@ -22,12 +22,12 @@ describe('aggLabel', () => {
 });
 
 describe('compile', () => {
-  it('merges global filters (post-join) and slices (pre-join) into one filterConfig', () => {
+  it('merges global filters and slices into one post-join filterConfig', () => {
     const c: Component = { ...base, type: 'scorecard', config: { metric: 'revenue', aggregation: 'SUM' } };
     const q = compile(c, filters, slices);
     expect(q.filterConfig).toEqual([
       { column: 'country', operator: 'eq', value: 'US', placement: 'post-join' },
-      { column: 'date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 }, placement: 'pre-join' },
+      { column: 'date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 }, placement: 'post-join' },
     ]);
   });
 
@@ -206,7 +206,7 @@ describe('compile: filters', () => {
     const q = compile(scorecard, sameColumnFilter, slices);
     expect(q.filterConfig).toEqual([
       { column: 'date', operator: 'gte', value: '2026-01-01', placement: 'post-join' },
-      { column: 'date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 }, placement: 'pre-join' },
+      { column: 'date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 }, placement: 'post-join' },
     ]);
   });
 
@@ -214,6 +214,12 @@ describe('compile: filters', () => {
     const mislabelled: FilterRule[] = [{ column: 'country', operator: 'eq', value: 'US', placement: 'pre-join' }];
     const q = compile(scorecard, mislabelled, []);
     expect(q.filterConfig?.[0].placement).toBe('post-join');
+  });
+
+  it('never sends pre-join, which the endpoint rejects for a column of the mart itself', () => {
+    // 400 "Disconnected columns" kills the whole stream, so this must hold for slices too.
+    const q = compile(scorecard, filters, slices);
+    expect(q.filterConfig?.every(rule => rule.placement === 'post-join')).toBe(true);
   });
 
   it('does not mutate the caller\'s filter or slice arrays', () => {

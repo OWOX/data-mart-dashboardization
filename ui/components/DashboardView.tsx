@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { getDashboard, saveDashboard } from '../lib/dashboards';
-import { queryDataMart, getMartFields } from '../lib/api';
+import { useNavigate, useParams } from 'react-router-dom';
+import { deleteDashboard, duplicateDashboard, getDashboard, saveDashboard } from '../lib/dashboards';
+import { fetchRunSql, getAllFields, getMartFields, queryDataMart } from '../lib/api';
 import { compile } from '../lib/compile';
 import { useLayerData } from '../lib/freshness';
-import { addComponent, addGlobalFilter, removeGlobalFilter, resetFilters, restoreGenerated } from '../lib/edit';
+import { resetFilters, restoreGenerated, setComponentHidden } from '../lib/edit';
+import { toggleValue } from '../lib/filterOps';
 import { probeCardinality } from '../lib/generate';
+import { applySelection } from '../lib/fields';
+import { dataMartPath, openHostPage } from '../lib/hostLinks';
+import { getPluginContext } from '../lib/plugin-runtime';
 import { Grid } from './Grid';
 import { ComponentCard } from './ComponentCard';
 import { FilterBar } from './FilterBar';
 import { renderComponent } from './renderComponent';
-import { AddComponentButton } from './editors/AddComponentButton';
+import { DashboardMenu } from './DashboardMenu';
+import { ComponentMenu } from './ComponentMenu';
+import { FieldsPanel } from './FieldsPanel';
 import { ComponentEditor } from './editors/ComponentEditor';
-import type { Component, ComponentType, Dashboard, FilterRule, MartField } from '../lib/types';
+import type { Component, Dashboard, FilterRule, MartField } from '../lib/types';
 
 const isDateField = (f: MartField) => /^(DATE|DATETIME|TIMESTAMP)$/i.test(f.type);
 
@@ -32,27 +38,33 @@ export function useComponentData(dashboard: Dashboard, component: Component) {
 }
 
 function Cell({
-  dashboard, component, onEdit, onSegmentFilter,
+  dashboard, component, fields, onEdit, onHide, onSegmentFilter,
 }: {
-  dashboard: Dashboard; component: Component; onEdit: (id: string) => void;
+  dashboard: Dashboard; component: Component; fields: MartField[];
+  onEdit: (id: string) => void;
+  onHide: (id: string) => void;
   onSegmentFilter: (f: FilterRule) => void;
 }) {
   const { data, status, error, refresh } = useComponentData(dashboard, component);
+  // The run id travels with the data, so "Copy SQL" costs a request only when it is clicked.
+  const copySql = async () => {
+    const sql = data?.runId ? await fetchRunSql(dashboard.$entity.id, data.runId) : null;
+    await navigator.clipboard?.writeText(sql ?? '').catch(() => undefined);
+  };
   return (
     <ComponentCard
       title={component.title} status={status} error={error} onRefresh={refresh}
       actions={
-        <button
-          type="button"
-          className="rounded px-1.5 text-sm text-muted-foreground hover:bg-black/5"
-          aria-label={`Edit ${component.title}`}
-          onClick={() => onEdit(component.id)}
-        >
-          ⋯
-        </button>
+        <ComponentMenu
+          title={component.title}
+          onConfigure={() => onEdit(component.id)}
+          onRefresh={refresh}
+          onCopySql={() => void copySql()}
+          onHide={() => onHide(component.id)}
+        />
       }
     >
-      {renderComponent(component, data, dashboard.filters, onSegmentFilter)}
+      {renderComponent(component, data, dashboard.filters, onSegmentFilter, fields)}
     </ComponentCard>
   );
 }
@@ -63,9 +75,12 @@ export function DashboardView() {
   // undefined = still loading, null = not found — kept distinct so the two states read differently.
   const [dashboard, setDashboard] = useState<Dashboard | null | undefined>(undefined);
   // The mart's schema, fetched once per dashboard — needed by ComponentEditor (aggregation
-  // choices restricted to each field's `allowedAggregations`) and by "Restore generated layout".
+  // choices restricted to each field's `allowedAggregations`), by the ⋯ menu's Fields picker and
+  // date-range controls, and by "Restore layout".
   const [fields, setFields] = useState<MartField[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [panel, setPanel] = useState<'fields' | 'slicers' | null>(null);
+  const [editingLayout, setEditingLayout] = useState(false);
   const [restoring, setRestoring] = useState(false);
   // Cross-filter clicks (Task 20/M7): EPHEMERAL view-state, deliberately kept OUT of `dashboard`
   // so `saveDashboard(dashboard)` (the Save button, below) can never persist an ad-hoc slice a
@@ -76,6 +91,14 @@ export function DashboardView() {
   // is toggled (it never touches `dashboard` at all), so this stands in for it inside
   // `effectiveDashboard.configVersion` below. Never written back anywhere else.
   const [crossFilterVersion, setCrossFilterVersion] = useState(0);
+  // "Refresh" re-runs every component's query without changing the document. It rides the same
+  // synthetic-version channel as cross-filters: `useLayerData` refetches when its key changes, and
+  // the key is `effectiveDashboard.configVersion`.
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  // Cardinality from the last probe, so a dimension ticked in the Fields menu can choose pie vs bar
+  // the same way the generator did instead of re-probing on every click.
+  const [cardinality, setCardinality] = useState<Record<string, number>>({});
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!id) return;
@@ -85,7 +108,7 @@ export function DashboardView() {
     setCrossFilterVersion(0);
     void getDashboard(id).then(d => {
       setDashboard(d);
-      if (d) void getMartFields(d.$entity.id).then(setFields).catch(() => setFields([]));
+      if (d) void getAllFields(d.$entity.id).then(setFields).catch(() => setFields([]));
     });
   }, [id]);
 
@@ -101,7 +124,7 @@ export function DashboardView() {
       ...dashboard.filters.filter(f => !crossFilters.some(cf => cf.column === f.column)),
       ...crossFilters,
     ],
-    configVersion: dashboard.configVersion + crossFilterVersion,
+    configVersion: dashboard.configVersion + crossFilterVersion + refreshVersion,
   };
 
   // A filter change bumps configVersion, which refetches EVERY component. Filters are global.
@@ -110,24 +133,19 @@ export function DashboardView() {
   };
 
   /**
-   * Cross-filtering (Task 16; ephemeral as of Task 20/M7): a click/keypress on a bar/pie segment
-   * reports `{ column, operator: 'eq', value }` here. Clicking the SAME already-active segment
-   * again is a toggle-off (removes the filter) rather than a no-op re-apply — matched by column,
-   * operator AND value so a different value on the same column always REPLACES, never toggles off,
-   * the existing one. Either branch goes through the now-array-level `addGlobalFilter`/
-   * `removeGlobalFilter` from `ui/lib/edit.ts`, operating on `crossFilters` — NOT `dashboard` —
-   * so a cross-filter click can never be picked up by `saveDashboard(dashboard)`.
-   * `crossFilterVersion` is bumped alongside so `effectiveDashboard.configVersion` changes and
-   * every component's `useLayerData` key changes with it, triggering the real refetch.
+   * Cross-filtering (Task 16; ephemeral as of Task 20/M7; multi-select since `in` became supported):
+   * a click/keypress on a bar/pie segment reports `{ column, value }` here and toggles that value
+   * within the column's selection — clicking a second segment WIDENS the filter to `in (a, b)`
+   * rather than replacing the first, and clicking an active one removes just that value (back to
+   * `eq`, then to no rule at all). `toggleValue` owns every one of those transitions, including
+   * never emitting the `in []` the endpoint rejects.
+   *
+   * It operates on `crossFilters` — NOT `dashboard` — so a cross-filter click can never be picked
+   * up by `saveDashboard(dashboard)`. `crossFilterVersion` is bumped alongside so
+   * `effectiveDashboard.configVersion` changes and every component's `useLayerData` refetches.
    */
   const onSegmentFilter = (f: FilterRule) => {
-    setCrossFilters(prev => {
-      const existing = prev.find(x => x.column === f.column);
-      const isToggleOff =
-        existing !== undefined && existing.operator === f.operator
-        && JSON.stringify(existing.value) === JSON.stringify(f.value);
-      return isToggleOff ? removeGlobalFilter(prev, f.column) : addGlobalFilter(prev, f);
-    });
+    setCrossFilters(prev => toggleValue(prev, f.column, f.value));
     setCrossFilterVersion(v => v + 1);
   };
 
@@ -140,8 +158,31 @@ export function DashboardView() {
     setDashboard(d => (d ? resetFilters(d) : d));
   };
 
-  const addNewComponent = (type: ComponentType) => {
-    setDashboard(d => (d ? addComponent(d, type) : d));
+  /** Fields menu: one settled selection becomes one document edit, hence one refetch wave. */
+  const applyFieldSelection = (selected: Set<string>) => {
+    setDashboard(d => (d ? applySelection(d, selected, fields, cardinality) : d));
+  };
+
+  const hideComponent = (componentId: string) => {
+    setDashboard(d => (d ? setComponentHidden(d, componentId, true) : d));
+  };
+
+  const duplicate = async () => {
+    if (!dashboard) return;
+    const copy = await duplicateDashboard(dashboard);
+    navigate(`/d/${copy.id}`);
+  };
+
+  const remove = async () => {
+    if (!dashboard) return;
+    await deleteDashboard(dashboard.id);
+    navigate('/');
+  };
+
+  const openDataMart = async () => {
+    if (!dashboard) return;
+    const ctx = await getPluginContext();
+    await openHostPage(dataMartPath(ctx.projectId, dashboard.$entity.id));
   };
 
   /** Step 5: re-runs `generate()` for this dashboard's mart, keeping its `id`/`name`/`$entity`. */
@@ -151,9 +192,10 @@ export function DashboardView() {
     try {
       const freshFields = await getMartFields(dashboard.$entity.id);
       const dims = freshFields.filter(f => f.role === 'dimension' && !isDateField(f));
-      const cardinality = await probeCardinality(dashboard.$entity.id, dims);
+      const probed = await probeCardinality(dashboard.$entity.id, dims);
       setFields(freshFields);
-      setDashboard(restoreGenerated(dashboard, freshFields, cardinality));
+      setCardinality(probed);
+      setDashboard(restoreGenerated(dashboard, freshFields, probed));
     } finally {
       setRestoring(false);
     }
@@ -191,26 +233,33 @@ export function DashboardView() {
 
   return (
     <div className="dm-page text-foreground">
-      <header className="dm-page-header">
+      <header className="dm-page-header flex items-start justify-between gap-2">
         <h1 className="dm-page-header-title">{dashboard.name}</h1>
+        <DashboardMenu
+          dashboard={dashboard}
+          busy={restoring}
+          onOpenFields={() => setPanel('fields')}
+          onOpenSlicers={() => setPanel('slicers')}
+          onRefresh={() => setRefreshVersion(v => v + 1)}
+          onDuplicate={() => void duplicate()}
+          onRestoreLayout={() => void restore()}
+          onEditLayout={() => setEditingLayout(e => !e)}
+          onDelete={() => void remove()}
+          onOpenDataMart={() => void openDataMart()}
+        />
       </header>
       <div className="dm-page-content space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <FilterBar
-            dashboard={dashboard} filters={effectiveDashboard.filters}
+            dashboard={dashboard} fields={fields} filters={effectiveDashboard.filters}
             onChange={applyFilters} onResetAll={resetAllFilters}
           />
-          <div className="flex gap-2">
-            <AddComponentButton onAdd={addNewComponent} />
-            <button className="rounded border px-3 py-1.5 text-sm" disabled={restoring} onClick={() => void restore()}>
-              {restoring ? 'Restoring…' : 'Restore generated layout'}
-            </button>
-          </div>
         </div>
-        <Grid dashboard={effectiveDashboard}>
+        <Grid dashboard={{ ...effectiveDashboard, components: effectiveDashboard.components.filter(c => !c.hidden) }}>
           {c => (
             <Cell
-              key={c.id} dashboard={effectiveDashboard} component={c} onEdit={setEditingId}
+              key={c.id} dashboard={effectiveDashboard} component={c} fields={fields}
+              onEdit={setEditingId} onHide={hideComponent}
               onSegmentFilter={onSegmentFilter}
             />
           )}
@@ -222,6 +271,12 @@ export function DashboardView() {
           Save
         </button>
       </div>
+      {panel === 'fields' && (
+        <FieldsPanel
+          dashboard={dashboard} fields={fields}
+          onApply={applyFieldSelection} onClose={() => setPanel(null)}
+        />
+      )}
       {editingId && (
         <ComponentEditor
           dashboard={dashboard}

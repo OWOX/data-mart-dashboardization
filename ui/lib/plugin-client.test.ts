@@ -5,6 +5,8 @@ import { pluginClient } from './plugin-client';
 const list = vi.fn();
 const getJson = vi.fn();
 const traverseData = vi.fn();
+const getRun = vi.fn();
+const forDataMart = vi.fn(() => ({ get: getRun }));
 
 describe('pluginClient', () => {
   beforeEach(() => {
@@ -12,8 +14,10 @@ describe('pluginClient', () => {
     list.mockReset();
     getJson.mockReset();
     traverseData.mockReset();
+    getRun.mockReset();
+    forDataMart.mockClear();
     vi.spyOn(runtime, 'getPluginContext').mockResolvedValue({
-      owox: { getJson, dataMarts: { list, traverseData } },
+      owox: { getJson, dataMarts: { list, traverseData }, runs: { forDataMart } },
     } as never);
   });
 
@@ -46,8 +50,8 @@ describe('pluginClient', () => {
     expect(getJson).toHaveBeenCalledWith('/api/data-marts/dm1');
   });
 
-  it('gets run totals through the host-owned SDK client', async () => {
-    getJson.mockResolvedValue({
+  it('gets run totals through the SDK runs facade, not a raw path', async () => {
+    getRun.mockResolvedValue({
       status: 'SUCCESS',
       totals: { 'cost | SUM': 9 },
       additionalParams: { httpData: { executionSqlQuery: 'SELECT 1' } },
@@ -58,7 +62,9 @@ describe('pluginClient', () => {
       totals: { 'cost | SUM': 9 },
       sql: 'SELECT 1',
     });
-    expect(getJson).toHaveBeenCalledWith('/api/data-marts/dm1/runs/run-1');
+    expect(forDataMart).toHaveBeenCalledWith('dm1');
+    expect(getRun).toHaveBeenCalledWith('run-1');
+    expect(getJson).not.toHaveBeenCalled();
   });
 
   it('lists Data Marts through ctx.owox', async () => {

@@ -22,9 +22,17 @@ export async function listMarts(): Promise<MartRef[]> {
     .map(m => ({ id: String(m.id), title: m.title ?? String(m.id) }));
 }
 
+/**
+ * A mart's fields, from its declared schema.
+ *
+ * The schema carries governance nothing else does — `aggregationRole`, `allowedAggregations`,
+ * `isHiddenForReporting` — and reaches the plugin through the SDK's escape hatch (see
+ * `pluginClient.getById`), whose response is unvalidated by contract, hence the defensive reads
+ * below rather than trust in the type parameter.
+ */
 export async function getMartFields(id: string): Promise<MartField[]> {
   const mart = (await pluginClient.getById(id)) as {
-    schema?: { fields?: Array<{ name: string; type: string; aggregationRole?: MartField['role']; allowedAggregations?: AggregateFunction[]; isHiddenForReporting?: boolean }> };
+    schema?: { fields?: Array<{ name: string; type: string; aggregationRole?: MartField['role']; allowedAggregations?: AggregateFunction[]; isHiddenForReporting?: boolean; isPrimaryKey?: boolean; alias?: string }> };
   };
   // The HTTP Data (reporting) endpoint 400s on any column flagged isHiddenForReporting — e.g. a
   // hidden primary key — so drop them here, at the one boundary fields enter the plugin, or the
@@ -36,8 +44,76 @@ export async function getMartFields(id: string): Promise<MartField[]> {
       type: f.type,
       role: f.aggregationRole ?? d.role,
       allowedAggregations: f.allowedAggregations ?? d.allowedAggregations,
+      ...(f.isPrimaryKey ? { isPrimaryKey: true } : {}),
+      ...(f.alias ? { alias: f.alias } : {}),
     };
   });
+}
+
+/**
+ * Every field a dashboard may build on: the mart's own, plus the columns each joined source
+ * contributes. The joined half is what the host's own column picker shows (668 fields over 61
+ * sources on a large mart), so it is loaded separately from `getMartFields` — the generator works
+ * from native fields only, while the Fields panel offers everything.
+ *
+ * Governance comes from `postJoinAggregations`, which is the joined field's own allow-list; a field
+ * that can be summed or averaged is a metric, anything else is a dimension. Sources the host marks
+ * as not included or not reportable are dropped, mirroring `visibleBlendedColumnNames` server-side —
+ * projecting one of those columns is rejected by the reporting endpoint.
+ *
+ * Joined `<alias>__unique_count` pseudo-columns are deliberately NOT offered: they exist in the
+ * report/MCP surface but not in the blendable column set this endpoint publishes, so requesting one
+ * answers 400 Unknown column.
+ */
+export async function getAllFields(id: string): Promise<MartField[]> {
+  const native = await getMartFields(id);
+  let blended: MartField[] = [];
+  try {
+    blended = await joinedFields(id);
+  } catch (error) {
+    // A mart with no relationships, or an older deployment: the mart's own fields still work.
+    console.warn(`[dashboards] no blendable schema for Data Mart ${id}`, error);
+  }
+  return [...native, ...blended];
+}
+
+async function joinedFields(id: string): Promise<MartField[]> {
+  const schema = (await pluginClient.getBlendableSchema(id)) as {
+    blendedFields?: Array<{
+      name: string; type: string; alias?: string; isHidden?: boolean; aliasPath?: string;
+      sourceDataMartTitle?: string; postJoinAggregations?: AggregateFunction[];
+    }>;
+    availableSources?: Array<{
+      aliasPath?: string; title?: string; isIncluded?: boolean; isAccessibleForReporting?: boolean;
+    }>;
+  };
+  const usable = new Set(
+    (schema.availableSources ?? [])
+      .filter(s => s.isIncluded && s.isAccessibleForReporting && s.aliasPath)
+      .map(s => s.aliasPath as string),
+  );
+  const titles = new Map(
+    (schema.availableSources ?? []).map(s => [s.aliasPath ?? '', s.title ?? s.aliasPath ?? '']),
+  );
+
+  return (schema.blendedFields ?? [])
+    .filter(f => !f.isHidden && f.aliasPath && usable.has(f.aliasPath))
+    .map(f => {
+      const allowed = f.postJoinAggregations ?? [];
+      const aggregatable = allowed.includes('SUM') || allowed.includes('AVG');
+      const d = defaultsFor(f.type);
+      return {
+        name: f.name,
+        type: f.type,
+        role: (aggregatable ? 'metric' : 'dimension') as MartField['role'],
+        allowedAggregations: allowed.length > 0 ? allowed : d.allowedAggregations,
+        ...(f.alias ? { alias: f.alias } : {}),
+        source: {
+          aliasPath: f.aliasPath as string,
+          title: titles.get(f.aliasPath as string) ?? (f.sourceDataMartTitle ?? 'Joined'),
+        },
+      };
+    });
 }
 
 const DEFAULT_LIMIT = 20;
@@ -69,6 +145,15 @@ async function fetchRunTotals(id: string, runId: string): Promise<QueryResult['t
   return null;
 }
 
+/** The SQL a run executed, read on demand (see `QueryResult.runId`). Null when the run reports none. */
+export async function fetchRunSql(martId: string, runId: string): Promise<string | null> {
+  try {
+    return (await pluginClient.getRun(martId, runId)).sql;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The ONE data call, via the typed client's `traverseData`. Aggregation is entirely server-side:
  * a projected field WITH an aggregation rule is a metric, one WITHOUT is a grouping key; `sort` and
@@ -92,5 +177,6 @@ export async function queryDataMart(id: string, body: QueryRequest): Promise<Que
   const totals = needsGrandTotal(body) && traversal.runId
     ? await fetchRunTotals(id, traversal.runId)
     : null;
-  return rowsToQueryResult(objs, body, askedLimit, totals);
+  // The run id travels with the result so "Copy SQL" can fetch on click; no extra request here.
+  return { ...rowsToQueryResult(objs, body, askedLimit, totals), runId: traversal.runId ?? null };
 }

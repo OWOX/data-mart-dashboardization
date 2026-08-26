@@ -23,8 +23,23 @@ export const pluginClient = {
     return (await owox()).dataMarts.list();
   },
 
+  /**
+   * The SDK's low-level escape hatch, used for the one endpoint with no typed abstraction:
+   * `DataMartsApi` exposes only `list()` and `traverseData()`, and `list()` carries no `schema`, so
+   * a mart's field types, roles and `allowedAggregations` are reachable only here. Root-relative
+   * `/api/...` is exactly what the hatch is for — but the generic is a claim, not a runtime check,
+   * so `getMartFields` validates the shape itself instead of trusting `Record<string, unknown>`.
+   */
   async getById(id: string): Promise<Record<string, unknown>> {
     return (await owox()).getJson(`/api/data-marts/${encodeURIComponent(id)}`);
+  },
+
+  /**
+   * Native + joined fields for a mart. Same escape hatch as `getById`, and the only source of the
+   * joined ("blended") columns a report may project — `getById`'s `schema.fields` is native-only.
+   */
+  async getBlendableSchema(id: string): Promise<Record<string, unknown>> {
+    return (await owox()).getJson(`/api/data-marts/${encodeURIComponent(id)}/blendable-schema`);
   },
 
   async traverseData(id: string, options: PluginTraverseOptions) {
@@ -39,13 +54,14 @@ export const pluginClient = {
     };
   },
 
+  /** Via the SDK's typed runs facade — same endpoint, but a supported API rather than a raw path. */
   async getRun(id: string, runId: string) {
-    const response = await (await owox()).getJson<{
+    const response = (await (await owox()).runs.forDataMart(id).get(runId)) as {
       status?: string;
       totals?: Record<string, number | string | boolean | null> | null;
       additionalParams?: { httpData?: { executionSqlQuery?: string } };
       reportDefinition?: { executionSqlQuery?: string };
-    }>(`/api/data-marts/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}`);
+    };
 
     return {
       status: response.status ?? 'UNKNOWN',

@@ -271,13 +271,19 @@ let runSeq = 0;
 const owox = {
   async getJson<T>(path: string): Promise<T> {
     console.info('[owox dev mock] GET', path);
-    const run = /\/api\/data-marts\/[^/]+\/runs\/([^/?]+)/.exec(path);
-    if (run) {
-      return { status: 'SUCCESS', totals: runTotals.get(decodeURIComponent(run[1])) ?? null } as T;
-    }
     const mart = /\/api\/data-marts\/([^/?]+)/.exec(path);
     const fields = mart ? (MARTS[decodeURIComponent(mart[1])]?.fields ?? []) : [];
     return { schema: { fields: fields.map(({ name, type }) => ({ name, type })) } } as T;
+  },
+  runs: {
+    forDataMart(id: string) {
+      return {
+        async get(runId: string) {
+          console.info('[owox dev mock] runs.forDataMart().get', id, runId);
+          return { status: 'SUCCESS', totals: runTotals.get(runId) ?? null };
+        },
+      };
+    },
   },
   dataMarts: {
     async list(): Promise<any[]> {

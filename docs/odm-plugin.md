@@ -8,6 +8,25 @@ The production build is published at `/data-mart-dashboardization/odm-plugin/`, 
 points to that path. The Pages workflow updates only the `odm-plugin` directory and keeps the
 existing site files.
 
+## The SDK surface, and the one escape hatch
+
+Prefer the typed `ctx.owox` resources
+([authoring guide](https://docs.owox.com/docs/plugins/authoring-guide/#low-level-api-escape-hatch)).
+Everything here does — `owox.dataMarts.list()`, `owox.dataMarts.traverseData()`,
+`owox.runs.forDataMart(id).get(runId)`, `ctx.collections('dashboards')` — with one exception.
+
+A Data Mart's **schema** has no typed abstraction: `dataMarts.list()` does not carry it and
+`DataMartsApi` has no `get`, so field types, `aggregationRole` and `allowedAggregations` come from
+`owox.getJson('/api/data-marts/:id')`. That is the guide's sanctioned escape hatch for exactly this
+case — a root-relative `/api/...` path — and it comes with the guide's caveat: *"the generic does not
+validate the response at runtime, so validate returned data yourself"*, which is why
+[`getMartFields`](../ui/lib/api.ts) treats every part of the payload as optional rather than trusting
+its type parameter.
+
+It does **not** fall back to sampling rows when the schema comes back empty. That fallback existed
+briefly, for a case a census could not find: of the marts the picker actually offers (PUBLISHED +
+available for reporting), 104 of 104 across two projects had a populated schema.
+
 ## Local development
 
 ```bash

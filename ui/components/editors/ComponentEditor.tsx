@@ -1,3 +1,4 @@
+import { columnLabel, fieldLabel } from '../../lib/generate';
 import { useEffect, useId, useRef } from 'react';
 import {
   duplicateComponent, moveComponent, removeComponent, resizeComponent, retypeComponent, updateComponent,
@@ -72,6 +73,16 @@ export function ComponentEditor({
     };
   }, []);
 
+  // Click anywhere outside to dismiss, like every other right-hand panel. Attached on the next
+  // tick: the click that opened this panel is still propagating when the effect runs.
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!panelRef.current?.contains(e.target as Node)) onCloseRef.current();
+    };
+    const timer = setTimeout(() => document.addEventListener('mousedown', onDown), 0);
+    return () => { clearTimeout(timer); document.removeEventListener('mousedown', onDown); };
+  }, []);
+
   // Escape-to-close and a Tab focus trap. Listens on `document` (not the panel) so Escape/Tab work
   // regardless of which descendant currently has focus. No dependency (e.g. Radix) is used here —
   // this is the minimal dependency-free implementation of both behaviors.
@@ -140,7 +151,7 @@ export function ComponentEditor({
               >
                 {[c.metric, ...metricFields.map(f => f.name)]
                   .filter((v, i, a) => a.indexOf(v) === i)
-                  .map(m => <option key={m} value={m}>{m}</option>)}
+                  .map(m => <option key={m} value={m}>{columnLabel(fields, m)}</option>)}
               </select>
             </label>
             <label className={labelClass}>
@@ -161,7 +172,7 @@ export function ComponentEditor({
               <select className={inputClass} value={c.dateField} onChange={e => patchConfig({ dateField: e.target.value })}>
                 {[c.dateField, ...dateFields.map(f => f.name)]
                   .filter((v, i, a) => a.indexOf(v) === i)
-                  .map(m => <option key={m} value={m}>{m}</option>)}
+                  .map(m => <option key={m} value={m}>{columnLabel(fields, m)}</option>)}
               </select>
             </label>
             <label className={labelClass}>
@@ -177,7 +188,7 @@ export function ComponentEditor({
               >
                 {[c.metric, ...metricFields.map(f => f.name)]
                   .filter((v, i, a) => a.indexOf(v) === i)
-                  .map(m => <option key={m} value={m}>{m}</option>)}
+                  .map(m => <option key={m} value={m}>{columnLabel(fields, m)}</option>)}
               </select>
             </label>
             <label className={labelClass}>
@@ -200,7 +211,7 @@ export function ComponentEditor({
                 onChange={e => patchConfig({ breakdown: e.target.value || undefined })}
               >
                 <option value="">None</option>
-                {breakdownFields.map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
+                {breakdownFields.map(f => <option key={f.name} value={f.name}>{fieldLabel(f)}</option>)}
               </select>
             </label>
           </>
@@ -215,7 +226,7 @@ export function ComponentEditor({
               <select className={inputClass} value={c.dimension} onChange={e => patchConfig({ dimension: e.target.value })}>
                 {[c.dimension, ...dimensionFields.map(f => f.name)]
                   .filter((v, i, a) => a.indexOf(v) === i)
-                  .map(m => <option key={m} value={m}>{m}</option>)}
+                  .map(m => <option key={m} value={m}>{columnLabel(fields, m)}</option>)}
               </select>
             </label>
             <label className={labelClass}>
@@ -231,7 +242,7 @@ export function ComponentEditor({
               >
                 {[c.metric, ...metricFields.map(f => f.name)]
                   .filter((v, i, a) => a.indexOf(v) === i)
-                  .map(m => <option key={m} value={m}>{m}</option>)}
+                  .map(m => <option key={m} value={m}>{columnLabel(fields, m)}</option>)}
               </select>
             </label>
             <label className={labelClass}>
@@ -274,7 +285,7 @@ export function ComponentEditor({
               <select className={inputClass} value={c.dimension} onChange={e => patchConfig({ dimension: e.target.value })}>
                 {[c.dimension, ...dimensionFields.map(f => f.name)]
                   .filter((v, i, a) => a.indexOf(v) === i)
-                  .map(m => <option key={m} value={m}>{m}</option>)}
+                  .map(m => <option key={m} value={m}>{columnLabel(fields, m)}</option>)}
               </select>
             </label>
             <label className={labelClass}>
@@ -290,7 +301,7 @@ export function ComponentEditor({
               >
                 {[c.metric, ...metricFields.map(f => f.name)]
                   .filter((v, i, a) => a.indexOf(v) === i)
-                  .map(m => <option key={m} value={m}>{m}</option>)}
+                  .map(m => <option key={m} value={m}>{columnLabel(fields, m)}</option>)}
               </select>
             </label>
             <label className={labelClass}>
@@ -347,7 +358,7 @@ export function ComponentEditor({
                 onChange={e => patchConfig({ sort: e.target.value ? [{ column: e.target.value, direction: sortDir }] : undefined })}
               >
                 <option value="">None</option>
-                {c.columns.map(col => <option key={col} value={col}>{col}</option>)}
+                {c.columns.map(col => <option key={col} value={col}>{columnLabel(fields, col)}</option>)}
               </select>
             </label>
             {sortCol && (
@@ -379,8 +390,12 @@ export function ComponentEditor({
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex justify-end bg-black/40" role="dialog" aria-modal="true" aria-labelledby={headingId}>
-      <div ref={panelRef} className="dm-card h-full w-full max-w-sm overflow-y-auto rounded-none p-4" tabIndex={-1}>
+    <div className="pointer-events-none fixed inset-0 z-30 flex justify-end" role="dialog" aria-labelledby={headingId}>
+      <div
+        ref={panelRef}
+        className="dm-card pointer-events-auto my-3 mr-3 flex h-auto max-h-[calc(100vh-1.5rem)] w-full max-w-sm flex-col overflow-y-auto p-4 shadow-lg"
+        tabIndex={-1}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h2 id={headingId} className="text-base font-medium">Edit {component.title}</h2>
           <button type="button" className="text-sm" onClick={onClose} aria-label="Close editor">✕</button>

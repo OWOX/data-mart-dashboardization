@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { pluginClient } from './plugin-client';
-import { generate, probeCardinality, PIE_MAX_CATEGORIES } from './generate';
+import { generate, probeCardinality, PIE_MAX_CATEGORIES, fieldLabel, columnLabel } from './generate';
 import { aggLabel } from './compile';
 import type { BarConfig, MartField, PieConfig, ScorecardConfig, TimeSeriesConfig } from './types';
 
@@ -186,6 +186,72 @@ describe('generate: degenerate marts', () => {
     expect(d.components.some(c => c.type === 'timeseries')).toBe(true);
   });
 
+  describe('a mart with several date fields', () => {
+    // Real shape of 🥈 User | Entity: eight TIMESTAMP columns marking different events. Slicing all
+    // of them at "last 30 days" ANDs to zero rows (measured: 95,986 total, 0 with all eight).
+    const manyDates: MartField[] = [
+      { name: 'firstLogInDateTime', type: 'TIMESTAMP', role: 'dimension', allowedAggregations: ['MIN', 'MAX'] },
+      { name: 'created', type: 'TIMESTAMP', role: 'dimension', allowedAggregations: ['MIN', 'MAX'] },
+      { name: 'firstPaidSubscriptionDateTime', type: 'TIMESTAMP', role: 'dimension', allowedAggregations: ['MIN', 'MAX'] },
+      { name: 'Cost', type: 'FLOAT', role: 'metric', allowedAggregations: ['SUM'] },
+    ];
+
+    it('slices on the first date field only', () => {
+      const d = generate('m1', 'Users', manyDates, {});
+      expect(d.slices).toEqual([
+        { column: 'firstLogInDateTime', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } },
+      ]);
+    });
+
+    it('still charts over the first date field, so slice and axis agree', () => {
+      const d = generate('m1', 'Users', manyDates, {});
+      const ts = d.components.find(c => c.type === 'timeseries') as { config: TimeSeriesConfig };
+      expect(ts.config.dateField).toBe('firstLogInDateTime');
+    });
+  });
+
+  describe('a mart whose only countable thing is its primary key', () => {
+    // Every column is a STRING or a TIMESTAMP: without Unique Count there is no metric at all, and
+    // the generator emits nothing but the detail table.
+    const entity: MartField[] = [
+      { name: 'id', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT', 'COUNT_DISTINCT'], isPrimaryKey: true },
+      { name: 'status', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT', 'COUNT_DISTINCT'] },
+      { name: 'created', type: 'TIMESTAMP', role: 'dimension', allowedAggregations: ['MIN', 'MAX'] },
+    ];
+    const d = generate('m1', 'User | Entity', entity, { status: 4 });
+
+    it('counts the primary key as a metric, under the product\'s own label', () => {
+      const card = d.components.find(c => c.type === 'scorecard') as { title: string; config: ScorecardConfig };
+      expect(card.title).toBe('Unique Count');
+      expect(card.config).toEqual({ metric: 'id', aggregation: 'COUNT_DISTINCT' });
+    });
+
+    it('charts it over time and by dimension, instead of emitting a table alone', () => {
+      const ts = d.components.find(c => c.type === 'timeseries') as { config: TimeSeriesConfig };
+      expect(ts.config).toMatchObject({ metric: 'id', aggregation: 'COUNT_DISTINCT', dateField: 'created' });
+      const pie = d.components.find(c => c.type === 'pie') as { title: string; config: PieConfig };
+      expect(pie.config).toMatchObject({ dimension: 'status', metric: 'id' });
+      expect(pie.title).toBe('Unique Count by status');
+    });
+
+    it('never groups BY the primary key — one group per row is not a chart', () => {
+      const grouped = d.components
+        .filter(c => c.type === 'bar' || c.type === 'pie')
+        .map(c => (c.config as BarConfig | PieConfig).dimension);
+      expect(grouped).not.toContain('id');
+    });
+
+    it('leads with Unique Count even when the mart has real numeric metrics', () => {
+      const withCost = generate('m1', 'X', [...entity, { name: 'Cost', type: 'FLOAT', role: 'metric', allowedAggregations: ['SUM'] }], {});
+      const cards = withCost.components.filter(c => c.type === 'scorecard') as { title: string }[];
+      expect(cards.map(c => c.title)).toEqual(['Unique Count', 'Cost']);
+      // Leading means it is the primary metric: the time series and every bar/pie chart it too.
+      const ts = withCost.components.find(c => c.type === 'timeseries') as { title: string; config: TimeSeriesConfig };
+      expect(ts.config).toMatchObject({ metric: 'id', aggregation: 'COUNT_DISTINCT' });
+      expect(ts.title).toBe('Unique Count over time');
+    });
+  });
+
   it('generates every bar with a positive integer limit within the 1..1000 service ceiling', () => {
     const d = generate('m1', 'X', fields, { Source: 999, Campaign: 999 });
     const bars = d.components.filter(c => c.type === 'bar') as { config: BarConfig }[];
@@ -309,5 +375,38 @@ describe('probeCardinality', () => {
     ];
     await probeCardinality('m1', threeDims);
     expect(maxInFlight).toBeGreaterThan(1);
+  });
+});
+
+describe('fieldLabel / columnLabel', () => {
+  const withAlias: MartField[] = [
+    { name: 'firstLogInDateTime', type: 'TIMESTAMP', role: 'dimension', allowedAggregations: ['MIN', 'MAX'], alias: 'First LogIn Date Time' },
+    { name: 'id', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT_DISTINCT'], isPrimaryKey: true, alias: 'ID' },
+    { name: 'noAlias', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT'] },
+  ];
+
+  it('prefers the mart\'s alias over the query name', () => {
+    expect(fieldLabel(withAlias[0])).toBe('First LogIn Date Time');
+    expect(columnLabel(withAlias, 'firstLogInDateTime')).toBe('First LogIn Date Time');
+  });
+
+  it('still calls the primary key Unique Count, alias or not', () => {
+    expect(fieldLabel(withAlias[1])).toBe('Unique Count');
+  });
+
+  it('falls back to the raw name, including for a column not in the schema', () => {
+    expect(fieldLabel(withAlias[2])).toBe('noAlias');
+    expect(columnLabel(withAlias, 'sessions | SUM')).toBe('sessions | SUM');
+  });
+
+  it('titles generated components with aliases', () => {
+    const d = generate('m1', 'X', [
+      ...withAlias,
+      { name: 'revenue', type: 'FLOAT', role: 'metric', allowedAggregations: ['SUM'], alias: 'Revenue, net' },
+      { name: 'status', type: 'STRING', role: 'dimension', allowedAggregations: ['COUNT'], alias: 'Account Status' },
+    ], { status: 3 });
+    const titles = d.components.map(c => c.title);
+    expect(titles).toContain('Unique Count by Account Status');
+    expect(titles).toContain('Unique Count over time');
   });
 });

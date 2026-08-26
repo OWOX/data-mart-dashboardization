@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  addComponent, removeComponent, duplicateComponent, moveComponent, resizeComponent,
+  removeComponent, duplicateComponent, moveComponent, resizeComponent,
   retypeComponent, updateComponent, restoreGenerated,
-  addGlobalFilter, removeGlobalFilter, resetFilters,
+  resetFilters,
 } from './edit';
 import { emptyDashboard } from './types';
 import type { BarConfig, Component, ComponentConfig, ComponentType, Dashboard, FilterRule, MartField, PieConfig, ScorecardConfig, TableConfig, TimeSeriesConfig } from './types';
@@ -16,6 +16,25 @@ const base = (): Dashboard => ({
 });
 
 const ALL_TYPES: ComponentType[] = ['scorecard', 'timeseries', 'bar', 'pie', 'donut', 'table'];
+
+/**
+ * Stand-in for the removed `addComponent`: these tests still need a component of a given type to
+ * retype or inspect. Configs are literal rather than borrowed — the borrowing path is exercised
+ * through `retypeComponent`, which is now its only caller.
+ */
+function withComponent(d: Dashboard, type: ComponentType, config: ComponentConfig): Dashboard {
+  const component: Component = { id: `new-${type}`, type, title: `New ${type}`, width: 1, height: 1, config };
+  return { ...d, components: [...d.components, component], configVersion: d.configVersion + 1 };
+}
+
+const CONFIG_FIXTURE: Record<ComponentType, ComponentConfig> = {
+  scorecard: { metric: 'x', aggregation: 'SUM' },
+  timeseries: { dateField: 'd', metric: 'x', aggregation: 'SUM', unit: 'DAY' },
+  bar: { dimension: 'd', metric: 'x', aggregation: 'SUM', orientation: 'vertical', limit: 10, sort: 'desc' },
+  pie: { dimension: 'd', metric: 'x', aggregation: 'SUM', maxCategories: 8 },
+  donut: { dimension: 'd', metric: 'x', aggregation: 'SUM', maxCategories: 8 },
+  table: { columns: ['d', 'x'], limit: 100 },
+};
 
 describe('edit', () => {
   // ---- Brief's verbatim tests (Step 1) ----
@@ -44,11 +63,6 @@ describe('edit', () => {
     const d = resizeComponent(base(), 'a', 99, 0);
     expect(d.components[0].width).toBe(5);   // gridColumns
     expect(d.components[0].height).toBe(1);
-  });
-
-  it('addComponent appends a component of the requested type', () => {
-    const d = addComponent(base(), 'table');
-    expect(d.components[d.components.length - 1].type).toBe('table');
   });
 
   it('does not mutate the input document', () => {
@@ -148,8 +162,7 @@ describe('edit', () => {
     expect(d.configVersion).toBe(1);
   });
 
-  it('addComponent, duplicateComponent, retypeComponent and restoreGenerated all bump configVersion', () => {
-    expect(addComponent(base(), 'table').configVersion).toBe(1);
+  it('duplicateComponent, retypeComponent and restoreGenerated all bump configVersion', () => {
     expect(duplicateComponent(base(), 'a').configVersion).toBe(1);
     expect(retypeComponent(base(), 'a', 'pie').configVersion).toBe(1);
     expect(restoreGenerated(base(), [], {}).configVersion).toBe(1);
@@ -210,7 +223,7 @@ describe('edit', () => {
   it('retypes between every pair of types and always produces a structurally valid config', () => {
     for (const from of ALL_TYPES) {
       for (const to of ALL_TYPES) {
-        const d = addComponent(base(), from);
+        const d = withComponent(base(), from, CONFIG_FIXTURE[from]);
         const id = d.components[d.components.length - 1].id;
         const next = retypeComponent(d, id, to);
         const comp = next.components.find(c => c.id === id)!;
@@ -247,7 +260,7 @@ describe('edit', () => {
         { id: 'a', type: 'scorecard', title: 'A', width: 1, height: 1, config: { metric: 'Cost', aggregation: 'SUM' } },
       ],
     };
-    const next = addComponent(d, 'bar');
+    const next = retypeComponent(d, 'a', 'bar');
     const cfg = next.components.at(-1)!.config as BarConfig;
     expect(cfg.dimension).toBe('');
     expect(cfg.metric).toBe('Cost');
@@ -260,32 +273,10 @@ describe('edit', () => {
         { id: 'a', type: 'scorecard', title: 'A', width: 1, height: 1, config: { metric: 'Cost', aggregation: 'SUM' } },
       ],
     };
-    const next = addComponent(d, 'timeseries');
+    const next = retypeComponent(d, 'a', 'timeseries');
     const cfg = next.components.at(-1)!.config as TimeSeriesConfig;
     expect(cfg.dateField).toBe('');
     expect(cfg.metric).toBe('Cost');
-  });
-
-  // ---- addComponent: sane per-type size defaults, clamped to the grid ----
-
-  it('addComponent picks sane default sizes per type', () => {
-    expect(addComponent(base(), 'scorecard').components.at(-1)).toMatchObject({ width: 1, height: 1 });
-    expect(addComponent(base(), 'bar').components.at(-1)).toMatchObject({ width: 3, height: 2 });
-    expect(addComponent(base(), 'pie').components.at(-1)).toMatchObject({ width: 2, height: 2 });
-    expect(addComponent(base(), 'timeseries').components.at(-1)).toMatchObject({ width: 5, height: 2 });
-    expect(addComponent(base(), 'table').components.at(-1)).toMatchObject({ width: 5, height: 3 });
-  });
-
-  it('addComponent clamps the default width to a narrower grid', () => {
-    const d = { ...base(), gridColumns: 2 };
-    const next = addComponent(d, 'table');
-    expect(next.components.at(-1)!.width).toBe(2);
-  });
-
-  it('addComponent produces a fresh, unique id', () => {
-    const d = addComponent(base(), 'scorecard');
-    const ids = d.components.map(c => c.id);
-    expect(new Set(ids).size).toBe(ids.length);
   });
 
   // ---- restoreGenerated ----
@@ -453,96 +444,5 @@ describe('edit', () => {
 
   // ---- bestAggregation scans sibling components, like bestMetric/bestDimension (review fix #4) ----
 
-  it('addComponent borrows an aggregation from a sibling component when the new component has no source of its own', () => {
-    const d: Dashboard = {
-      ...base(),
-      components: [
-        { id: 'a', type: 'table', title: 'A', width: 5, height: 3, config: { columns: ['x'], limit: 10 } },
-        { id: 'b', type: 'bar', title: 'B', width: 3, height: 2, config: { dimension: 'd', metric: 'x', aggregation: 'AVG', orientation: 'vertical', limit: 10 } },
-      ],
-    };
-    const next = addComponent(d, 'scorecard');
-    const cfg = next.components.at(-1)!.config as ScorecardConfig;
-    // 'a' (table) has no aggregation; 'b' (bar) does — bestAggregation must scan past 'a' to find it,
-    // the same way bestMetric/bestDimension scan every sibling rather than stopping at the first.
-    expect(cfg.aggregation).toBe('AVG');
-  });
 
-  // ---- Task 20/M7: addGlobalFilter/removeGlobalFilter now operate on a bare FilterRule[] ----
-  //
-  // (never a Dashboard) — the ephemeral cross-filter click no longer lives inside the dashboard
-  // doc at all, see the "Cross-filtering" section comment in edit.ts. `resetFilters` stays
-  // Dashboard-level and unchanged: it still clears whatever is in `d.filters`, regardless of
-  // whether that came from a deliberately-persisted filter already on the loaded doc.
-
-  it('resetFilters clears filters but keeps the generated date slices', () => {
-    const withSlice: Dashboard = {
-      ...base(),
-      slices: [{ column: 'Date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } }],
-      filters: [{ column: 'x', operator: 'eq', value: 1 }],
-    };
-    const d = resetFilters(withSlice);
-    expect(d.filters).toEqual([]);
-    expect(d.slices).toHaveLength(1);
-  });
-
-  it('resetFilters clears filters regardless of how they got there, keeping slices', () => {
-    const withSlice = { ...base(), slices: [{ column: 'Date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } }] };
-    const d: Dashboard = { ...withSlice, filters: [{ column: 'Cost', operator: 'gt', value: 100 }, { column: 'source', operator: 'eq', value: 'google' }] };
-    const next = resetFilters(d);
-    expect(next.filters).toEqual([]);
-    expect(next.slices).toHaveLength(1);
-  });
-
-  it('resetFilters does not mutate the input document', () => {
-    const d: Dashboard = { ...base(), filters: [{ column: 'x', operator: 'eq', value: 1 }] };
-    resetFilters(d);
-    expect(d.filters).toEqual([{ column: 'x', operator: 'eq', value: 1 }]);
-  });
-});
-
-describe('addGlobalFilter / removeGlobalFilter (array-level, ephemeral cross-filter toggling)', () => {
-  it('appends a filter, replacing any existing filter on the same column rather than stacking', () => {
-    let filters = addGlobalFilter([], { column: 'country', operator: 'eq', value: 'US' });
-    expect(filters).toEqual([{ column: 'country', operator: 'eq', value: 'US' }]);
-    filters = addGlobalFilter(filters, { column: 'country', operator: 'eq', value: 'DE' });
-    expect(filters).toEqual([{ column: 'country', operator: 'eq', value: 'DE' }]);
-  });
-
-  it('a second column leaves the first column filter untouched — multiple cross-filters coexist', () => {
-    let filters = addGlobalFilter([], { column: 'source', operator: 'eq', value: 'google' });
-    filters = addGlobalFilter(filters, { column: 'country', operator: 'eq', value: 'US' });
-    expect(filters).toEqual([
-      { column: 'source', operator: 'eq', value: 'google' },
-      { column: 'country', operator: 'eq', value: 'US' },
-    ]);
-  });
-
-  it('never upgrades to an `in`/`not_in` operator when replacing a value on the same column', () => {
-    let filters = addGlobalFilter([], { column: 'source', operator: 'eq', value: 'google' });
-    filters = addGlobalFilter(filters, { column: 'source', operator: 'eq', value: 'meta' });
-    expect(filters).toEqual([{ column: 'source', operator: 'eq', value: 'meta' }]);
-  });
-
-  it('removeGlobalFilter clears the filter on the given column', () => {
-    const withFilter = addGlobalFilter([], { column: 'source', operator: 'eq', value: 'google' });
-    expect(removeGlobalFilter(withFilter, 'source')).toEqual([]);
-  });
-
-  it('removeGlobalFilter only removes the named column, leaving other cross-filters intact', () => {
-    let filters = addGlobalFilter([], { column: 'source', operator: 'eq', value: 'google' });
-    filters = addGlobalFilter(filters, { column: 'country', operator: 'eq', value: 'US' });
-    expect(removeGlobalFilter(filters, 'source')).toEqual([{ column: 'country', operator: 'eq', value: 'US' }]);
-  });
-
-  it('removeGlobalFilter on a column with no active filter is a safe no-op (returns the same array)', () => {
-    const filters: FilterRule[] = [];
-    expect(removeGlobalFilter(filters, 'nope')).toBe(filters);
-  });
-
-  it('does not mutate the input array', () => {
-    const filters: FilterRule[] = [];
-    addGlobalFilter(filters, { column: 'x', operator: 'eq', value: 1 });
-    expect(filters).toEqual([]);
-  });
 });

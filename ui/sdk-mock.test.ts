@@ -77,9 +77,7 @@ describe('sdk-mock', () => {
       limit: 1,
     });
 
-    const run = await ctx.owox.getJson<{ status: string; totals: Record<string, number> | null }>(
-      `/api/data-marts/sample-orders/runs/${traversal.runId}`,
-    );
+    const run = await ctx.owox.runs.forDataMart('sample-orders').get(traversal.runId);
 
     expect(run.status).toBe('SUCCESS');
     expect(run.totals?.['orders | SUM']).toBeTypeOf('number');

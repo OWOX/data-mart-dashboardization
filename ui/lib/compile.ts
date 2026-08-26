@@ -53,15 +53,26 @@ const clamp = (n: number): number =>
 const dedupe = (fields: string[]): string[] => [...new Set(fields)];
 
 /**
- * Global slices are pre-join, global filters are post-join. Both are tagged and merged into the
- * single filterConfig the query carries; the server does all the filtering.
- * Rules are copied, never mutated in place, and their placement is authoritative here.
+ * Global filters and global slices merge into the single filterConfig the query carries, both
+ * tagged `post-join`; the server does all the filtering. Rules are copied, never mutated in place.
+ *
+ * Slices were tagged `pre-join` — the placement's meaning is "narrow a JOINED source before it is
+ * blended in", which is not what a dashboard-wide date range does. Every column this plugin queries
+ * comes from `getMartFields`, i.e. the mart's OWN schema, and resolving such a column against the
+ * joined sources finds nothing. The endpoint rejects the whole request rather than ignoring the
+ * tag — verified live:
+ *
+ *     filter [{column: 'firstLogInDateTime', operator: 'relative_date', …}]              → 200
+ *     …the same rule + placement: 'post-join'                                            → 200
+ *     …the same rule + placement: 'pre-join'                                             → 400
+ *       "Cannot build report SQL. Disconnected columns: \"firstLogInDateTime\". They are
+ *        missing from the current Data Mart output schema."
+ *
+ * A 400 there fails the whole stream, so one generated date slice was enough to empty every
+ * component on the dashboard at once.
  */
 function mergeFilters(filters: FilterRule[], slices: FilterRule[]): FilterRule[] | null {
-  const merged = [
-    ...filters.map(f => ({ ...f, placement: 'post-join' as const })),
-    ...slices.map(f => ({ ...f, placement: 'pre-join' as const })),
-  ];
+  const merged = [...filters, ...slices].map(f => ({ ...f, placement: 'post-join' as const }));
   return merged.length ? merged : null;
 }
 

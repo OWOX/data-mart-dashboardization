@@ -1,5 +1,6 @@
 import { formatNumber } from '../lib/format';
-import type { Component, QueryResult } from '../lib/types';
+import { columnLabel } from '../lib/generate';
+import type { Component, MartField, QueryResult } from '../lib/types';
 
 /**
  * Presentation only: `data.columns` and `data.rows` come straight from the server, which already
@@ -18,7 +19,11 @@ function renderCell(v: unknown): string {
 
 // `component` is accepted (and unused) to match every other renderer's `renderComponent` call
 // signature — the columns/rows rendered here always come from `data`, never re-derived from config.
-export function DataTable({ data }: { component: Component; data: QueryResult | null }) {
+export function DataTable({ data, fields = [] }: {
+  component: Component; data: QueryResult | null;
+  /** Schema, for aliasing the header row. Aggregated columns keep their `<col> | TOKEN` name. */
+  fields?: MartField[];
+}) {
   if (!data) return <p className="text-xs text-muted-foreground">No data yet.</p>;
   if (data.columns.length === 0) return <p className="text-xs text-muted-foreground">No columns configured.</p>;
 
@@ -29,7 +34,7 @@ export function DataTable({ data }: { component: Component; data: QueryResult | 
           <thead>
             <tr>
               {data.columns.map(col => (
-                <th key={col} className="whitespace-nowrap border-b px-2 py-1 font-medium">{col}</th>
+                <th key={col} className="whitespace-nowrap border-b px-2 py-1 font-medium">{columnLabel(fields, col)}</th>
               ))}
             </tr>
           </thead>

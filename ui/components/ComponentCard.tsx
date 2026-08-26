@@ -25,7 +25,11 @@ export function ComponentCard({
       </div>
       <div className={`flex-1 p-4 ${busy ? 'pointer-events-none opacity-50' : ''}`}>{children}</div>
       {status === 'stale' && error && (
-        <div className="absolute inset-0 grid place-items-center bg-black/5">
+        // The message, not just the button: a bare "Refresh" over an empty chart says a query failed
+        // but never which one or why, which is indistinguishable on screen from a mart that simply
+        // has no matching rows. The host's own text is the only thing that tells those apart.
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/5 p-4">
+          <p role="alert" className="max-w-full overflow-hidden text-center text-xs text-red-600">{error}</p>
           <button className="rounded border bg-white px-3 py-1 text-sm" onClick={onRefresh}>Refresh</button>
         </div>
       )}

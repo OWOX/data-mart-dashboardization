@@ -132,6 +132,25 @@ describe('DashboardList', () => {
       expect(await screen.findByText('Mart One')).toBeInTheDocument();
     });
 
+    it('filters the mart list by the search box, case-insensitively', async () => {
+      vi.spyOn(api, 'listMarts').mockResolvedValue([mart, { id: 'm2', title: 'Orders' }]);
+      renderApp();
+      await screen.findByText(/no dashboards/i);
+      fireEvent.click(screen.getByRole('button', { name: /new dashboard/i }));
+      await screen.findByText('Mart One');
+
+      fireEvent.change(screen.getByRole('searchbox', { name: /search data marts/i }), {
+        target: { value: 'order' },
+      });
+      expect(screen.getByText('Orders')).toBeInTheDocument();
+      expect(screen.queryByText('Mart One')).not.toBeInTheDocument();
+
+      fireEvent.change(screen.getByRole('searchbox', { name: /search data marts/i }), {
+        target: { value: 'zzz' },
+      });
+      expect(screen.getByText(/no data marts match/i)).toBeInTheDocument();
+    });
+
     it('explains rather than dead-ending when there are no marts to build from', async () => {
       vi.spyOn(api, 'listMarts').mockResolvedValue([]);
       renderApp();
@@ -202,6 +221,24 @@ describe('DashboardList', () => {
       expect(await screen.findByText(/couldn.t create/i)).toBeInTheDocument();
       // The dialog stays open so the user can retry instead of silently landing nowhere.
       expect(screen.getByText('Mart One')).toBeInTheDocument();
+    });
+
+    it('names the failing step and the host error code, not just "try again"', async () => {
+      vi.spyOn(api, 'listMarts').mockResolvedValue([mart]);
+      // Shape of the SDK's PluginTransportError: the class is not exported, only its payload type.
+      const transportError = Object.assign(new Error('Reading this Data Mart is not allowed'), {
+        payload: { code: 'FORBIDDEN', message: 'Reading this Data Mart is not allowed' },
+      });
+      vi.spyOn(api, 'getMartFields').mockRejectedValue(transportError);
+
+      renderApp();
+      await screen.findByText(/no dashboards/i);
+      fireEvent.click(screen.getByRole('button', { name: /new dashboard/i }));
+      fireEvent.click(await screen.findByText('Mart One'));
+
+      const message = await screen.findByText(/couldn.t create/i);
+      expect(message).toHaveTextContent(/reading the Data Mart schema/i);
+      expect(message).toHaveTextContent(/FORBIDDEN/);
     });
 
     describe('accessibility', () => {
