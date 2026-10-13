@@ -53,15 +53,13 @@ const clamp = (n: number): number =>
 const dedupe = (fields: string[]): string[] => [...new Set(fields)];
 
 /**
- * Global slices are pre-join, global filters are post-join. Both are tagged and merged into the
- * single filterConfig the query carries; the server does all the filtering.
- * Rules are copied, never mutated in place, and their placement is authoritative here.
+ * Global slices and global filters both name the mart's own columns, so both are post-join: the
+ * server accepts `pre-join` only on a joined Data Mart's column and refuses it on an own one as
+ * "disconnected". Merged into the single filterConfig the query carries; the server does all the
+ * filtering. Rules are copied, never mutated in place, and their placement is authoritative here.
  */
 function mergeFilters(filters: FilterRule[], slices: FilterRule[]): FilterRule[] | null {
-  const merged = [
-    ...filters.map(f => ({ ...f, placement: 'post-join' as const })),
-    ...slices.map(f => ({ ...f, placement: 'pre-join' as const })),
-  ];
+  const merged = [...filters, ...slices].map(f => ({ ...f, placement: 'post-join' as const }));
   return merged.length ? merged : null;
 }
 

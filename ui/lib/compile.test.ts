@@ -22,12 +22,12 @@ describe('aggLabel', () => {
 });
 
 describe('compile', () => {
-  it('merges global filters (post-join) and slices (pre-join) into one filterConfig', () => {
+  it('merges global filters and slices into one post-join filterConfig', () => {
     const c: Component = { ...base, type: 'scorecard', config: { metric: 'revenue', aggregation: 'SUM' } };
     const q = compile(c, filters, slices);
     expect(q.filterConfig).toEqual([
       { column: 'country', operator: 'eq', value: 'US', placement: 'post-join' },
-      { column: 'date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 }, placement: 'pre-join' },
+      { column: 'date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 }, placement: 'post-join' },
     ]);
   });
 
@@ -206,7 +206,7 @@ describe('compile: filters', () => {
     const q = compile(scorecard, sameColumnFilter, slices);
     expect(q.filterConfig).toEqual([
       { column: 'date', operator: 'gte', value: '2026-01-01', placement: 'post-join' },
-      { column: 'date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 }, placement: 'pre-join' },
+      { column: 'date', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 }, placement: 'post-join' },
     ]);
   });
 

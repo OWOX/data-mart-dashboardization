@@ -6,7 +6,7 @@ type RelativeValue = { kind: string; n?: number };
 const DEFAULT_PRESET: RelativeValue = { kind: 'last_n_days', n: 30 };
 
 /**
- * Every slice is a `relative_date` pre-join filter (that's the only operator `generate.ts` ever
+ * Every slice is a `relative_date` filter (that's the only operator `generate.ts` ever
  * emits for a date field). Defensive parse, in the same spirit as `compile.ts`'s `dir()`/`clamp()`:
  * a hand-edited or older-schema doc's `value` isn't provably shaped at runtime even though the
  * type says so, so fall back to the first preset rather than crashing the control.

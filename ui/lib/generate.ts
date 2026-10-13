@@ -83,7 +83,7 @@ export function generate(
   const metrics = fields.filter(f => f.role === 'metric' && f.allowedAggregations.length > 0);
   const dims = fields.filter(f => f.role === 'dimension' && !isDate(f));
 
-  // 2. Global date slice (pre-join) for each date field.
+  // 2. Global date slice for each date field.
   d.slices = dates.map(f => ({
     column: f.name,
     operator: 'relative_date',
