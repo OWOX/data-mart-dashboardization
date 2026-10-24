@@ -52,3 +52,13 @@ test('this week on a Monday starts after the anchor', () => {
 test('ytd on Jan 1 covers the previous year', () => {
   expect(rangeFor('ytd', at('2027-01-01T08:00:00Z')).range).toEqual({ from: '2026-01-01', to: '2026-12-31' });
 });
+
+test.each([
+  ['this_month', '2026-10-24T10:00:00Z', '2026-09-01', '2026-09-23'],
+  ['last_month', '2026-10-24T10:00:00Z', '2026-08-01', '2026-08-30'],
+  ['ytd', '2026-10-24T10:00:00Z', '2025-01-01', '2025-10-23'],
+  ['this_month', '2026-03-05T10:00:00Z', '2026-02-01', '2026-02-04'],
+  ['this_month', '2026-03-31T10:00:00Z', '2026-02-01', '2026-02-28'],
+] as const)('calendar comparison aligns to previous period: %s at %s', (preset, now, from, to) => {
+  expect(rangeFor(preset, at(now)).comparison).toEqual({ from, to });
+});

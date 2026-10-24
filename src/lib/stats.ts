@@ -46,12 +46,23 @@ export function planForRange(plan: DailyMap, range: DateWindow, shape: PlanShape
     const values = eachDay(range).map((d) => plan.get(d)).filter((v): v is number => v !== undefined);
     return values.length ? values.reduce((s, v) => s + v, 0) : null;
   }
-  const end = levelAt(plan, range);
-  if (shape === 'level' || end === null) return end;
-  const base = plan.get(addDays(range.from, -1));
-  const first = plan.get(range.from);
-  if (base === undefined || (first !== undefined && base > first)) return end;
-  return end - base;
+  if (shape === 'level') return levelAt(plan, range);
+  // cumulative plans restart (e.g. month-to-date), so sum the segments between resets
+  let prev = plan.get(addDays(range.from, -1));
+  let segStart = prev ?? 0;
+  let total = 0;
+  let seen = false;
+  for (const d of eachDay(range)) {
+    const v = plan.get(d);
+    if (v === undefined) continue;
+    if (prev !== undefined && v < prev) {
+      total += prev - segStart;
+      segStart = 0;
+    }
+    prev = v;
+    seen = true;
+  }
+  return seen ? total + prev! - segStart : null;
 }
 
 export function statusOf(value: number | null, plan: number | null, thresholdPct: number): Status {
@@ -66,7 +77,8 @@ export function trendOf(daily: DailyMap, w: DateWindow): Trend {
     .filter((d) => daily.has(d))
     .map((d) => ({ x: diffDays(w.from, d), y: daily.get(d)! }));
   const fit = linearFit(points);
-  if (!fit || fit.slope === 0) return 'flat';
+  const mean = points.reduce((t, p) => t + p.y, 0) / points.length;
+  if (!fit || Math.abs(fit.slope) <= 1e-9 * Math.max(Math.abs(mean), 1)) return 'flat';
   return fit.slope > 0 ? 'up' : 'down';
 }
 

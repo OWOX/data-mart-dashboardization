@@ -60,3 +60,13 @@ test('trend and diff', () => {
   expect(diffPct(1, 0)).toBeNull();
   expect(diffPct(null, 1)).toBeNull();
 });
+
+test('trend of a constant non-integer series is flat', () => {
+  expect(trendOf(series('2026-10-01', Array(7).fill(0.1)), { from: '2026-10-01', to: '2026-10-07' })).toBe('flat');
+  expect(trendOf(series('2026-10-01', Array(28).fill(12.34)), { from: '2026-10-01', to: '2026-10-28' })).toBe('flat');
+});
+
+test('cumulative plan sums segments across resets inside the range', () => {
+  const plan = new Map([['2026-10-30', 300], ['2026-10-31', 310], ['2026-11-01', 10], ['2026-11-02', 20]]);
+  expect(planForRange(plan, { from: '2026-10-30', to: '2026-11-02' }, 'cumulative')).toBe(330);
+});

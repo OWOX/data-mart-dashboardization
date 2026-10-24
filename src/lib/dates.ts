@@ -57,13 +57,26 @@ function windowFor(preset: Preset, anchor: Day): DateWindow {
   }
 }
 
+const CALENDAR_UNIT: Partial<Record<Preset, Unit>> = {
+  last_week: 'week', this_week: 'week',
+  last_month: 'month', this_month: 'month',
+  last_quarter: 'quarter', this_quarter: 'quarter',
+  last_year: 'year', this_year: 'year', ytd: 'year',
+};
+
 export function rangeFor(preset: Preset, now: Date): RangeSpec {
   const anchor = anchorFor(now);
   const range = windowFor(preset, anchor);
   const days = diffDays(range.from, range.to) + 1;
   const factWindow = range.from > anchor ? null : { from: range.from, to: minDay(range.to, anchor) };
-  const comparison = factWindow
-    ? { from: addDays(factWindow.from, -days), to: addDays(factWindow.to, -days) }
-    : null;
+  const unit = CALENDAR_UNIT[preset];
+  let comparison: DateWindow | null = null;
+  if (factWindow && unit) {
+    const prev = periodOf(addDays(range.from, -1), unit);
+    const len = diffDays(factWindow.from, factWindow.to) + 1;
+    comparison = { from: prev.from, to: minDay(prev.to, addDays(prev.from, len - 1)) };
+  } else if (factWindow) {
+    comparison = { from: addDays(factWindow.from, -days), to: addDays(factWindow.to, -days) };
+  }
   return { preset, anchor, range, days, factWindow, comparison, endsInFuture: range.to > anchor };
 }
