@@ -27,3 +27,18 @@ button { font: inherit; color: inherit; }
 .gy-btn:focus-visible, .gy-chip:focus-visible, select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .gy-btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
 .gy-muted { color: var(--text-2); }
+.gy-card { position: relative; width: 280px; padding: 16px 20px; background: var(--card); border: 1px solid var(--blue); }
+.gy-card[data-status='above'] { border-color: var(--green); }
+.gy-card[data-status='near'] { border-color: var(--orange); }
+.gy-card[data-status='below'] { border-color: var(--red); }
+.gy-card[data-status='error'], .gy-card[data-status='empty'] { border-color: var(--grey); }
+.gy-card-value { display: flex; align-items: baseline; gap: 12px; margin-top: 8px; }
+.gy-big { font-size: 24px; font-weight: 700; color: var(--blue); }
+.gy-diff { font-size: 12.5px; color: var(--text-2); }
+.gy-card-label { color: var(--text-2); font-size: 14px; margin: 2px 0 8px; }
+.gy-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.gy-badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 6px; font-size: 11px; line-height: 1.5; background: var(--nested); color: var(--text-2); }
+.gy-badge[data-status='above'] { background: #d9eed7; color: #1a1f2e; }
+.gy-badge[data-status='near'] { background: #f8e1ca; color: #1a1f2e; }
+.gy-badge[data-status='below'] { background: #f6d4d0; color: #1a1f2e; }
+.gy-card-foot { margin-top: 8px; font-size: 11px; color: var(--muted); }
