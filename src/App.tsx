@@ -29,7 +29,7 @@ type View =
   | { name: 'intro' }
   | { name: 'building' }
   | { name: 'blocked'; blocked: BlockedInfo }
-  | { name: 'error'; message: string }
+  | { name: 'error'; message: string; retry: 'load' | 'build' }
   | { name: 'ready' }
   | { name: 'settings' };
 
@@ -56,23 +56,30 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [cache, setCache] = useState<CacheDoc | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [outdated, setOutdated] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const refreshId = useRef(0);
+  // set when the cache must be recomputed even though the model hash and anchor match
+  const forceNext = useRef(false);
 
-  useEffect(() => {
-    let live = true;
-    (async () => {
+  const load = useCallback(async () => {
+    setView({ name: 'loading' });
+    try {
       const [s, m] = await Promise.all([loadSettings(store), loadModel(store)]);
-      if (!live) return;
       setSettings(s);
       setPreset(s.defaultPreset);
       setComparisonOn(s.comparisonDefault);
       setModel(m);
       setView(m ? { name: 'ready' } : { name: 'intro' });
-    })().catch((e) => { if (live) setView({ name: 'error', message: describeError(e) }); });
-    return () => { live = false; };
+    } catch (e) {
+      setView({ name: 'error', message: describeError(e), retry: 'load' });
+    }
   }, [store]);
 
+  useEffect(() => { void load(); }, [load]);
+
   const build = useCallback(async () => {
+    refreshId.current++;
+    setRefreshing(false);
     setView({ name: 'building' });
     try {
       const result = await buildModel({ owox, generate, userId, now: now() });
@@ -80,9 +87,10 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       await saveModel(store, result.model);
       setModel(result.model);
       setCache(null);
+      forceNext.current = true;
       setView({ name: 'ready' });
     } catch (e) {
-      setView({ name: 'error', message: describeError(e) });
+      setView({ name: 'error', message: describeError(e), retry: 'build' });
     }
   }, [owox, generate, userId, now, store]);
 
@@ -96,12 +104,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const saved = await loadCache(store, key);
       if (!current()) return;
       setCache(saved);
-      if (!force && !isStale(saved, model, spec.anchor)) { setRefreshing(false); return; }
+      if (!force && !forceNext.current && !isStale(saved, model, spec.anchor)) { setRefreshing(false); return; }
       setRefreshing(true);
       const doc = await refreshCanvas({ owox, model, spec, comparisonOn, thresholdPct: settings.thresholdPct });
       if (!current()) return;
       await saveCache(store, key, doc);
       if (!current()) return;
+      forceNext.current = false;
       setCache(doc);
     } catch {
       // cards keep their last cached values
@@ -124,8 +133,22 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     return () => { live = false; };
   }, [inReady, model, owox]);
 
-  const openSettings = () => { ctx.ui?.setRoute?.('/settings'); setView({ name: 'settings' }); };
+  const openSettings = () => { ctx.ui?.setRoute?.('/settings'); setSettingsError(null); setView({ name: 'settings' }); };
   const leaveSettings = () => { ctx.ui?.setRoute?.('/'); setView({ name: 'ready' }); };
+  const backToCanvas = model ? () => setView({ name: 'ready' }) : undefined;
+  const saveSettingsAndLeave = async (s: Settings) => {
+    try {
+      await saveSettings(store, s);
+    } catch (e) {
+      setSettingsError(`Couldn't save settings: ${describeError(e)}`);
+      return;
+    }
+    if (s.thresholdPct !== settings.thresholdPct) forceNext.current = true;
+    if (s.defaultPreset !== settings.defaultPreset) setPreset(s.defaultPreset);
+    if (s.comparisonDefault !== settings.comparisonDefault) setComparisonOn(s.comparisonDefault);
+    setSettings(s);
+    leaveSettings();
+  };
 
   switch (view.name) {
     case 'loading':
@@ -142,13 +165,14 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     case 'building':
       return <main className="gy-main"><p>Reading descriptions and schemas…</p></main>;
     case 'blocked':
-      return <Blocked blocked={view.blocked} projectId={ctx.projectId} onRetry={() => void build()} />;
+      return <Blocked blocked={view.blocked} projectId={ctx.projectId} onRetry={() => void build()} onBack={backToCanvas} />;
     case 'error':
       return (
         <main className="gy-main">
           <h1>Something went wrong</h1>
           <p>{view.message}</p>
-          <button type="button" className="gy-btn gy-btn-primary" onClick={() => void build()}>Retry</button>
+          <button type="button" className="gy-btn gy-btn-primary" onClick={() => void (view.retry === 'load' ? load() : build())}>Retry</button>
+          {backToCanvas && <>{' '}<button type="button" className="gy-btn" onClick={backToCanvas}>Back to canvas</button></>}
         </main>
       );
     case 'settings':
@@ -156,13 +180,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <SettingsPage
           settings={settings}
           onBack={leaveSettings}
-          onSave={(s) => {
-            setSettings(s);
-            setPreset(s.defaultPreset);
-            setComparisonOn(s.comparisonDefault);
-            void saveSettings(store, s).catch(() => {});
-            leaveSettings();
-          }}
+          error={settingsError}
+          onSave={(s) => void saveSettingsAndLeave(s)}
         />
       );
     case 'ready': {

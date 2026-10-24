@@ -45,7 +45,7 @@ const snippet = (projectId: string): string => `## Metrics
 |---|---|---|---|---|
 | Critical number | ARR | <owner> | [Plan · ARR](https://app.owox.com/ui/${projectId}/data-marts/<plan-data-mart-id>/data-setup?field=<plan_field>) | [ARR](https://app.owox.com/ui/${projectId}/data-marts/<fact-data-mart-id>/data-setup?field=<fact_field>) |`;
 
-export function Blocked({ blocked, projectId, onRetry }: { blocked: BlockedInfo; projectId: string; onRetry: () => void }) {
+export function Blocked({ blocked, projectId, onRetry, onBack }: { blocked: BlockedInfo; projectId: string; onRetry: () => void; onBack?: () => void }) {
   const showSnippet = blocked.code === 'NO_GOAL' || blocked.code === 'GOAL_PLACEHOLDER';
   const text = snippet(projectId);
   return (
@@ -63,7 +63,9 @@ export function Blocked({ blocked, projectId, onRetry }: { blocked: BlockedInfo;
           <button type="button" className="gy-btn" onClick={() => { void navigator.clipboard?.writeText(text)?.catch(() => {}); }}>Copy</button>
         </div>
       )}
-      <p><button type="button" className="gy-btn gy-btn-primary" onClick={onRetry}>Retry</button></p>
+      <p><button type="button" className="gy-btn gy-btn-primary" onClick={onRetry}>Retry</button>
+        {onBack && <>{' '}<button type="button" className="gy-btn" onClick={onBack}>Back to canvas</button></>}
+      </p>
     </div>
   );
 }
