@@ -1,24 +1,12 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import { fileURLToPath } from 'node:url';
 
-export default defineConfig(({ command }) => ({
+export default defineConfig({
+  base: '/gyroscope/',
   plugins: [react()],
-  root: 'ui',
-  // `npm run dev` (serve): resolve @owox/plugin-sdk to the local mock so the UI runs in the browser
-  // with no host. `npm run build`: keep it external — the host serves the real SDK to the iframe.
-  resolve:
-    command === 'serve'
-      ? { alias: { '@owox/plugin-sdk': fileURLToPath(new URL('./ui/sdk-mock.ts', import.meta.url)) } }
-      : {},
-  build: {
-    outDir: '../dist/ui',
-    emptyOutDir: true,
-    rollupOptions: {
-      external: [
-        'react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime',
-        'react-router-dom', '@owox/plugin-sdk',
-      ],
-    },
+  test: {
+    environment: 'happy-dom',
+    globals: true,
+    setupFiles: ['src/test-setup.ts'],
   },
-}));
+});
