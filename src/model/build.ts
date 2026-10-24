@@ -2,6 +2,7 @@ import type { BuildResult, ClassNode, MetricDef } from '../types';
 import { extractLinks } from '../lib/links';
 import type { MartLink } from '../lib/links';
 import { hashString } from '../lib/hash';
+import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields } from '../owox/sources';
 import type { Blendable, Inputs, MartDetail, OwoxLike } from '../owox/sources';
@@ -14,7 +15,7 @@ import { uniqueCountMetric, validate } from './validate';
 export function inputHash(inputs: Inputs): string {
   return hashString(JSON.stringify([
     inputs.projectDescription,
-    inputs.contexts.map((c) => [c.id, c.description]),
+    [...inputs.contexts].sort((a, b) => a.id.localeCompare(b.id)).map((c) => [c.id, c.description]),
     inputs.marts.map((m) => [m.id, m.modifiedAt]).sort(),
   ]));
 }
@@ -36,7 +37,10 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   const details = new Map<string, MartDetail>();
   const linked = [...new Set(links.flatMap((l) => (l.martId && visible.has(l.martId) ? [l.martId] : [])))];
   const got = await runPool(linked.map((id) => () => fetchMartDetail(owox, id)), POOL);
-  got.forEach((r) => { if (r.status === 'fulfilled') details.set(r.value.id, r.value); });
+  const failures = new Map<string, unknown>();
+  got.forEach((r, i) => { if (r.status === 'fulfilled') details.set(r.value.id, r.value); else failures.set(linked[i]!, r.reason); });
+  const titleOf = (id: string) => inputs.marts.find((m) => m.id === id)?.title ?? id;
+  const buildFailed = (id: string, e: unknown) => new Error(`BUILD_FAILED: couldn't load ${titleOf(id)}: ${describeError(e)}`);
   const dateFields: Record<string, string[]> = {};
   for (const [id, d] of details) dateFields[id] = flattenFields(d.fields).filter((x) => DATE_TYPES.has(x.field.type.toUpperCase())).map((x) => x.path);
 
@@ -44,8 +48,13 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   try {
     ai = await interpret(generate, { projectDescription: inputs.projectDescription, contexts: inputs.contexts, links, dateFields });
   } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') throw e;
     return fail('AI_INVALID', "The AI's reading of the descriptions doesn't match the Data Mart schemas.", [e instanceof Error ? e.message : String(e)]);
   }
+
+  const goalMetric = ai.metrics.find((m) => m.ref === ai.goal.metricRef);
+  const gl = goalMetric && goalMetric.factLink !== null ? links[goalMetric.factLink] : undefined;
+  if (ai.goal.status === 'ok' && gl?.martId && visible.has(gl.martId) && failures.has(gl.martId)) throw buildFailed(gl.martId, failures.get(gl.martId));
 
   const v = validate({ ai, links, details, visible });
   if (!v.ok) return v;
@@ -56,10 +65,13 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     return { id: m.id, title: m.title, contexts: m.contexts, detail, blendable };
   }), POOL);
   const nodes = loaded.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+  loaded.forEach((r, i) => { if (r.status === 'rejected') failures.set(inputs.marts[i]!.id, r.reason); });
 
   const goalLink = links.find((l) => l.martId === v.goal.martId && l.field === v.goal.field);
   const main = chooseMain({ goalMartId: v.goal.martId, goalField: v.goal.field, nodes, visible });
   if (!main) return fail('GOAL_NOT_CONNECTED', `None of the Data Marts you can see reference ${goalLink?.text ?? v.goal.field} through a calculated field.`);
+
+  if (!nodes.some((n) => n.id === main.id)) throw buildFailed(main.id, failures.get(main.id));
 
   const edges = buildEdges(nodes, visible);
   const withPk = new Set(nodes.filter((n) => hasPrimaryKey(n.detail)).map((n) => n.id));
@@ -74,11 +86,14 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     const own = v.metrics.filter((m) => m.martId === n.id);
     const uc = uniqueCountMetric(n.detail, n.blendable);
     if (uc && !own.some((m) => m.id === uc.id)) own.push(uc);
-    const sorted = own.map((m, i) => ({ m, i })).sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i).map((x) => x.m);
+    const ranked = own.map((m, i) => ({ m, i })).sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i).map((x) => x.m);
+    const seen = new Set<string>();
+    const sorted = ranked.filter((m) => !seen.has(m.id) && !!seen.add(m.id));
     metrics.push(...sorted);
     classes.push({ id: n.id, martId: n.id, title: n.title, contexts: n.contexts, depth, keyMetricId: sorted[0]?.id ?? null, metricIds: sorted.map((m) => m.id) });
   }
-  classes.sort((a, b) => a.depth - b.depth || a.title.localeCompare(b.title));
+  classes.sort((a, b) => a.depth - b.depth || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+  metrics.sort((a, b) => a.id.localeCompare(b.id));
 
   return {
     ok: true,

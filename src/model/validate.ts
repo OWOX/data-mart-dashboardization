@@ -71,6 +71,7 @@ export function validate(input: ValidateInput): ValidateResult {
     const pl = m.planLink !== null ? links[m.planLink] : undefined;
     if (pl && !pl.placeholder && pl.martId && pl.field && visible.has(pl.martId)) {
       const ph = check(m.alias, pl, m.planDateField, null, 'plan');
+      if (ph && !m.planDateField) mismatches.push(`${m.alias} → plan date field missing for ${ph.detail.title}`);
       if (ph && m.planDateField) plan = { martId: pl.martId, measure: measureFor(ph.field, pl.field, null), dateField: m.planDateField, shape: m.planShape ?? 'daily' };
     }
 
