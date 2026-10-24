@@ -25,3 +25,21 @@ test('filter keeps main and bridges hidden classes with dashed connectors', () =
 test('contexts are unique and sorted', () => {
   expect(contextsOf(model).map((x) => x.id)).toEqual(['growth', 'sales']);
 });
+
+test('same-row and upward edges are dropped', () => {
+  const m2 = {
+    goal: { classId: 'm' },
+    classes: [c('m', 0), c('a', 1), c('z', 1), c('b', 2)],
+    edges: [{ from: 'm', to: 'a' }, { from: 'a', to: 'z' }, { from: 'b', to: 'm' }],
+  } as unknown as Model;
+  expect(layoutFor(m2, new Set()).connectors).toEqual([{ from: 'm', to: 'a', dashed: false }]);
+});
+
+test('solid wins over a dashed path to the same pair', () => {
+  const m3 = {
+    goal: { classId: 'm' },
+    classes: [c('m', 0), c('h', 1, ['x']), c('a', 2, ['y'])],
+    edges: [{ from: 'm', to: 'a' }, { from: 'm', to: 'h' }, { from: 'h', to: 'a' }],
+  } as unknown as Model;
+  expect(layoutFor(m3, new Set(['y'])).connectors).toEqual([{ from: 'm', to: 'a', dashed: false }]);
+});

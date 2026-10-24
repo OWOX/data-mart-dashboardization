@@ -14,11 +14,15 @@ interface Props {
 interface Line { from: string; to: string; dashed: boolean; x1: number; y1: number; x2: number; y2: number }
 
 export function Canvas({ model, cache, comparisonOn, refreshing, onRetry }: Props) {
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const ref = useRef<HTMLDivElement>(null);
-  const layout = useMemo(() => layoutFor(model, selected), [model, selected]);
   const contexts = useMemo(() => contextsOf(model), [model]);
+  const selected = useMemo(() => {
+    const valid = new Set(contexts.map((x) => x.id));
+    return new Set([...picked].filter((id) => valid.has(id)));
+  }, [picked, contexts]);
+  const layout = useMemo(() => layoutFor(model, selected), [model, selected]);
   const metricsById = useMemo(() => new Map(model.metrics.map((m) => [m.id, m])), [model]);
 
   const toggle = (id: string) => {

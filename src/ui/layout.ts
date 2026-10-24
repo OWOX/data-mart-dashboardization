@@ -38,7 +38,11 @@ export function layoutFor(model: Model, selected: ReadonlySet<string>): Layout {
     walk(u.id, false);
   }
 
-  const connectors = [...found.values()].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+  const rowOf = new Map<string, number>();
+  rows.forEach((row, i) => row.forEach((c) => rowOf.set(c.id, i)));
+  // Only downward links: same-row and upward edges would cross cards.
+  const connectors = [...found.values()]
+    .filter((c) => (rowOf.get(c.to) ?? 0) > (rowOf.get(c.from) ?? 0)).sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
   return { rows, connectors };
 }
 
