@@ -22,3 +22,9 @@ test('staleness', () => {
   expect(isStale(doc, model, '2026-10-24')).toBe(true);
   expect(isStale(doc, { ...model, inputHash: 'x' }, '2026-10-23')).toBe(true);
 });
+
+test('unknown default preset falls back', async () => {
+  const ctx = memoryCollections();
+  await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'next_decade' as never });
+  expect((await loadSettings(ctx)).defaultPreset).toBe('this_quarter');
+});

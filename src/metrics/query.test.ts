@@ -13,8 +13,10 @@ test('options', () => {
     filter: [{ column: 'date', operator: 'gte', value: '2026-10-01' }, { column: 'date', operator: 'lt', value: '2026-10-24' }], limit: 1,
   });
   expect(dailyOptions({ field: 'aov', fn: null }, 'date', { from: '2026-10-01', to: '2026-10-02' })).toMatchObject({
-    column: ['date', 'aov'], aggregation: null, dateTrunc: [{ column: 'date', unit: 'DAY', timeZone: 'UTC' }],
+    column: ['date', 'aov'], aggregation: null,
   });
+  expect((dailyOptions({ field: 'aov', fn: null }, 'date', { from: '2026-10-01', to: '2026-10-02' }) as { dateTrunc: unknown }).dateTrunc)
+    .toEqual([{ column: 'date', unit: 'DAY' }]);
 });
 
 test.each([[12, 12], ['1234.50', 1234.5], [null, null], [undefined, null], ['abc', null], [NaN, null], [true, null]] as const)(

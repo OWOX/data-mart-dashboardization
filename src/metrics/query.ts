@@ -22,7 +22,7 @@ export const totalOptions = (m: Measure, dateField: string | null, w: DateWindow
 export const dailyOptions = (m: Measure, dateField: string, w: DateWindow): Record<string, unknown> => ({
   column: [dateField, m.field],
   aggregation: aggregation(m),
-  dateTrunc: [{ column: dateField, unit: 'DAY', timeZone: 'UTC' }],
+  dateTrunc: [{ column: dateField, unit: 'DAY' }],
   filter: dateFilter(dateField, w),
   sort: [{ column: dateField, direction: 'asc' }],
   limit: 1000,
