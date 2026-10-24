@@ -50,7 +50,7 @@ Manifest:
 | Input | Endpoint |
 |---|---|
 | Project description | `ctx.owox.project.getSettings()`, which calls `GET /api/projects/settings` |
-| Contexts with descriptions | `GET /api/contexts` |
+| Contexts with descriptions | `GET /api/contexts`. If the request is refused, Gyroscope continues with no contexts |
 | Visible Data Marts | `ctx.owox.dataMarts.list()` |
 | Schema, primary keys, calculated fields | `GET /api/data-marts/{id}` |
 | Reference paths to other marts | `GET /api/data-marts/{id}/blendable-schema` |
@@ -96,12 +96,12 @@ Mart ids and field names come from the Markdown links (`/data-marts/<id>/...?fie
 
 1. The goal is the project description's critical metric. Its fact mart is the goal mart.
 2. If the member can see the goal mart, it is the main class.
-3. Otherwise the main class is the visible mart with the fewest reference steps to the goal mart. Ties go to a mart whose formula references the goal field itself, then to the alphabetical title.
+3. Otherwise the main class is the visible mart with the fewest reference steps to the goal mart. The fallback main class is a visible mart whose calculated field references the goal mart directly. A two-step path would need a visible one-step mart, so direct referrers are always nearest. Ties go to a mart whose formula references the goal field itself, then to the alphabetical title.
 4. Gyroscope never guesses a goal. Section 9 lists the blocked states.
 
 ### 5.5 Key metric and secondary metrics
 
-A class's metrics are the metrics bound to it in section 5.2, plus Unique Count. The key metric is the first match in this order:
+A class's metrics are the metrics bound to it in section 5.2, plus Unique Count. Unique Count exists only for a single-column primary key (`COUNT_DISTINCT` on it). A composite key gets none. The key metric is the first match in this order:
 
 1. The project's critical metric.
 2. A context's critical metric.
@@ -136,7 +136,7 @@ All dates are UTC. The anchor is yesterday.
 | To date | YTD | Jan 1 to the anchor |
 | Full current | This year, this quarter, this month, this week | The whole period. Days after the anchor are forecast |
 
-Comparison is optional and on by default. It covers the same number of days directly before the range.
+Comparison is optional and on by default. Calendar presets (last and this week, month, quarter and year, and YTD) compare with the previous period of the same unit, counted from its start, for the same number of days as the fact window and capped at that period's end. Rolling presets (yesterday, last 7 days, last 28 days) compare with the same number of days directly before the range. When the range starts after the anchor, there is no fact and no comparison.
 
 ## 7. Metrics
 
@@ -164,7 +164,7 @@ The forecast appears only when the range ends after the anchor.
 | Shape | Plan for the range |
 |---|---|
 | `daily` | Sum of the daily plan values in the range |
-| `cumulative` | The plan row on the last day of the range minus the row on the day before the range starts (or the row itself when the range starts at the plan's period start) |
+| `cumulative` | The sum of each segment between resets inside the range. A reset is a value lower than the previous day. The first segment is measured from the day before the range when that row exists |
 | `level` | The plan row on the last day of the range |
 
 ### 7.4 Statuses
@@ -180,7 +180,7 @@ The forecast appears only when the range ends after the anchor.
 
 The threshold comes from settings and defaults to 20%. The default border is blue `#459ce9`.
 
-Trend is the sign of the fitted slope over the range's daily values: up, down or flat (exactly zero). It colours the sparkline (green up, red down) and picks the badge icon (lucide trending-up, trending-down, move-right).
+Trend is the sign of the fitted slope over the range's daily values: up, down or flat. The trend is flat when |slope| ≤ 1e-9 × max(|mean|, 1). It colours the sparkline (green up, red down) and picks the badge icon (lucide trending-up, trending-down, move-right).
 
 ## 8. Canvas and card
 
@@ -188,7 +188,7 @@ Trend is the sign of the fitted slope over the range's daily values: up, down or
 
 1. The main class is on top. Each row below is one reference step further away.
 2. A row of context chips above the canvas filters classes: All, then one chip per context. Multi-select, default All. Marts without a context appear only under All.
-3. The main class is always visible. When a filter hides a class between two visible ones, a dashed connector joins them.
+3. The main class is always visible. When a filter hides a class between two visible ones, a dashed connector joins them. Gyroscope draws a connector only when its target sits in a lower row than its source.
 4. The header holds the date range picker, the comparison toggle, Refresh, Rebuild model and Settings.
 
 ### 8.2 Card
@@ -224,6 +224,8 @@ Trend is the sign of the fitted slope over the range's daily values: up, down or
 | Model out of date | Banner with Rebuild model; old model keeps rendering |
 | Card query fails or times out | That card only: grey border, "Couldn't load", Retry |
 | Refreshing | Cached cards stay; 2px progress bar on top |
+| Main or goal Data Mart fails to load | Error screen with the message and Retry. Retry repeats only the failed step |
+| Rebuild ends blocked or failed while a model exists | The blocked or failed screen also offers Back to canvas |
 | Fewer than 14 days of history | No forecast; "Not enough history to forecast" |
 
 ## 10. Cache
@@ -235,7 +237,7 @@ One document per range and comparison setting in the `cache` collection, id `<pr
   cards: { [classId]: { metrics: { [metricId]: MetricResult }, status: 'ok' | 'error', error? } } }
 ```
 
-The canvas reads only from this cache. A refresh starts when the cached anchor is not yesterday or `modelHash` differs from the saved model. The Refresh button forces one.
+The canvas reads only from this cache. A refresh starts when the cached anchor is not yesterday or `modelHash` differs from the saved model. The Refresh button forces one. A refresh after a rebuild or a threshold change is also forced.
 
 ## 11. Settings
 

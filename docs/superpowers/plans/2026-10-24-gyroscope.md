@@ -149,9 +149,9 @@ rm -rf node_modules package-lock.json
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "happy-dom": "^20.10.6",
+    "happy-dom": "^21.0.4",
     "typescript": "~5.9.0",
-    "vite": "8.1.3",
+    "vite": "8.3.5",
     "vitest": "^4.1.9"
   }
 }
@@ -1836,7 +1836,7 @@ export const cacheKey: (preset: Preset, comparisonOn: boolean) => string; // `${
 
 `TOKEN = { SUM: 'SUM', AVG: 'AVG', MIN: 'MIN', MAX: 'MAX', COUNT: 'COUNT', COUNT_DISTINCT: 'COUNTUNIQUE' }`.
 
-Date filter for window `w` on `dateField`: `[{ column: dateField, operator: 'gte', value: w.from }, { column: dateField, operator: 'lt', value: addDays(w.to, 1) }]`. This works for DATE and TIMESTAMP columns.
+Date filter for window `w` on `dateField`: `[{ column: dateField, operator: 'gte', value: w.from }, { column: dateField, operator: 'lt', value: addDays(w.to, 1) }]`. This works for DATE and TIMESTAMP columns. The daily `dateTrunc` carries no `timeZone`, because the backend rejects a time zone on DATE and calculated fields.
 
 `totalOptions(m, dateField, w)`:
 - `column: [m.field]`
@@ -1847,7 +1847,7 @@ Date filter for window `w` on `dateField`: `[{ column: dateField, operator: 'gte
 `dailyOptions(m, dateField, w)`:
 - `column: [dateField, m.field]`
 - `aggregation` as above
-- `dateTrunc: [{ column: dateField, unit: 'DAY', timeZone: 'UTC' }]`
+- `dateTrunc: [{ column: dateField, unit: 'DAY' }]` (no `timeZone`: the backend rejects a time zone on DATE and calculated fields)
 - `filter`: the date filter
 - `sort: [{ column: dateField, direction: 'asc' }]`
 - `limit: 1000`
@@ -1894,7 +1894,7 @@ test('options', () => {
     filter: [{ column: 'date', operator: 'gte', value: '2026-10-01' }, { column: 'date', operator: 'lt', value: '2026-10-24' }], limit: 1,
   });
   expect(dailyOptions({ field: 'aov', fn: null }, 'date', { from: '2026-10-01', to: '2026-10-02' })).toMatchObject({
-    column: ['date', 'aov'], aggregation: null, dateTrunc: [{ column: 'date', unit: 'DAY', timeZone: 'UTC' }],
+    column: ['date', 'aov'], aggregation: null, dateTrunc: [{ column: 'date', unit: 'DAY' }],
   });
 });
 
@@ -2029,7 +2029,7 @@ export const totalOptions = (m: Measure, dateField: string | null, w: DateWindow
 export const dailyOptions = (m: Measure, dateField: string, w: DateWindow) => ({
   column: [dateField, m.field],
   aggregation: aggregation(m),
-  dateTrunc: [{ column: dateField, unit: 'DAY', timeZone: 'UTC' }],
+  dateTrunc: [{ column: dateField, unit: 'DAY' }], // no timeZone: the backend rejects it on DATE and calculated fields
   filter: dateFilter(dateField, w),
   sort: [{ column: dateField, direction: 'asc' }],
   limit: 1000,
