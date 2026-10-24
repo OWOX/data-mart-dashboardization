@@ -42,3 +42,13 @@ button { font: inherit; color: inherit; }
 .gy-badge[data-status='near'] { background: #f8e1ca; color: #1a1f2e; }
 .gy-badge[data-status='below'] { background: #f6d4d0; color: #1a1f2e; }
 .gy-card-foot { margin-top: 8px; font-size: 11px; color: var(--muted); }
+
+.gy-chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 24px; }
+.gy-chip { flex: none; height: 32px; padding: 0 12px; border: 1px solid var(--border); background: transparent; cursor: pointer; font: 400 11px var(--font-num); text-transform: uppercase; color: var(--text-2); }
+.gy-chip[aria-pressed='true'] { border-color: var(--blue); color: var(--blue); }
+.gy-canvas { position: relative; display: flex; flex-direction: column; gap: 72px; align-items: center; }
+.gy-row { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+.gy-links { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.gy-progress { position: absolute; top: -12px; left: 0; height: 2px; width: 100%; overflow: hidden; background: var(--border-quiet); }
+.gy-progress::after { content: ''; position: absolute; inset-block: 0; width: 40%; background: var(--blue); animation: gy-slide 1.1s infinite; }
+@keyframes gy-slide { from { left: -40%; } to { left: 100%; } }
