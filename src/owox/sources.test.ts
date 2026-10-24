@@ -30,3 +30,19 @@ test('flattenFields builds dotted paths and skips hidden subtrees', () => {
     { name: 'h', type: 'RECORD', isPrimaryKey: false, isHiddenForReporting: true, fields: [{ name: 'x', type: 'STRING', isPrimaryKey: false }] },
   ]).map((f) => f.path)).toEqual(['a', 'a.b']);
 });
+
+test('flattenFields skips DISCONNECTED subtrees and does not descend into REPEATED fields', () => {
+  expect(flattenFields([
+    { name: 'r', type: 'RECORD', isPrimaryKey: false, mode: 'REPEATED', fields: [{ name: 'c', type: 'STRING', isPrimaryKey: false }] },
+    { name: 'd', type: 'RECORD', isPrimaryKey: false, status: 'DISCONNECTED', fields: [{ name: 'e', type: 'STRING', isPrimaryKey: false }] },
+    { name: 'ok', type: 'STRING', isPrimaryKey: false, status: 'CONNECTED' },
+  ]).map((f) => f.path)).toEqual(['r', 'ok']);
+});
+
+test('fetchInputs survives a refused /api/contexts', async () => {
+  const base = fakeOwox({ projectDescription: 'p', contexts: [], marts: [], details: {}, blendables: {} });
+  const refused = { ...base, getJson: async () => { throw new Error('403'); } } as typeof base;
+  const inputs = await fetchInputs(refused);
+  expect(inputs.contexts).toEqual([]);
+  expect(inputs.projectDescription).toBe('p');
+});

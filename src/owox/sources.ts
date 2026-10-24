@@ -1,6 +1,7 @@
 export interface SchemaField {
   name: string; type: string; alias?: string; description?: string;
   isPrimaryKey: boolean; isHiddenForReporting?: boolean;
+  mode?: string; status?: string;
   allowedAggregations?: string[];
   calculated?: { formula: string; level?: 'metric' | 'column' };
   fields?: SchemaField[];
@@ -27,7 +28,7 @@ export const DATE_TYPES: ReadonlySet<string> = new Set(['DATE', 'DATETIME', 'TIM
 export async function fetchInputs(owox: OwoxLike): Promise<Inputs> {
   const [settings, contexts, marts] = await Promise.all([
     owox.project.getSettings(),
-    owox.getJson<{ id: string; name: string; description?: unknown }[]>('/api/contexts'),
+    owox.getJson<{ id: string; name: string; description?: unknown }[]>('/api/contexts').catch(() => []),
     owox.dataMarts.list(),
   ]);
   return {
@@ -52,8 +53,8 @@ export async function fetchBlendable(owox: OwoxLike, id: string): Promise<Blenda
 
 export function flattenFields(fields: SchemaField[], prefix = ''): { path: string; field: SchemaField }[] {
   return fields.flatMap((f) => {
-    if (f.isHiddenForReporting) return [];
+    if (f.isHiddenForReporting || f.status === 'DISCONNECTED') return [];
     const path = prefix ? `${prefix}.${f.name}` : f.name;
-    return [{ path, field: f }, ...flattenFields(f.fields ?? [], path)];
+    return [{ path, field: f }, ...(f.mode === 'REPEATED' ? [] : flattenFields(f.fields ?? [], path))];
   });
 }
