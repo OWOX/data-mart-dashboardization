@@ -12,3 +12,4 @@ owox.dev.json
 *.d.ts
 *.d.ts.map
 !postcss.config.js
+tmp/
