@@ -10,22 +10,28 @@ test('linear fit', () => {
 
 test('flow forecast adds fitted remaining days to fact', () => {
   const daily = series('2026-07-26', Array.from({ length: 90 }, () => 10)); // flat 10/day to 2026-10-23
-  const f = forecastFor({ daily, anchor: '2026-10-23', rangeTo: '2026-10-31', kind: 'flow', fact: 230 });
+  const f = forecastFor({ daily, anchor: '2026-10-23', rangeTo: '2026-10-31', additive: true, fact: 230 });
   expect(f!.value).toBeCloseTo(230 + 8 * 10);
   expect(f!.future).toHaveLength(8);
   expect(f!.future[0]).toEqual({ d: '2026-10-24', v: 10 });
 });
 
+test('a non-additive flow forecast is the fitted value at range end, not a sum', () => {
+  const daily = series('2026-07-26', Array.from({ length: 90 }, () => 10));
+  const f = forecastFor({ daily, anchor: '2026-10-23', rangeTo: '2026-10-31', additive: false, fact: 10 });
+  expect(f!.value).toBeCloseTo(10);
+});
+
 test('level forecast is the fitted value on the last day', () => {
   const daily = series('2026-07-26', Array.from({ length: 90 }, (_, i) => 100 + i)); // +1/day, 189 on anchor
-  const f = forecastFor({ daily, anchor: '2026-10-23', rangeTo: '2026-10-31', kind: 'level', fact: 189 });
+  const f = forecastFor({ daily, anchor: '2026-10-23', rangeTo: '2026-10-31', additive: false, fact: 189 });
   expect(f!.value).toBeCloseTo(197);
 });
 
 test('short history gives no forecast; fitted values never go negative', () => {
-  expect(forecastFor({ daily: series('2026-10-15', [1, 2, 3]), anchor: '2026-10-23', rangeTo: '2026-10-31', kind: 'flow', fact: 6 })).toBeNull();
+  expect(forecastFor({ daily: series('2026-10-15', [1, 2, 3]), anchor: '2026-10-23', rangeTo: '2026-10-31', additive: true, fact: 6 })).toBeNull();
   const falling = series('2026-07-26', Array.from({ length: 90 }, (_, i) => 90 - i));
-  const f = forecastFor({ daily: falling, anchor: '2026-10-23', rangeTo: '2026-12-31', kind: 'flow', fact: 0 });
+  const f = forecastFor({ daily: falling, anchor: '2026-10-23', rangeTo: '2026-12-31', additive: true, fact: 0 });
   expect(f!.future.every((p) => p.v >= 0)).toBe(true);
 });
 

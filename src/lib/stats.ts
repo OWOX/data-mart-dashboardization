@@ -1,4 +1,4 @@
-import type { DateWindow, Day, MetricKind, PlanShape, Status, Trend } from '../types';
+import type { DateWindow, Day, PlanShape, Status, Trend } from '../types';
 import { addDays, diffDays, eachDay } from './dates';
 
 export type DailyMap = Map<Day, number>;
@@ -17,8 +17,8 @@ export function linearFit(points: { x: number; y: number }[]): { slope: number; 
 const HISTORY_DAYS = 90;
 const MIN_HISTORY = 14;
 
-export function forecastFor(args: { daily: DailyMap; anchor: Day; rangeTo: Day; kind: MetricKind; fact: number | null }) {
-  const { daily, anchor, rangeTo, kind, fact } = args;
+export function forecastFor(args: { daily: DailyMap; anchor: Day; rangeTo: Day; additive: boolean; fact: number | null }) {
+  const { daily, anchor, rangeTo, additive, fact } = args;
   const start = addDays(anchor, -(HISTORY_DAYS - 1));
   const points = eachDay({ from: start, to: anchor })
     .filter((d) => daily.has(d))
@@ -28,7 +28,7 @@ export function forecastFor(args: { daily: DailyMap; anchor: Day; rangeTo: Day; 
   if (!fit) return null;
   const at = (d: Day) => Math.max(0, fit.intercept + fit.slope * diffDays(start, d));
   const future = rangeTo > anchor ? eachDay({ from: addDays(anchor, 1), to: rangeTo }).map((d) => ({ d, v: at(d) })) : [];
-  const value = kind === 'level' ? at(rangeTo) : (fact ?? 0) + future.reduce((s, p) => s + p.v, 0);
+  const value = additive ? (fact ?? 0) + future.reduce((s, p) => s + p.v, 0) : at(rangeTo);
   return { value, future };
 }
 

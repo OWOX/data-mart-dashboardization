@@ -57,6 +57,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [refreshing, setRefreshing] = useState(false);
   const [outdated, setOutdated] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   // what this member can see, fetched once per model; data is null when the fetch failed
   const [inputs, setInputs] = useState<{ model: Model; data: Inputs | null } | null>(null);
   const refreshId = useRef(0);
@@ -64,8 +65,6 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const checkedFor = useRef<object | null>(null);
   const modelNow = useRef<Model | null>(null);
   modelNow.current = model;
-  // set when the cache must be recomputed even though the model hash and anchor match
-  const forceNext = useRef(false);
 
   const load = useCallback(async () => {
     setView({ name: 'loading' });
@@ -94,7 +93,6 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       await saveModel(store, result.model);
       setModel(result.model);
       setCache(null);
-      forceNext.current = true;
       setView({ name: 'ready' });
     } catch (e) {
       setView({ name: 'error', message: describeError(e), retry: 'build' });
@@ -116,14 +114,17 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const saved = await loadCache(store, key);
       if (!current()) return false;
       setCache(saved);
-      if (!force && !forceNext.current && !isStale(saved, model, spec.anchor)) { setRefreshing(false); return true; }
+      if (!force && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); return true; }
       setRefreshing(true);
       const doc = await refreshCanvas({ owox, model, spec, comparisonOn, thresholdPct: settings.thresholdPct, visibleIds: visible });
       if (!current()) return false;
-      await saveCache(store, key, doc);
-      if (!current()) return false;
-      forceNext.current = false;
       setCache(doc);
+      setSaveNote(null);
+      try {
+        await saveCache(store, key, doc);
+      } catch (e) {
+        if (current()) setSaveNote(`Couldn't save the refreshed data: ${describeError(e)}`);
+      }
     } catch {
       // cards keep their last cached values
     } finally {
@@ -162,7 +163,6 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setSettingsError(`Couldn't save settings: ${describeError(e)}`);
       return;
     }
-    if (s.thresholdPct !== settings.thresholdPct) forceNext.current = true;
     if (s.defaultPreset !== settings.defaultPreset) setPreset(s.defaultPreset);
     if (s.comparisonDefault !== settings.comparisonDefault) setComparisonOn(s.comparisonDefault);
     setSettings(s);
@@ -220,6 +220,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             onRebuild={() => void build()}
             onSettings={openSettings}
           />
+          {saveNote && <p className="gy-muted">{saveNote}</p>}
           {outdated && (
             <div className="gy-banner">
               <span>Descriptions or schemas changed since this model was built.</span>

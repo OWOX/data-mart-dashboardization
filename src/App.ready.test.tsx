@@ -42,15 +42,17 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
   const cache = opts.cache ?? 'fresh';
   if (cache !== 'none') {
     const doc: CacheDoc = {
-      modelHash: model.inputHash,
+      modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct: 20,
       anchor: cache === 'fresh' ? rangeFor('this_quarter', NOW).anchor : '2000-01-01',
       refreshedAt: '2026-10-24T09:00:00Z', preset: 'this_quarter', comparison: true, cards: {},
     };
     await saveCache(store, cacheKey('this_quarter', true), doc);
   }
-  const deps: AppDeps = { owox, store, generate: opts.generate === undefined ? async () => goalAi : opts.generate, userId: 'u1', now: () => NOW };
+  let clock = NOW.getTime();
+  const deps: AppDeps = { owox, store, generate: opts.generate === undefined ? async () => goalAi : opts.generate, userId: 'u1', now: () => new Date(clock) };
+  const tick = () => { clock += 60_000; };
   const traversals = () => owox.calls.filter((c) => c.path.startsWith('traverse:')).length;
-  return { deps, traversals, store, d, owox };
+  return { deps, traversals, store, d, owox, tick };
 }
 const ctxWith = (setRoute = vi.fn()) => ({ ctx: { projectId: 'p', ui: { setRoute } } as never, setRoute });
 
@@ -85,9 +87,11 @@ test('Settings and Back set the route', async () => {
 });
 
 test('Rebuild with unchanged inputs still refreshes the canvas', async () => {
-  const { deps, traversals } = await setup();
+  const { deps, traversals, tick } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
+  const rebuild = await screen.findByRole('button', { name: 'Rebuild model' });
+  tick();
+  fireEvent.click(rebuild);
   await waitFor(() => expect(traversals()).toBeGreaterThan(0));
 });
 
@@ -189,4 +193,19 @@ test('an invisible main shows the no-access card', async () => {
   d.marts = d.marts.filter((m) => m.id !== GID);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   expect(await screen.findByText("You don't have access to this Data Mart")).toBeInTheDocument();
+});
+
+test('a failed cache save keeps the new values on screen and shows a note', async () => {
+  const mem = memoryCollections();
+  const store: CollectionsLike = {
+    collections: <T,>(name: string) => {
+      const c = mem.collections<T>(name);
+      return name === 'cache' ? { ...c, put: async () => { throw new Error('too big'); } } : c;
+    },
+  };
+  const { deps, d } = await setup({ store, cache: 'none' });
+  d.rows = () => [{ 'revenue | SUM': 1234 }];
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  expect(await screen.findByText("Couldn't save the refreshed data: too big")).toBeInTheDocument();
+  expect(screen.getByText('1.23K')).toBeInTheDocument();
 });

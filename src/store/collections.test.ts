@@ -1,8 +1,8 @@
 import { isStale, loadCache, loadModel, loadSettings, memoryCollections, saveCache, saveModel, saveSettings } from './collections';
 import { DEFAULT_SETTINGS, type CacheDoc, type Model } from '../types';
 
-const model = { version: 1, inputHash: 'h' } as Model;
-const doc = { modelHash: 'h', anchor: '2026-10-23' } as CacheDoc;
+const model = { version: 1, inputHash: 'h', builtAt: 'b1' } as Model;
+const doc = { modelHash: 'h', anchor: '2026-10-23', builtAt: 'b1', thresholdPct: 20 } as CacheDoc;
 
 test('round trips and defaults', async () => {
   const ctx = memoryCollections();
@@ -17,10 +17,15 @@ test('round trips and defaults', async () => {
 });
 
 test('staleness', () => {
-  expect(isStale(null, model, '2026-10-23')).toBe(true);
-  expect(isStale(doc, model, '2026-10-23')).toBe(false);
-  expect(isStale(doc, model, '2026-10-24')).toBe(true);
-  expect(isStale(doc, { ...model, inputHash: 'x' }, '2026-10-23')).toBe(true);
+  expect(isStale(null, model, '2026-10-23', 20)).toBe(true);
+  expect(isStale(doc, model, '2026-10-23', 20)).toBe(false);
+  expect(isStale(doc, model, '2026-10-24', 20)).toBe(true);
+  expect(isStale(doc, { ...model, inputHash: 'x' }, '2026-10-23', 20)).toBe(true);
+});
+
+test('a rebuild or a threshold change makes the cache stale', () => {
+  expect(isStale(doc, { ...model, builtAt: 'b2' }, '2026-10-23', 20)).toBe(true);
+  expect(isStale(doc, model, '2026-10-23', 15)).toBe(true);
 });
 
 test('unknown default preset falls back', async () => {

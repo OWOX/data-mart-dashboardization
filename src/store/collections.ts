@@ -30,8 +30,8 @@ export async function loadCache(ctx: CollectionsLike, key: string): Promise<Cach
 }
 export const saveCache = async (ctx: CollectionsLike, key: string, doc: CacheDoc): Promise<void> => { await ctx.collections<CacheDoc>('cache').put(key, doc); };
 
-export const isStale = (doc: CacheDoc | null, model: Model, anchor: Day): boolean =>
-  !doc || doc.anchor !== anchor || doc.modelHash !== model.inputHash;
+export const isStale = (doc: CacheDoc | null, model: Model, anchor: Day, thresholdPct: number): boolean =>
+  !doc || doc.anchor !== anchor || doc.modelHash !== model.inputHash || doc.builtAt !== model.builtAt || doc.thresholdPct !== thresholdPct;
 
 export function memoryCollections(): CollectionsLike {
   const store = new Map<string, Map<string, unknown>>();

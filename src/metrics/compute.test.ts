@@ -56,3 +56,21 @@ test('a failing query fails only this metric', async () => {
   expect(result.error).toBe('TIMEOUT');
   expect(result.fact).toBeNull();
 });
+
+test('an AVG flow metric forecasts its level, not a sum of daily averages', async () => {
+  const avg: MetricDef = { ...metric, id: 'm:revenue:AVG', measure: { field: 'revenue', fn: 'AVG' }, plan: null };
+  const avgOwox = fakeOwox({
+    projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+    rows: (_id, o) => {
+      const f = o.filter as { value: string }[];
+      if (!o.dateTrunc) return [{ 'revenue | AVG': 10 }];
+      const out = [];
+      for (let d = f[0]!.value; d < f[1]!.value; d = addDays(d, 1)) out.push({ date: d, 'revenue | AVG': 10 });
+      return out;
+    },
+  });
+  const spec = rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
+  const { result } = await computeMetric({ owox: avgOwox, metric: avg, spec, comparisonOn: false, thresholdPct: 20, withSpark: false });
+  expect(result.fact).toBe(10);
+  expect(result.forecast).toBeCloseTo(10);
+});

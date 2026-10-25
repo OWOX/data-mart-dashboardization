@@ -3,6 +3,17 @@ import { runPool } from '../lib/pool';
 import type { OwoxLike } from '../owox/sources';
 import { computeMetric } from './compute';
 
+const sig4 = (n: number): number => Number(n.toPrecision(4));
+const round = (s: SeriesPack): SeriesPack => ({ ...s, values: s.values.map((v) => (v === null ? v : sig4(v))), forecast: s.forecast.map(sig4) });
+
+const MAX_DOC_CHARS = 900_000;
+
+/** Sparks are the bulk of a doc; drop them all when it would not fit in the collection. */
+export function trimToSize(doc: CacheDoc, limit = MAX_DOC_CHARS): CacheDoc {
+  if (JSON.stringify(doc).length <= limit) return doc;
+  return { ...doc, cards: Object.fromEntries(Object.entries(doc.cards).map(([id, c]) => [id, { ...c, spark: null }])) };
+}
+
 export const cacheKey = (preset: Preset, comparisonOn: boolean): string => `${preset}:${comparisonOn ? 'cmp' : 'nocmp'}`;
 
 export async function refreshCanvas(args: {
@@ -31,7 +42,11 @@ export async function refreshCanvas(args: {
   for (const c of classes) {
     const metrics: Record<string, MetricResult> = {};
     for (const id of c.metricIds) { const r = results.get(id); if (r) metrics[id] = r; }
-    cards[c.id] = { metrics, spark: (c.keyMetricId && sparks.get(c.keyMetricId)) || null };
+    const spark = (c.keyMetricId && sparks.get(c.keyMetricId)) || null;
+    cards[c.id] = { metrics, spark: spark && round(spark) };
   }
-  return { modelHash: model.inputHash, anchor: spec.anchor, refreshedAt: new Date().toISOString(), preset: spec.preset, comparison: comparisonOn, cards };
+  return trimToSize({
+    modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct, anchor: spec.anchor,
+    refreshedAt: new Date().toISOString(), preset: spec.preset, comparison: comparisonOn, cards,
+  });
 }

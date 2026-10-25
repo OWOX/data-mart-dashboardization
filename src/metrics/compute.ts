@@ -41,7 +41,9 @@ export async function computeMetric(args: {
     let future: number[] = [];
     let note: MetricResult['note'] = null;
     if (spec.endsInFuture) {
-      const f = forecastFor({ daily, anchor, rangeTo: range.to, kind, fact });
+      // summing daily averages or ratios means nothing, so only counts and sums accumulate
+      const additive = kind === 'flow' && (measure.fn === 'SUM' || measure.fn === 'COUNT' || metric.isUniqueCount);
+      const f = forecastFor({ daily, anchor, rangeTo: range.to, additive, fact });
       if (f) { forecast = f.value; future = f.future.map((p) => p.v); } else note = 'short_history';
     }
 

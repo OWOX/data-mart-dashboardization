@@ -1,7 +1,7 @@
-import { cacheKey, refreshCanvas } from './refresh';
+import { cacheKey, refreshCanvas, trimToSize } from './refresh';
 import { fakeOwox } from '../owox/fake';
-import { rangeFor } from '../lib/dates';
-import type { Model } from '../types';
+import { addDays, rangeFor } from '../lib/dates';
+import type { CacheDoc, Model } from '../types';
 
 test('refresh fills every card and reports progress', async () => {
   const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'id | COUNTUNIQUE': 5, date: '2026-10-20' }] });
@@ -18,6 +18,8 @@ test('refresh fills every card and reports progress', async () => {
   const progress: number[] = [];
   const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), comparisonOn: true, thresholdPct: 20, onProgress: (d) => progress.push(d) });
   expect(doc.modelHash).toBe('h1');
+  expect(doc.builtAt).toBe('');
+  expect(doc.thresholdPct).toBe(20);
   expect(doc.anchor).toBe('2026-10-23');
   expect(doc.cards.a!.metrics['a:id:COUNT_DISTINCT']!.fact).toBe(5);
   expect(doc.cards.b).toEqual({ metrics: {}, spark: null });
@@ -38,4 +40,40 @@ test('classes outside the visible set are not queried and get no card', async ()
   const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), comparisonOn: true, thresholdPct: 20, visibleIds: new Set(['a']) });
   expect(Object.keys(doc.cards)).toEqual(['a']);
   expect(owox.calls.filter((c) => c.path === 'traverse:b')).toHaveLength(0);
+});
+
+test('spark values and forecast are rounded to 4 significant digits', async () => {
+  const owox = fakeOwox({
+    projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+    rows: (_id, o) => {
+      const f = o.filter as { value: string }[];
+      if (!o.dateTrunc) return [{ 'id | COUNTUNIQUE': 123456.789 }];
+      const out = [];
+      for (let d = f[0]!.value, i = 0; d < f[1]!.value; d = addDays(d, 1), i++) out.push({ date: d, 'id | COUNTUNIQUE': 1234.56789 + i * 0.001 });
+      return out;
+    },
+  });
+  const model: Model = {
+    version: 1, inputHash: 'h1', builtAt: '', builtBy: 'u',
+    goal: { classId: 'a', metricId: null, goalMartId: 'a', viaFallback: false },
+    classes: [{ id: 'a', martId: 'a', title: 'A', contexts: [], depth: 0, keyMetricId: 'a:id:COUNT_DISTINCT', metricIds: ['a:id:COUNT_DISTINCT'] }],
+    edges: [],
+    metrics: [{ id: 'a:id:COUNT_DISTINCT', martId: 'a', alias: 'A', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, plan: null }],
+  };
+  const doc = await refreshCanvas({ owox, model, spec: rangeFor('this_month', new Date('2026-10-24T10:00:00Z')), comparisonOn: false, thresholdPct: 20 });
+  const spark = doc.cards.a!.spark!;
+  expect(spark.values.length).toBeGreaterThan(0);
+  expect(spark.forecast.length).toBeGreaterThan(0);
+  const sig = (n: number) => Number(n.toPrecision(4));
+  for (const v of [...spark.values, ...spark.forecast]) if (v !== null) expect(v).toBe(sig(v));
+  expect(spark.values[0]).toBe(1235);
+});
+
+test('an oversized cache doc drops every spark', () => {
+  const spark = { start: '2026-10-01', values: [1, 2, 3], forecastStart: null, forecast: [] };
+  const doc = { cards: { a: { metrics: {}, spark }, b: { metrics: {}, spark } } } as unknown as CacheDoc;
+  expect(trimToSize(doc, 10_000)).toBe(doc);
+  const trimmed = trimToSize(doc, 50);
+  expect(trimmed.cards.a!.spark).toBeNull();
+  expect(trimmed.cards.b!.spark).toBeNull();
 });

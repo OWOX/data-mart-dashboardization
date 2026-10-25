@@ -102,6 +102,8 @@ export interface CardCache { metrics: Record<string, MetricResult>; spark: Serie
 
 export interface CacheDoc {
   modelHash: string;
+  builtAt: string;           // model.builtAt the doc was computed for
+  thresholdPct: number;      // threshold the statuses were computed with
   anchor: Day;
   refreshedAt: string;
   preset: Preset;
