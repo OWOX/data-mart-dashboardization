@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
-import { fakeOwox } from './owox/fake';
+import { fakeOwox, type FakeOwoxData } from './owox/fake';
 import { cacheKey } from './metrics/refresh';
 import { rangeFor } from './lib/dates';
 import { memoryCollections, saveCache, saveModel, type CollectionsLike } from './store/collections';
@@ -15,7 +15,8 @@ const goalAi = {
 };
 const missingAi = { goal: { status: 'missing', metricRef: null, note: '' }, metrics: [] };
 const mart = (id: string, title: string) => ({ id, title, status: 'PUBLISHED', description: null, contexts: [], modifiedAt: 't' });
-const data = () => ({
+const CID = 'c';
+const data = (): FakeOwoxData => ({
   projectDescription: `| Critical number | Revenue | [Revenue](https://app.owox.com/ui/p/data-marts/${GID}/data-setup?field=revenue) |`,
   contexts: [],
   marts: [mart(GID, 'Orders')],
@@ -23,8 +24,16 @@ const data = () => ({
   blendables: { [GID]: { availableSources: [], mainUniqueCountKeyFields: ['id'] } },
 });
 
-async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | 'stale' | 'none'; store?: CollectionsLike; inputHash?: string } = {}) {
-  const owox = fakeOwox(data());
+async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | 'stale' | 'none'; store?: CollectionsLike; inputHash?: string; withCustomers?: boolean } = {}) {
+  const d = data();
+  if (opts.withCustomers) {
+    d.marts.push(mart(CID, 'Customers'));
+    d.details[CID] = { id: CID, title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }] };
+    d.blendables[GID] = { availableSources: [{ aliasPath: 'customers', dataMartId: CID, title: 'Customers', isAccessibleForReporting: true }], mainUniqueCountKeyFields: ['id'] };
+    d.blendables[CID] = { availableSources: [], mainUniqueCountKeyFields: ['id'] };
+    d.details[GID]!.fields.push({ name: 'ltv', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'AVG({{ref path="customers" field="x"}})', level: 'metric' } });
+  }
+  const owox = fakeOwox(d);
   const store = opts.store ?? memoryCollections();
   const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW });
   if (!built.ok) throw new Error('fixture');
@@ -41,7 +50,7 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
   }
   const deps: AppDeps = { owox, store, generate: opts.generate === undefined ? async () => goalAi : opts.generate, userId: 'u1', now: () => NOW };
   const traversals = () => owox.calls.filter((c) => c.path.startsWith('traverse:')).length;
-  return { deps, traversals, store };
+  return { deps, traversals, store, d, owox };
 }
 const ctxWith = (setRoute = vi.fn()) => ({ ctx: { projectId: 'p', ui: { setRoute } } as never, setRoute });
 
@@ -137,4 +146,47 @@ test('a blocked rebuild can go back to the existing canvas', async () => {
   expect(await screen.findByRole('heading', { name: "Goal can't be tracked" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to canvas' }));
   expect(await screen.findByRole('combobox', { name: 'Date range' })).toBeInTheDocument();
+});
+
+test('modifiedAt churn alone shows no banner; a class-mart formula change does', async () => {
+  const { deps, d } = await setup({ cache: 'none' });
+  d.marts = d.marts.map((m) => ({ ...m, modifiedAt: 'later' }));
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await screen.findByRole('combobox', { name: 'Date range' });
+  await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+  await new Promise((r) => setTimeout(r, 50));
+  expect(screen.queryByText('Descriptions or schemas changed since this model was built.')).toBeNull();
+});
+
+test('a formula change in a class mart shows the banner', async () => {
+  const { deps, d } = await setup();
+  d.details[GID]!.fields.push({ name: 'x', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'SUM(1)', level: 'column' } });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  expect(await screen.findByText('Descriptions or schemas changed since this model was built.')).toBeInTheDocument();
+});
+
+test('a refused contexts call skips the out-of-date check', async () => {
+  const { deps } = await setup({ inputHash: 'old' });
+  const inner = deps.owox;
+  deps.owox = { ...inner, getJson: async (path: string, q?: Record<string, unknown>) => { if (path === '/api/contexts') throw new Error('403'); return inner.getJson(path, q); } } as AppDeps['owox'];
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await screen.findByRole('combobox', { name: 'Date range' });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(screen.queryByText('Descriptions or schemas changed since this model was built.')).toBeNull();
+});
+
+test('a class whose mart the member cannot see is not rendered or queried', async () => {
+  const { deps, d, owox } = await setup({ cache: 'none', withCustomers: true });
+  d.marts = d.marts.filter((m) => m.id !== CID);
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await waitFor(() => expect(owox.calls.some((c) => c.path === `traverse:${GID}`)).toBe(true));
+  expect(screen.queryByText('Customers')).toBeNull();
+  expect(owox.calls.some((c) => c.path === `traverse:${CID}`)).toBe(false);
+});
+
+test('an invisible main shows the no-access card', async () => {
+  const { deps, d } = await setup({ cache: 'none', withCustomers: true });
+  d.marts = d.marts.filter((m) => m.id !== GID);
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  expect(await screen.findByText("You don't have access to this Data Mart")).toBeInTheDocument();
 });

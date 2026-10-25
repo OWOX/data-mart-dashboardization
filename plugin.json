@@ -5,7 +5,7 @@
   "credentials": ["ai"],
   "collections": [
     { "name": "model", "scope": "project" },
-    { "name": "cache", "scope": "project" },
+    { "name": "cache", "scope": "member" },
     { "name": "settings", "scope": "project" }
   ]
 }

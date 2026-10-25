@@ -24,3 +24,18 @@ test('refresh fills every card and reports progress', async () => {
   expect(progress).toEqual([1]);
   expect(cacheKey('last_7d', true)).toBe('last_7d:cmp');
 });
+
+test('classes outside the visible set are not queried and get no card', async () => {
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'id | COUNTUNIQUE': 5 }] });
+  const metric = (martId: string) => ({ id: `${martId}:id:COUNT_DISTINCT`, martId, alias: martId, measure: { field: 'id', fn: 'COUNT_DISTINCT' as const }, kind: 'flow' as const, dateField: null, role: 'unique' as const, source: 'schema', isUniqueCount: true, plan: null });
+  const model: Model = {
+    version: 1, inputHash: 'h1', builtAt: '', builtBy: 'u',
+    goal: { classId: 'a', metricId: null, goalMartId: 'a', viaFallback: false },
+    classes: ['a', 'b'].map((id, depth) => ({ id, martId: id, title: id, contexts: [], depth, keyMetricId: `${id}:id:COUNT_DISTINCT`, metricIds: [`${id}:id:COUNT_DISTINCT`] })),
+    edges: [{ from: 'a', to: 'b' }],
+    metrics: [metric('a'), metric('b')],
+  };
+  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), comparisonOn: true, thresholdPct: 20, visibleIds: new Set(['a']) });
+  expect(Object.keys(doc.cards)).toEqual(['a']);
+  expect(owox.calls.filter((c) => c.path === 'traverse:b')).toHaveLength(0);
+});

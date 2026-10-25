@@ -11,7 +11,8 @@ export interface MartDetail { id: string; title: string; fields: SchemaField[] }
 export interface AvailableSource { aliasPath: string; dataMartId: string; title: string; isAccessibleForReporting: boolean }
 export interface Blendable { availableSources: AvailableSource[]; mainUniqueCountKeyFields: string[] }
 export interface ContextInfo { id: string; name: string; description: string | null }
-export interface Inputs { projectDescription: string | null; contexts: ContextInfo[]; marts: MartSummary[] }
+/** contextsOk is false when /api/contexts was refused, so descriptions are incomplete. */
+export interface Inputs { projectDescription: string | null; contexts: ContextInfo[]; marts: MartSummary[]; contextsOk: boolean }
 
 /** The subset of ctx.owox Gyroscope uses. ctx.owox satisfies it. */
 export interface OwoxLike {
@@ -26,13 +27,15 @@ export interface OwoxLike {
 export const DATE_TYPES: ReadonlySet<string> = new Set(['DATE', 'DATETIME', 'TIMESTAMP', 'TIMESTAMP_NTZ', 'TIMESTAMP_TZ', 'TIMESTAMP_LTZ']);
 
 export async function fetchInputs(owox: OwoxLike): Promise<Inputs> {
+  let contextsOk = true;
   const [settings, contexts, marts] = await Promise.all([
     owox.project.getSettings(),
-    owox.getJson<{ id: string; name: string; description?: unknown }[]>('/api/contexts').catch(() => []),
+    owox.getJson<{ id: string; name: string; description?: unknown }[]>('/api/contexts').catch(() => { contextsOk = false; return []; }),
     owox.dataMarts.list(),
   ]);
   return {
     projectDescription: settings.description,
+    contextsOk,
     contexts: contexts.map((c) => ({ id: c.id, name: c.name, description: typeof c.description === 'string' ? c.description : null })),
     marts: marts.filter((m) => m.status === 'PUBLISHED'),
   };

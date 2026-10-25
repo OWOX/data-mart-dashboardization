@@ -7,14 +7,15 @@ export const cacheKey = (preset: Preset, comparisonOn: boolean): string => `${pr
 
 export async function refreshCanvas(args: {
   owox: OwoxLike; model: Model; spec: RangeSpec; comparisonOn: boolean; thresholdPct: number;
-  onProgress?: (done: number, total: number) => void;
+  visibleIds?: ReadonlySet<string> | null; onProgress?: (done: number, total: number) => void;
 }): Promise<CacheDoc> {
-  const { owox, model, spec, comparisonOn, thresholdPct, onProgress } = args;
+  const { owox, model, spec, comparisonOn, thresholdPct, visibleIds, onProgress } = args;
+  const classes = model.classes.filter((c) => !visibleIds || visibleIds.has(c.id));
   const byId = new Map(model.metrics.map((m) => [m.id, m]));
-  const keyIds = new Set(model.classes.map((c) => c.keyMetricId).filter((id): id is string => !!id));
+  const keyIds = new Set(classes.map((c) => c.keyMetricId).filter((id): id is string => !!id));
 
   const ids = new Set<string>();
-  for (const c of model.classes) for (const id of c.metricIds) if (byId.has(id)) ids.add(id);
+  for (const c of classes) for (const id of c.metricIds) if (byId.has(id)) ids.add(id);
   const results = new Map<string, MetricResult>();
   const sparks = new Map<string, SeriesPack | null>();
   let done = 0;
@@ -27,7 +28,7 @@ export async function refreshCanvas(args: {
   }), 6);
 
   const cards: Record<string, CardCache> = {};
-  for (const c of model.classes) {
+  for (const c of classes) {
     const metrics: Record<string, MetricResult> = {};
     for (const id of c.metricIds) { const r = results.get(id); if (r) metrics[id] = r; }
     cards[c.id] = { metrics, spark: (c.keyMetricId && sparks.get(c.keyMetricId)) || null };

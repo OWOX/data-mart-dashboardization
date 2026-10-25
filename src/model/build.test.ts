@@ -113,3 +113,16 @@ test('metrics sort by role rank across sources', async () => {
   const aliases = r.model.classes[0]!.metricIds.map((id) => r.model.metrics.find((m) => m.id === id)!.alias);
   expect(aliases).toEqual(['m1', 'm4', 'm2', 'm3', 'Orders']);
 });
+
+test('inputHash ignores modifiedAt churn but changes with a class-mart formula', async () => {
+  const base = await buildModel({ owox: fakeOwox(data()), generate: async () => goalAi, userId: 'u1', now });
+  const churned = data();
+  churned.marts = churned.marts.map((m) => ({ ...m, modifiedAt: 'later' }));
+  const same = await buildModel({ owox: fakeOwox(churned), generate: async () => goalAi, userId: 'u1', now });
+  const edited = data();
+  edited.details[GID]!.fields[3]!.calculated!.formula = 'SUM({{ref path="customers" field="ltv"}})';
+  const changed = await buildModel({ owox: fakeOwox(edited), generate: async () => goalAi, userId: 'u1', now });
+  if (!base.ok || !same.ok || !changed.ok) throw new Error('fixture');
+  expect(same.model.inputHash).toBe(base.model.inputHash);
+  expect(changed.model.inputHash).not.toBe(base.model.inputHash);
+});

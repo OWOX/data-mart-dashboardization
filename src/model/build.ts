@@ -12,12 +12,34 @@ import { interpret } from './interpret';
 import type { Generate } from './interpret';
 import { uniqueCountMetric, validate } from './validate';
 
-export function inputHash(inputs: Inputs): string {
+export interface HashMart { id: string; detail: MartDetail; blendable: Blendable }
+
+const byText = (a: string, b: string) => a.localeCompare(b);
+
+/** Covers descriptions and the schema/source signatures of the class marts; modifiedAt is left out, it churns on every actualisation. */
+export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'>, marts: HashMart[]): string {
   return hashString(JSON.stringify([
     inputs.projectDescription,
-    [...inputs.contexts].sort((a, b) => a.id.localeCompare(b.id)).map((c) => [c.id, c.description]),
-    inputs.marts.map((m) => [m.id, m.modifiedAt]).sort(),
+    [...inputs.contexts].sort((a, b) => byText(a.id, b.id)).map((c) => [c.id, c.description]),
+    [...marts].sort((a, b) => byText(a.id, b.id)).map((m) => [
+      m.id,
+      flattenFields(m.detail.fields)
+        .map((x) => [x.path, x.field.type, x.field.isPrimaryKey, x.field.calculated?.formula ?? null] as const)
+        .sort((a, b) => byText(a[0], b[0])),
+      m.blendable.availableSources
+        .map((s) => [s.aliasPath, s.dataMartId] as const)
+        .sort((a, b) => byText(a[0], b[0]) || byText(a[1], b[1])),
+    ]),
   ]));
+}
+
+/** The hash as it would be computed now; rejects when any class mart can't be fetched. */
+export async function currentInputHash(owox: OwoxLike, inputs: Inputs, martIds: string[]): Promise<string> {
+  const got = await runPool(martIds.map((id) => async (): Promise<HashMart> => ({
+    id, detail: await fetchMartDetail(owox, id), blendable: await fetchBlendable(owox, id),
+  })), POOL);
+  const marts = got.map((r) => { if (r.status === 'rejected') throw r.reason; return r.value; });
+  return inputHash(inputs, marts);
 }
 
 const POOL = 6;
@@ -99,7 +121,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     ok: true,
     model: {
       version: 1,
-      inputHash: inputHash(inputs),
+      inputHash: inputHash(inputs, nodes.filter((n) => depths.has(n.id))),
       builtAt: now.toISOString(),
       builtBy: userId,
       goal: { classId: main.id, metricId: main.viaFallback ? null : v.goal.metricId, goalMartId: v.goal.martId, viaFallback: main.viaFallback },

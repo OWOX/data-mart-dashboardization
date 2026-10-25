@@ -8,15 +8,22 @@ interface Props {
   cache: CacheDoc | null;
   comparisonOn: boolean;
   refreshing: boolean;
+  /** Marts the member can see; null means no restriction. */
+  visibleIds?: ReadonlySet<string> | null;
   onRetry: () => void;
 }
 
 interface Line { from: string; to: string; dashed: boolean; x1: number; y1: number; x2: number; y2: number }
 
-export function Canvas({ model, cache, comparisonOn, refreshing, onRetry }: Props) {
+export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  // Classes the member can't see are dropped like filtered ones; the main card stays to say so.
+  const model = useMemo(
+    () => (visibleIds ? { ...full, classes: full.classes.filter((c) => visibleIds.has(c.id) || c.id === full.goal.classId) } : full),
+    [full, visibleIds],
+  );
   const contexts = useMemo(() => contextsOf(model), [model]);
   const selected = useMemo(() => {
     const valid = new Set(contexts.map((x) => x.id));
@@ -94,6 +101,7 @@ export function Canvas({ model, cache, comparisonOn, refreshing, onRetry }: Prop
                 cache={cache?.cards[cls.id]}
                 comparisonOn={comparisonOn}
                 refreshing={refreshing}
+                noAccess={!!visibleIds && !visibleIds.has(cls.id)}
                 onRetry={onRetry}
               />
             ))}

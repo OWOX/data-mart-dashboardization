@@ -9,14 +9,23 @@ interface Props {
   cache: CardCache | undefined;
   comparisonOn: boolean;
   refreshing: boolean;
+  noAccess?: boolean;
   onRetry: () => void;
 }
 
-export function Card({ cls, metrics, cache, comparisonOn, refreshing, onRetry }: Props) {
+export function Card({ cls, metrics, cache, comparisonOn, refreshing, noAccess, onRetry }: Props) {
   const key = metrics.find((m) => m.id === cls.keyMetricId);
   const res = key ? cache?.metrics[key.id] : undefined;
   const header = <header className="label">{cls.title}</header>;
 
+  if (noAccess) {
+    return (
+      <article className="gy-card" data-class-id={cls.id} data-status="empty">
+        {header}
+        <p className="gy-muted">You don't have access to this Data Mart</p>
+      </article>
+    );
+  }
   if (!key) {
     return (
       <article className="gy-card" data-class-id={cls.id} data-status="empty">
