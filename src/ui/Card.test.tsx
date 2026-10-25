@@ -27,7 +27,12 @@ test('key metric, label, diff, badge order and status', () => {
 test('no diff when comparison is off; forecast shown when fact is missing', () => {
   render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ fact: null, forecast: 900, forecastApprox: true })} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   expect(screen.queryByText('+24.0%')).toBeNull();
-  expect(screen.getByText('≈900')).toBeInTheDocument();
+  expect(screen.getByText('Forecast ≈900')).toBeInTheDocument();
+});
+
+test('an exact forecast without a fact has no approximation sign', () => {
+  render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ fact: null, forecast: 900, forecastApprox: false })} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('Forecast 900')).toBeInTheDocument();
 });
 
 test('error card offers retry; empty card says no metric', () => {

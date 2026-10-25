@@ -14,7 +14,7 @@ export interface RangeSpec {
   range: DateWindow;
   days: number;              // length of range in days
   factWindow: DateWindow | null;       // range clipped to the anchor; null when the range starts after it
-  comparison: DateWindow | null;       // factWindow shifted back by `days`; null when factWindow is null
+  comparison: DateWindow | null;       // calendar presets: the same number of days from the start of the previous period, capped at its end; rolling presets: factWindow shifted back by `days`; null when factWindow is null
   endsInFuture: boolean;     // range.to > anchor
 }
 

@@ -7,12 +7,13 @@ const owox = fakeOwox({
   marts: [
     { id: 'm1', title: 'Customers', status: 'PUBLISHED', description: null, contexts: [], modifiedAt: 't1' },
     { id: 'm2', title: 'Draft', status: 'DRAFT', description: null, contexts: [], modifiedAt: 't2' },
+    { id: 'm3', title: 'Not for reporting', status: 'PUBLISHED', description: null, contexts: [], modifiedAt: 't3', availableForReporting: false },
   ],
   details: { m1: { id: 'm1', title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }] } },
   blendables: { m1: { availableSources: [], mainUniqueCountKeyFields: ['id'] } },
 });
 
-test('fetchInputs keeps published marts and normalises context descriptions', async () => {
+test('fetchInputs keeps published, reportable marts and normalises context descriptions', async () => {
   const inputs = await fetchInputs(owox);
   expect(inputs.projectDescription).toBe('# Goal');
   expect(inputs.contexts).toEqual([{ id: 'c1', name: 'Growth', description: null }]);

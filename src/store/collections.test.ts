@@ -32,4 +32,6 @@ test('unknown default preset falls back', async () => {
   const ctx = memoryCollections();
   await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'next_decade' as never });
   expect((await loadSettings(ctx)).defaultPreset).toBe('this_quarter');
+  await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'constructor' as never });
+  expect((await loadSettings(ctx)).defaultPreset).toBe('this_quarter');
 });

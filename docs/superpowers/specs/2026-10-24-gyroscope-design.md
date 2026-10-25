@@ -28,7 +28,7 @@ Gyroscope follows the public plugin authoring guide (https://docs.owox.com/docs/
 1. It is a UI-only plugin: React, TypeScript, Vite and `@owox/plugin-sdk`. There are no backend actions.
 2. GitHub Pages serves the page. `plugin.json` sits at the repository root.
 3. There are no scheduled runs. Schedules start only backend actions, and logical AI is not available in a backend. Data refreshes while a member has the plugin open.
-4. The page sees only what the installing member may see. `ctx.owox` carries that member's authority.
+4. The page sees only what the installing member may see. `ctx.owox` carries that member's authority. The `cache` collection is member-scoped, so one member's numbers never reach another member who lacks access to the underlying Data Mart. `model` and `settings` stay project-scoped.
 
 Manifest:
 
@@ -39,7 +39,7 @@ Manifest:
   "credentials": ["ai"],
   "collections": [
     { "name": "model", "scope": "project" },
-    { "name": "cache", "scope": "project" },
+    { "name": "cache", "scope": "member" },
     { "name": "settings", "scope": "project" }
   ]
 }
@@ -119,11 +119,12 @@ One document `current` in the `model` collection:
   goal: { classId, metricId },
   classes: [{ id, martId, title, contexts: string[], depth, keyMetricId, metricIds: string[] }],
   edges:   [{ from, to }],
-  metrics: [{ id, martId, alias, field | 'unique_count', aggregation, kind, dateField,
-              plan?: { martId, field, dateField, shape } }] }
+  metrics: [{ id, martId, alias, measure: { field, fn: AggFn | null }, kind, dateField: string | null,
+              role, source, isUniqueCount,
+              plan: { martId, measure, dateField, shape } | null }] }
 ```
 
-`inputHash` hashes the project description, the context descriptions and the schemas of the classes. When the hash of the current inputs differs, the page shows a "Model is out of date" banner and keeps rendering the old model.
+`inputHash` hashes the project description, the context descriptions and, for each class mart, its fields (path, type, primary key, formula) and its available sources. It ignores `modifiedAt`, which changes whenever a schema is re-actualised. After the refresh finishes, the page recomputes the hash from the class marts' current detail and blendable schema. When it differs, the page shows a "Model is out of date" banner and keeps rendering the old model. The check is skipped when any fetch fails or `/api/contexts` was refused.
 
 ## 6. Date ranges
 
@@ -155,7 +156,7 @@ The forecast appears only when the range ends after the anchor.
 
 1. Fit a least-squares line to the daily values of the 90 days ending at the anchor.
 2. A flow forecast is the fact up to the anchor plus the fitted values for the remaining days.
-3. A level forecast is the fitted value on the last day of the range.
+3. A level forecast is the fitted value on the last day of the range. A flow metric forecasts like a level unless it is additive: `SUM`, `COUNT` or Unique Count. Summing daily averages or ratios means nothing.
 4. With fewer than 14 days of history there is no forecast, and the card says so.
 5. Unique Count forecasts extend the fitted daily unique counts. They overstate totals when the same entities return on several days, so the card marks them with "≈".
 
@@ -227,17 +228,21 @@ Trend is the sign of the fitted slope over the range's daily values: up, down or
 | Main or goal Data Mart fails to load | Error screen with the message and Retry. Retry repeats only the failed step |
 | Rebuild ends blocked or failed while a model exists | The blocked or failed screen also offers Back to canvas |
 | Fewer than 14 days of history | No forecast; "Not enough history to forecast" |
+| The member can't see a class's Data Mart | The class is not drawn and not queried, like a filtered-out class. If it is the main class, its card has a grey border and reads "You don't have access to this Data Mart" |
+| Saving the refreshed cache fails | The new data stays on screen with a muted note "Couldn't save the refreshed data: <reason>" |
 
 ## 10. Cache
 
 One document per range and comparison setting in the `cache` collection, id `<preset>:<cmp|nocmp>`:
 
 ```ts
-{ modelHash, anchor: 'YYYY-MM-DD', refreshedAt,
-  cards: { [classId]: { metrics: { [metricId]: MetricResult }, status: 'ok' | 'error', error? } } }
+{ modelHash, builtAt, thresholdPct, anchor: 'YYYY-MM-DD', refreshedAt, preset, comparison,
+  cards: { [classId]: { metrics: { [metricId]: MetricResult }, spark: SeriesPack | null } } }
 ```
 
-The canvas reads only from this cache. A refresh starts when the cached anchor is not yesterday or `modelHash` differs from the saved model. The Refresh button forces one. A refresh after a rebuild or a threshold change is also forced.
+Each metric result carries its own `error`, so a card has no status field. The collection is member-scoped. Spark values are rounded to 4 significant digits, and every spark is dropped when the document would exceed 900 KB.
+
+The canvas reads only from this cache. A refresh starts when the cached anchor is not yesterday, `modelHash` or `builtAt` differs from the saved model, or `thresholdPct` differs from the current setting, so a rebuild or a threshold change refreshes without a separate flag. The Refresh button forces one. Classes the member can't see get no entry.
 
 ## 11. Settings
 

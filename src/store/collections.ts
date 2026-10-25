@@ -19,7 +19,7 @@ export async function loadSettings(ctx: CollectionsLike): Promise<Settings> {
   const t = raw.thresholdPct;
   return {
     thresholdPct: typeof t === 'number' && Number.isFinite(t) ? Math.min(100, Math.max(1, t)) : d.thresholdPct,
-    defaultPreset: typeof raw.defaultPreset === 'string' && raw.defaultPreset in PRESET_LABELS ? (raw.defaultPreset as Preset) : d.defaultPreset,
+    defaultPreset: typeof raw.defaultPreset === 'string' && Object.hasOwn(PRESET_LABELS, raw.defaultPreset) ? (raw.defaultPreset as Preset) : d.defaultPreset,
     comparisonDefault: typeof raw.comparisonDefault === 'boolean' ? raw.comparisonDefault : d.comparisonDefault,
   };
 }

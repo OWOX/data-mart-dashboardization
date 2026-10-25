@@ -44,6 +44,14 @@ test('wrong date field or aggregation is a mismatch', () => {
   expect(!r.ok && r.blocked.mismatches).toHaveLength(2);
 });
 
+test('aggregation fallback only picks a supported function', () => {
+  const only = (allowed: string[]) => new Map([['m1', { ...arrMart, fields: arrMart.fields.map((f) => (f.name === 'arr' ? { ...f, allowedAggregations: allowed } : f)) }]]);
+  const r = validate({ ai: ai(), links, details: only(['MEDIAN', 'AVG']), visible });
+  expect(r.ok && r.metrics[0]!.measure.fn).toBe('AVG');
+  const none = validate({ ai: ai(), links, details: only(['MEDIAN', 'STRING_AGG']), visible });
+  expect(!none.ok && none.blocked.mismatches).toEqual(['ARR → no supported aggregation for arr']);
+});
+
 test('composite primary key has no unique count; single key does', () => {
   expect(uniqueCountMetric(arrMart, { availableSources: [], mainUniqueCountKeyFields: ['date', 'customerId'] })).toBeNull();
   const customers = { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false }] };

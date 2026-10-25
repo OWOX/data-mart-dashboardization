@@ -52,7 +52,7 @@ export function Card({ cls, metrics, cache, comparisonOn, refreshing, noAccess, 
     );
   }
 
-  const big = res.fact !== null ? compact(res.fact) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${compact(res.forecast)}` : compact(null);
+  const big = res.fact !== null ? compact(res.fact) : res.forecast !== null ? `Forecast ${res.forecastApprox ? '≈' : ''}${compact(res.forecast)}` : compact(null);
   const badges = metrics.filter((m) => m.id !== key.id).map((m) => <Badge key={m.id} metric={m} result={cache?.metrics[m.id]} />);
   const foot = [
     res.plan !== null ? `plan ${compact(res.plan)}` : null,

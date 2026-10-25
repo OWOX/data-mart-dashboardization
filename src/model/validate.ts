@@ -16,12 +16,16 @@ export const metricId = (martId: string, m: Measure) => `${martId}:${m.field}:${
 
 const blocked = (code: Blocked['code'], detail: string, mismatches: string[] = []): ValidateResult => ({ ok: false, blocked: { code, detail, mismatches } });
 
-function measureFor(field: SchemaField, field_: string, agg: AiMetric['aggregation']): Measure {
+const SUPPORTED = new Set<string>(['SUM', 'COUNT', 'COUNT_DISTINCT', 'AVG', 'MIN', 'MAX']);
+
+/** null when the field allows only aggregations Gyroscope can't query. */
+function measureFor(field: SchemaField, field_: string, agg: AiMetric['aggregation']): Measure | null {
   if (field.calculated && field.calculated.level !== 'column') return { field: field_, fn: null };
   const allowed = field.allowedAggregations;
   if (agg) return { field: field_, fn: agg };
   if (!allowed || !allowed.length || allowed.includes('SUM')) return { field: field_, fn: 'SUM' };
-  return { field: field_, fn: allowed[0] as Measure['fn'] };
+  const fn = allowed.find((a) => SUPPORTED.has(a));
+  return fn ? { field: field_, fn: fn as Measure['fn'] } : null;
 }
 
 export function validate(input: ValidateInput): ValidateResult {
@@ -66,13 +70,16 @@ export function validate(input: ValidateInput): ValidateResult {
     const hit = check(m.alias, link, m.factDateField, m.aggregation, '');
     if (!hit) continue;
     const measure = measureFor(hit.field, link.field, m.aggregation);
+    if (!measure) { mismatches.push(`${m.alias} → no supported aggregation for ${link.field}`); continue; }
 
     let plan: MetricDef['plan'] = null;
     const pl = m.planLink !== null ? links[m.planLink] : undefined;
     if (pl && !pl.placeholder && pl.martId && pl.field && visible.has(pl.martId)) {
       const ph = check(m.alias, pl, m.planDateField, null, 'plan');
       if (ph && !m.planDateField) mismatches.push(`${m.alias} → plan date field missing for ${ph.detail.title}`);
-      if (ph && m.planDateField) plan = { martId: pl.martId, measure: measureFor(ph.field, pl.field, null), dateField: m.planDateField, shape: m.planShape ?? 'daily' };
+      const planMeasure = ph ? measureFor(ph.field, pl.field, null) : null;
+      if (ph && !planMeasure) mismatches.push(`${m.alias} → no supported aggregation for ${pl.field}`);
+      if (ph && planMeasure && m.planDateField) plan = { martId: pl.martId, measure: planMeasure, dateField: m.planDateField, shape: m.planShape ?? 'daily' };
     }
 
     const m_: MetricDef = {

@@ -28,7 +28,7 @@ test.each([
   expect(r.range).toEqual({ from, to });
 });
 
-test('this quarter: fact clipped to anchor, comparison shifted by range length', () => {
+test('this quarter: fact clipped to anchor, comparison is the same days of the previous quarter', () => {
   const r = rangeFor('this_quarter', at('2026-10-24T10:00:00Z'));
   expect(r.days).toBe(92);
   expect(r.factWindow).toEqual({ from: '2026-10-01', to: '2026-10-23' });
