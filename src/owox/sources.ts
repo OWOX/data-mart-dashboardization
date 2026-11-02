@@ -6,7 +6,7 @@ export interface SchemaField {
   calculated?: { formula: string; level?: 'metric' | 'column' };
   fields?: SchemaField[];
 }
-export interface MartSummary { id: string; title: string; status: string; description: string | null; contexts: { id: string; name: string }[]; modifiedAt: string; availableForReporting?: boolean }
+export interface MartSummary { id: string; title: string; status: string; description: string | null; icon?: string | null; contexts: { id: string; name: string }[]; modifiedAt: string; availableForReporting?: boolean }
 export interface MartDetail { id: string; title: string; fields: SchemaField[] }
 export interface AvailableSource { aliasPath: string; dataMartId: string; title: string; isAccessibleForReporting: boolean }
 export interface Blendable { availableSources: AvailableSource[]; mainUniqueCountKeyFields: string[] }

@@ -14,7 +14,7 @@ const nodes = [
 
 test('edges come from calculated refs with a path; hidden hops break them', () => {
   const visible = new Set(['orders', 'customers', 'pages']);
-  expect(buildEdges(nodes, visible)).toEqual([{ from: 'orders', to: 'customers', refFields: ['ltv'] }]);
+  expect(buildEdges(nodes, visible)).toEqual([{ from: 'orders', to: 'customers', refFields: ['ltv'], fields: ['ltv'] }]);
 });
 
 test('main is the goal mart when visible', () => {

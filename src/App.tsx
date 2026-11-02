@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PluginContext } from '@owox/plugin-sdk';
 import type { Blocked as BlockedInfo, CacheDoc, Model, Preset, Settings } from './types';
-import { DEFAULT_SETTINGS } from './types';
+import { COMPARE_LABELS, DEFAULT_SETTINGS } from './types';
 import { rangeFor } from './lib/dates';
 import { describeError } from './lib/errors';
 import { buildModel, currentInputHash } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
 import { fetchInputs, type Inputs, type OwoxLike } from './owox/sources';
+import { comparePicked } from './metrics/compute';
 import { cacheKey, refreshCanvas } from './metrics/refresh';
 import {
   isStale, loadCache, loadModel, loadSettings, saveCache, saveModel, saveSettings, type CollectionsLike,
@@ -102,6 +103,16 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const visible = useMemo<ReadonlySet<string> | null>(
     () => (inputs && inputs.model === model && inputs.data ? new Set(inputs.data.marts.map((m) => m.id)) : null),
     [inputs, model],
+  );
+
+  const periodShown = useMemo(() => {
+    const spec = rangeFor(preset, now());
+    return { range: spec.range, comparison: comparisonOn ? spec.comparison : null };
+  }, [preset, comparisonOn, now]);
+
+  const marts = useMemo(
+    () => new Map((inputs?.data?.marts ?? []).map((m) => [m.id, { description: m.description, icon: m.icon ?? null }])),
+    [inputs],
   );
 
   const refresh = useCallback(async (force: boolean): Promise<boolean> => {
@@ -227,7 +238,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
               <button type="button" className="gy-btn" onClick={() => void build()}>Rebuild model</button>
             </div>
           )}
-          <Canvas model={model} cache={cache} visibleIds={visible} comparisonOn={comparisonOn} refreshing={refreshing} onRetry={() => void refresh(true)} />
+          <Canvas model={model} cache={cache} visibleIds={visible} marts={marts} compareLabel={COMPARE_LABELS[preset]} period={periodShown} onCompare={(metric, p) => comparePicked(owox, metric, preset, p, now())} comparisonOn={comparisonOn} refreshing={refreshing} onRetry={() => void refresh(true)} />
         </main>
       );
     }

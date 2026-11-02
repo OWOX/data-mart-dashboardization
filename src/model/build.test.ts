@@ -30,7 +30,7 @@ test('builds main on top and a connected class below', async () => {
   expect(r.ok).toBe(true);
   if (!r.ok) return;
   expect(r.model.classes.map((c) => [c.title, c.depth])).toEqual([['Orders', 0], ['Customers', 1]]);
-  expect(r.model.edges).toEqual([{ from: '11111111-1111-1111-1111-111111111111', to: 'c' }]);
+  expect(r.model.edges).toEqual([{ from: '11111111-1111-1111-1111-111111111111', to: 'c', fields: ['cust_ltv'] }]);
   const orders = r.model.classes[0]!;
   expect(r.model.metrics.find((m) => m.id === orders.keyMetricId)?.alias).toBe('Revenue');
   expect(orders.metricIds).toHaveLength(2); // Revenue, then unique count

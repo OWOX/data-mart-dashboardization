@@ -1,5 +1,5 @@
-import type { DateWindow, MetricDef, MetricResult, RangeSpec, SeriesPack } from '../types';
-import { addDays, eachDay, minDay } from '../lib/dates';
+import type { DateWindow, MetricDef, MetricResult, Preset, RangeSpec, SeriesPack } from '../types';
+import { addDays, eachDay, minDay, rangeFor } from '../lib/dates';
 import { describeError } from '../lib/errors';
 import { diffPct, forecastFor, levelAt, planForRange, statusOf, trendOf } from '../lib/stats';
 import type { OwoxLike } from '../owox/sources';
@@ -13,6 +13,40 @@ const empty = (over: Partial<MetricResult> = {}): MetricResult => ({
 });
 
 const daysIn = (w: DateWindow) => eachDay(w).length;
+
+/** The current range compared with a period picked on one card, over the same number of days. */
+export interface PickedComparison {
+  /** The metric over `factWindow`; it differs from the card's own value only when that window was cut short. */
+  fact: number | null;
+  comparison: number | null;
+  factWindow: DateWindow;
+  comparisonWindow: DateWindow;
+  /** True when the picked period is shorter than the range so far, so the card's value is recounted. */
+  trimmed: boolean;
+}
+
+/**
+ * Both windows from their own start, cut to the shorter one's length, so a sum is never compared
+ * with a sum over more days. This is how the default comparison lines up too (see `rangeFor`).
+ */
+export function matchedWindows(fact: DateWindow, other: DateWindow): { fact: DateWindow; other: DateWindow } {
+  const n = Math.min(eachDay(fact).length, eachDay(other).length);
+  return { fact: { from: fact.from, to: addDays(fact.from, n - 1) }, other: { from: other.from, to: addDays(other.from, n - 1) } };
+}
+
+/** The metric over another preset's window, matched day for day to the range so far; null when either has not started. */
+export async function comparePicked(owox: OwoxLike, metric: MetricDef, range: Preset, picked: Preset, now: Date): Promise<PickedComparison | null> {
+  const own = rangeFor(range, now).factWindow;
+  const other = rangeFor(picked, now).factWindow;
+  if (!own || !other || !metric.dateField) return null;
+  const { martId, measure, dateField, kind } = metric;
+  const read = async (w: DateWindow) =>
+    kind === 'flow' ? queryTotal(owox, martId, measure, dateField, w) : levelAt(await queryDaily(owox, martId, measure, dateField, w), w);
+  const m = matchedWindows(own, other);
+  const trimmed = m.fact.to !== own.to;
+  const [fact, comparison] = await Promise.all([trimmed ? read(m.fact) : Promise.resolve(null), read(m.other)]);
+  return { fact, comparison, factWindow: m.fact, comparisonWindow: m.other, trimmed };
+}
 
 export async function computeMetric(args: {
   owox: OwoxLike; metric: MetricDef; spec: RangeSpec; comparisonOn: boolean; thresholdPct: number; withSpark: boolean;

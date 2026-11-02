@@ -39,6 +39,9 @@ export interface MetricDef {
   source: 'project' | string; // 'project' or a context id; 'schema' for unique count
   isUniqueCount: boolean;
   plan: PlanDef | null;
+  /** The measure is a calculated field of the mart: only such a metric can colour a line. Absent on models built before it. */
+  calculated?: boolean;
+  description?: string | null; // the measure field's schema description; absent on models built before it
 }
 
 export interface ContextRef { id: string; name: string }
@@ -53,7 +56,8 @@ export interface ClassNode {
   metricIds: string[];       // key first, then badges in role order
 }
 
-export interface Edge { from: string; to: string }
+/** `fields` are the calculated fields of `from` whose formulas reference `to`; absent on models built before it. */
+export interface Edge { from: string; to: string; fields?: string[] }
 
 export interface Model {
   version: 1;
@@ -120,6 +124,14 @@ export const PRESET_LABELS: Record<Preset, string> = {
   last_28d: 'Last 28 days', last_7d: 'Last 7 days', yesterday: 'Yesterday',
   ytd: 'Year to date',
   this_year: 'This year', this_quarter: 'This quarter', this_month: 'This month', this_week: 'This week',
+};
+
+/** What the default comparison window is, per preset (see `rangeFor` in lib/dates); shown after "vs". */
+export const COMPARE_LABELS: Record<Preset, string> = {
+  last_year: 'Year Before', last_quarter: 'Quarter Before', last_month: 'Month Before', last_week: 'Week Before',
+  last_28d: 'Previous 28 Days', last_7d: 'Previous 7 Days', yesterday: 'Day Before',
+  ytd: 'Last Year to Date',
+  this_year: 'Last Year', this_quarter: 'Last Quarter', this_month: 'Last Month', this_week: 'Last Week',
 };
 
 export const PRESET_GROUPS: { label: string; presets: Preset[] }[] = [

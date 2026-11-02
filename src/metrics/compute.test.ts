@@ -74,3 +74,24 @@ test('an AVG flow metric forecasts its level, not a sum of daily averages', asyn
   expect(result.fact).toBe(10);
   expect(result.forecast).toBeCloseTo(10);
 });
+
+test('matchedWindows cuts both windows to the shorter length from their starts', async () => {
+  const { matchedWindows } = await import('./compute');
+  expect(matchedWindows({ from: '2026-10-01', to: '2026-11-01' }, { from: '2025-01-01', to: '2025-12-31' }))
+    .toEqual({ fact: { from: '2026-10-01', to: '2026-11-01' }, other: { from: '2025-01-01', to: '2025-02-01' } });
+  expect(matchedWindows({ from: '2026-10-01', to: '2026-11-01' }, { from: '2026-11-01', to: '2026-11-01' }))
+    .toEqual({ fact: { from: '2026-10-01', to: '2026-10-01' }, other: { from: '2026-11-01', to: '2026-11-01' } });
+});
+
+test('comparePicked reads the picked period over the same days; recounts the value only when cut short', async () => {
+  const { comparePicked } = await import('./compute');
+  const calls: string[] = [];
+  const owox = { dataMarts: { traverseData: async (_id: string, o: Record<string, unknown>) => { calls.push(JSON.stringify(o)); return { async *rowChunks() { yield [{ 'amount | SUM': 42 }]; } }; } } } as never;
+  const metric = { id: 'm', martId: 'mart', alias: 'Rev', measure: { field: 'amount', fn: 'SUM' }, kind: 'flow', dateField: 'date', role: 'critical', source: 'project', isUniqueCount: false, plan: null } as never;
+  const now = new Date('2026-11-02T10:00:00Z'); // yesterday is Nov 1, so this quarter so far is 32 days
+  const year = await comparePicked(owox, metric, 'this_quarter', 'last_year', now);
+  expect(year).toMatchObject({ fact: null, comparison: 42, trimmed: false, comparisonWindow: { from: '2025-01-01', to: '2025-02-01' } });
+  expect(calls).toHaveLength(1);
+  const day = await comparePicked(owox, metric, 'this_quarter', 'yesterday', now);
+  expect(day).toMatchObject({ fact: 42, comparison: 42, trimmed: true, factWindow: { from: '2026-10-01', to: '2026-10-01' } });
+});

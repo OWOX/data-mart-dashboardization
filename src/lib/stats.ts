@@ -26,7 +26,21 @@ export function forecastFor(args: { daily: DailyMap; anchor: Day; rangeTo: Day; 
   if (points.length < MIN_HISTORY) return null;
   const fit = linearFit(points);
   if (!fit) return null;
-  const at = (d: Day) => Math.max(0, fit.intercept + fit.slope * diffDays(start, d));
+  const trend = (x: number) => fit.intercept + fit.slope * x;
+  // The weekly pattern around the trend: the mean gap from the trend line for each weekday, centred
+  // so a full week adds nothing. The forecast keeps the history's slope and its weekday rhythm,
+  // instead of a straight line that reads as flat next to the history.
+  const weekday = (d: Day) => new Date(`${d}T00:00:00Z`).getUTCDay();
+  const gap = Array.from({ length: 7 }, () => ({ sum: 0, n: 0 }));
+  for (const p of points) {
+    const g = gap[weekday(addDays(start, p.x))]!;
+    g.sum += p.y - trend(p.x);
+    g.n += 1;
+  }
+  const raw = gap.map((g) => (g.n ? g.sum / g.n : 0));
+  const mean = raw.reduce((t, v) => t + v, 0) / 7;
+  const season = raw.map((v) => v - mean);
+  const at = (d: Day) => Math.max(0, trend(diffDays(start, d)) + season[weekday(d)]!);
   const future = rangeTo > anchor ? eachDay({ from: addDays(anchor, 1), to: rangeTo }).map((d) => ({ d, v: at(d) })) : [];
   const value = additive ? (fact ?? 0) + future.reduce((s, p) => s + p.v, 0) : at(rangeTo);
   return { value, future };

@@ -35,6 +35,21 @@ test('short history gives no forecast; fitted values never go negative', () => {
   expect(f!.future.every((p) => p.v >= 0)).toBe(true);
 });
 
+test('the forecast keeps the slope and repeats the weekly rhythm around it', () => {
+  // +1/day trend with weekends 30 lower than weekdays, 12 full weeks ending Sunday 2026-10-25
+  const from = '2026-08-03'; // a Monday
+  const values = Array.from({ length: 84 }, (_, i) => 100 + i + (i % 7 >= 5 ? -30 : 0));
+  const f = forecastFor({ daily: series(from, values), anchor: '2026-10-25', rangeTo: '2026-11-08', additive: true, fact: 0 });
+  const v = f!.future.map((p) => p.v);
+  // The same weekday a week apart rises by the slope, 7/day.
+  expect(v[7]! - v[0]!).toBeCloseTo(7, 0);
+  // Saturday sits well below the Friday before it, as in the history.
+  const fri = f!.future.findIndex((p) => p.d === '2026-10-30');
+  expect(v[fri]! - v[fri + 1]!).toBeGreaterThan(25);
+  // Not flat.
+  expect(new Set(v.slice(0, 7).map((x) => Math.round(x))).size).toBeGreaterThan(2);
+});
+
 test('plan shapes', () => {
   const range = { from: '2026-10-01', to: '2026-10-03' };
   expect(planForRange(series('2026-10-01', [5, 5, 5]), range, 'daily')).toBe(15);

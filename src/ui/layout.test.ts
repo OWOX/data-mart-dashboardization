@@ -8,31 +8,42 @@ const model = {
   edges: [{ from: 'm', to: 'a' }, { from: 'a', to: 'b' }, { from: 'm', to: 'z' }],
 } as unknown as Model;
 
-test('all classes by depth', () => {
+const ids = (l: ReturnType<typeof layoutFor>) => [l.main?.id ?? null, l.drivers.map((x) => x.id)];
+
+test('main alone on top, every other class in one band below', () => {
   const l = layoutFor(model, new Set());
-  expect(l.rows.map((r) => r.map((x) => x.id))).toEqual([['m'], ['a', 'z'], ['b']]);
+  expect(ids(l)).toEqual(['m', ['a', 'z', 'b']]);
   expect(l.connectors).toEqual([
-    { from: 'a', to: 'b', dashed: false }, { from: 'm', to: 'a', dashed: false }, { from: 'm', to: 'z', dashed: false },
+    { from: 'a', to: 'b', dashed: false, join: true, fields: [] },
+    { from: 'm', to: 'a', dashed: false, join: false, fields: [] },
+    { from: 'm', to: 'z', dashed: false, join: false, fields: [] },
   ]);
 });
 
 test('filter keeps main and bridges hidden classes with dashed connectors', () => {
   const l = layoutFor(model, new Set(['sales']));
-  expect(l.rows.map((r) => r.map((x) => x.id))).toEqual([['m'], ['z'], ['b']]);
-  expect(l.connectors).toEqual([{ from: 'm', to: 'b', dashed: true }, { from: 'm', to: 'z', dashed: false }]);
+  expect(ids(l)).toEqual(['m', ['z', 'b']]);
+  expect(l.connectors).toEqual([
+    { from: 'm', to: 'b', dashed: true, join: false, fields: [] },
+    { from: 'm', to: 'z', dashed: false, join: false, fields: [] },
+  ]);
 });
 
 test('contexts are unique and sorted', () => {
   expect(contextsOf(model).map((x) => x.id)).toEqual(['growth', 'sales']);
 });
 
-test('same-row and upward edges are dropped', () => {
+test('links between drivers and back into main are kept; a pair linked both ways is one line', () => {
   const m2 = {
     goal: { classId: 'm' },
-    classes: [c('m', 0), c('a', 1), c('z', 1), c('b', 2)],
-    edges: [{ from: 'm', to: 'a' }, { from: 'a', to: 'z' }, { from: 'b', to: 'm' }],
+    classes: [c('m', 0), c('a', 1), c('z', 1)],
+    edges: [{ from: 'm', to: 'a' }, { from: 'a', to: 'z' }, { from: 'z', to: 'a' }, { from: 'z', to: 'm' }],
   } as unknown as Model;
-  expect(layoutFor(m2, new Set()).connectors).toEqual([{ from: 'm', to: 'a', dashed: false }]);
+  expect(layoutFor(m2, new Set()).connectors).toEqual([
+    { from: 'a', to: 'z', dashed: false, join: true, fields: [] },
+    { from: 'm', to: 'a', dashed: false, join: false, fields: [] },
+    { from: 'z', to: 'm', dashed: false, join: false, fields: [] },
+  ]);
 });
 
 test('solid wins over a dashed path to the same pair', () => {
@@ -41,5 +52,15 @@ test('solid wins over a dashed path to the same pair', () => {
     classes: [c('m', 0), c('h', 1, ['x']), c('a', 2, ['y'])],
     edges: [{ from: 'm', to: 'a' }, { from: 'm', to: 'h' }, { from: 'h', to: 'a' }],
   } as unknown as Model;
-  expect(layoutFor(m3, new Set(['y'])).connectors).toEqual([{ from: 'm', to: 'a', dashed: false }]);
+  expect(layoutFor(m3, new Set(['y'])).connectors).toEqual([{ from: 'm', to: 'a', dashed: false, join: false, fields: [] }]);
+});
+
+test('a direct line carries the calculated fields it stands for; a bridged one carries none', () => {
+  const m4 = {
+    goal: { classId: 'm' },
+    classes: [c('m', 0), c('h', 1, ['x']), c('a', 1, ['y'])],
+    edges: [{ from: 'm', to: 'h', fields: ['ltv'] }, { from: 'h', to: 'a', fields: ['cac'] }],
+  } as unknown as Model;
+  expect(layoutFor(m4, new Set()).connectors.map((x) => x.fields)).toEqual([['cac'], ['ltv']]);
+  expect(layoutFor(m4, new Set(['y'])).connectors).toEqual([{ from: 'm', to: 'a', dashed: true, join: false, fields: [] }]);
 });

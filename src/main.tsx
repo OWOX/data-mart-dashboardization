@@ -7,7 +7,7 @@ const root = createRoot(document.getElementById('root')!);
 
 connect().then(
   (ctx) => {
-    document.documentElement.classList.toggle('light', ctx.theme === 'light');
+    document.documentElement.classList.toggle('dark', ctx.theme === 'dark');
     root.render(<App ctx={ctx} />);
   },
   () => {

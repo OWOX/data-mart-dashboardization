@@ -19,12 +19,14 @@ const byText = (a: string, b: string) => a.localeCompare(b);
 /** Covers descriptions and the schema/source signatures of the class marts; modifiedAt is left out, it churns on every actualisation. */
 export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'>, marts: HashMart[]): string {
   return hashString(JSON.stringify([
+    // Bumped when a model needs rebuilding to carry new fields (v2: MetricDef.calculated).
+    'model-v2',
     inputs.projectDescription,
     [...inputs.contexts].sort((a, b) => byText(a.id, b.id)).map((c) => [c.id, c.description]),
     [...marts].sort((a, b) => byText(a.id, b.id)).map((m) => [
       m.id,
       flattenFields(m.detail.fields)
-        .map((x) => [x.path, x.field.type, x.field.isPrimaryKey, x.field.calculated?.formula ?? null] as const)
+        .map((x) => [x.path, x.field.type, x.field.isPrimaryKey, x.field.calculated?.formula ?? null, x.field.description ?? null] as const)
         .sort((a, b) => byText(a[0], b[0])),
       m.blendable.availableSources
         .map((s) => [s.aliasPath, s.dataMartId] as const)
@@ -126,7 +128,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
       builtBy: userId,
       goal: { classId: main.id, metricId: main.viaFallback ? null : v.goal.metricId, goalMartId: v.goal.martId, viaFallback: main.viaFallback },
       classes,
-      edges: edges.filter((e) => depths.has(e.from) && depths.has(e.to)).map((e) => ({ from: e.from, to: e.to })),
+      edges: edges.filter((e) => depths.has(e.from) && depths.has(e.to)).map((e) => ({ from: e.from, to: e.to, fields: e.fields })),
       metrics,
     },
   };

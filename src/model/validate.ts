@@ -85,6 +85,8 @@ export function validate(input: ValidateInput): ValidateResult {
     const m_: MetricDef = {
       id: metricId(link.martId, measure), martId: link.martId, alias: m.alias, measure, kind: m.kind,
       dateField: m.factDateField, role: m.role, source: m.source, isUniqueCount: false, plan,
+      calculated: !!hit.field.calculated,
+      description: hit.field.description?.trim() || null,
     };
     metrics.push(m_);
     if (m === goalMetric) goalId = m_.id;
@@ -101,5 +103,5 @@ export function uniqueCountMetric(detail: MartDetail, blendable: Blendable): Met
   const dates = flat.filter((x) => isDateField(x.field));
   const dateField = (dates.find((x) => x.field.isPrimaryKey) ?? dates.find((x) => /creat|date|time/i.test(x.field.name)) ?? dates[0])?.path ?? null;
   const measure: Measure = { field: key, fn: 'COUNT_DISTINCT' };
-  return { id: metricId(detail.id, measure), martId: detail.id, alias: detail.title, measure, kind: 'flow', role: 'unique', source: 'schema', isUniqueCount: true, plan: null, dateField };
+  return { id: metricId(detail.id, measure), martId: detail.id, alias: detail.title, measure, kind: 'flow', role: 'unique', source: 'schema', isUniqueCount: true, calculated: false, plan: null, dateField };
 }

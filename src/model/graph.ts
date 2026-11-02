@@ -8,7 +8,7 @@ export interface MartNode {
   detail: MartDetail;
   blendable: Blendable;
 }
-export interface RefEdge extends Edge { refFields: string[] }
+export interface RefEdge extends Edge { refFields: string[]; fields: string[] }
 
 export function hasPrimaryKey(detail: MartDetail): boolean {
   const walk = (fs: SchemaField[]): boolean => fs.some((f) => f.isPrimaryKey || walk(f.fields ?? []));
@@ -39,8 +39,9 @@ export function buildEdges(nodes: MartNode[], visible: ReadonlySet<string>, allo
         const to = resolveTarget(ref.path, n.blendable, visible, allowHiddenTarget);
         if (!to || to === n.id) continue;
         const key = `${n.id}\u0000${to}`;
-        const e = byKey.get(key) ?? { from: n.id, to, refFields: [] };
+        const e = byKey.get(key) ?? { from: n.id, to, refFields: [], fields: [] };
         if (!e.refFields.includes(ref.field)) e.refFields.push(ref.field);
+        if (!e.fields.includes(f.name)) e.fields.push(f.name);
         byKey.set(key, e);
       }
     }

@@ -43,9 +43,9 @@ test('chip hides other classes; context-less class shows only under All', () => 
 
 test('bridged connector is dashed', () => {
   const { container } = render(<Canvas model={rich} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
-  expect(container.querySelectorAll('line[data-dashed="false"]')).toHaveLength(2);
+  expect(container.querySelectorAll('path[data-dashed="false"]')).toHaveLength(2);
   fireEvent.click(screen.getByRole('button', { name: 'Sales' }));
-  const lines = container.querySelectorAll('line');
+  const lines = container.querySelectorAll('path[data-from]');
   expect(lines).toHaveLength(1);
   expect(lines[0]).toHaveAttribute('data-from', 'm');
   expect(lines[0]).toHaveAttribute('data-to', 'b');
@@ -80,7 +80,7 @@ test('classes the member cannot see are not rendered and are bridged', () => {
   const { container } = render(<Canvas model={rich} visibleIds={new Set(['m', 'b'])} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(screen.queryByText('Alpha')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Growth' })).toBeNull();
-  const lines = container.querySelectorAll('line');
+  const lines = container.querySelectorAll('path[data-from]');
   expect(lines).toHaveLength(1);
   expect(lines[0]).toHaveAttribute('data-dashed', 'true');
 });
@@ -90,4 +90,38 @@ test('an invisible main class shows the no-access card instead of metrics', () =
   render(<Canvas model={rich} visibleIds={new Set(['a'])} cache={cache} comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(screen.getByText('Main')).toBeInTheDocument();
   expect(screen.getByText("You don't have access to this Data Mart")).toBeInTheDocument();
+});
+
+test('main sits alone in the Goal band; every other class shares the Drivers band', () => {
+  const { container } = render(<Canvas model={rich} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+  const [goal, drivers] = [...container.querySelectorAll('.gy-band')] as [Element, Element];
+  expect([...goal.querySelectorAll('[data-class-id]')].map((e) => e.getAttribute('data-class-id'))).toEqual(['m']);
+  expect([...drivers.querySelectorAll('[data-class-id]')].map((e) => e.getAttribute('data-class-id'))).toEqual(['a', 'b']);
+  expect(container.querySelector('path[data-from="a"][data-to="b"]')).toHaveClass('join');
+  expect(container.querySelector('path[data-from="m"][data-to="a"]')).toHaveClass('feeds');
+});
+
+test('a line wears the plan status of the calculated metric it stands for', async () => {
+  const { lineTone } = await import('./Canvas');
+  const m = {
+    ...rich,
+    metrics: [...rich.metrics, { ...rich.metrics[0], id: 'k2', measure: { field: 'ltv', fn: null }, calculated: true }],
+    classes: rich.classes.map((c) => (c.id === 'm' ? { ...c, metricIds: ['k', 'k2'] } : c)),
+  } as unknown as Model;
+  const line = { from: 'm', to: 'a', dashed: false, join: false, fields: ['ltv'] };
+  const cache = (status: string) => ({ cards: { m: { metrics: { k2: { status, error: null } }, spark: null } } }) as never;
+  expect(lineTone(line, m, cache('below'))).toBe('below');
+  expect(lineTone(line, m, cache('above'))).toBe('above');
+  expect(lineTone(line, m, null)).toBe('neutral');
+  expect(lineTone({ ...line, fields: ['other'] }, m, null)).toBe('none');
+  expect(lineTone({ ...line, fields: [] }, m, null)).toBe('none');
+  // A metric on the same field that is not a calculated field does not colour the line.
+  const plain = { ...m, metrics: m.metrics.map((x) => (x.id === 'k2' ? { ...x, calculated: false } : x)) } as Model;
+  expect(lineTone(line, plain, cache('below'))).toBe('none');
+});
+
+test('the selected range and the comparison window show top right; no driver count', () => {
+  const { container } = render(<Canvas model={rich} cache={null} comparisonOn refreshing={false} period={{ range: { from: '2026-10-01', to: '2026-12-31' }, comparison: { from: '2026-07-01', to: '2026-08-01' } }} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-period-shown')!.textContent).toBe('Oct 1 – Dec 31, 2026vs Jul 1 – Aug 1, 2026');
+  expect(container.querySelector('.gy-band-count')).toBeNull();
 });
