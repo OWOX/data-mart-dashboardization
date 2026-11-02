@@ -10,6 +10,10 @@ test('a recommended key draws its glyph; none or unknown draws the default box',
   expect(cls('no-such-key')).toContain('lucide-box');
 });
 
+test('a key named like a built-in object property draws the default box', () => {
+  for (const key of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) expect(cls(key)).toContain('lucide-box');
+});
+
 test('a lucide: icon loads from the library; an unknown name falls back', async () => {
   const a = render(<MartIcon icon="lucide:rocket" size={14} />);
   await waitFor(() => expect(a.container.querySelector('svg')!.getAttribute('class')).toContain('lucide-rocket'));

@@ -119,7 +119,7 @@ export function MartIcon({ icon, ...props }: LucideProps & { icon: string | null
     return () => { live = false; };
   }, [library, lib]);
 
-  if (!library) return createElement((icon && BY_KEY[icon]) || DEFAULT_ICON, props);
+  if (!library) return createElement((icon && Object.hasOwn(BY_KEY, icon) ? BY_KEY[icon] : undefined) || DEFAULT_ICON, props);
   if (failed) return createElement(DEFAULT_ICON, props);
   // Until the library loads, an empty box of the same size holds the place.
   if (!lib) return <svg width={props.size ?? 24} height={props.size ?? 24} aria-hidden="true" />;
