@@ -110,5 +110,6 @@ test('compareFact whose recount is null gives no diff rather than a mismatched o
   const { result } = await computeMetric({ owox: gap, metric, spec, thresholdPct: 20, withSpark: false });
   expect(result.fact).toBe(230);
   expect(result.compareFact).toBeNull();
+  expect(result.comparison).toBeNull();
   expect(result.diffPct).toBeNull();
 });

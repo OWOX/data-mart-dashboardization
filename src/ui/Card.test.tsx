@@ -119,3 +119,8 @@ test('plan and forecast stay off the card face; the number names them on hover',
   expect(container.textContent).not.toMatch(/plan|forecast/i);
   expect(screen.getByText('1.24M')).toHaveAttribute('title', 'Plan 1.3M · Forecast 1.5M');
 });
+
+test('a failed recount (comparison null) shows a dash, never a mismatched diff', () => {
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ compareFact: null, comparison: null, diffPct: null })} comparisonOn compareLabel="Previous 10 Days" onToggleDiff={() => {}} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-delta')!.textContent).toBe('—');
+});

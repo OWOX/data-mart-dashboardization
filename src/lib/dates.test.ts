@@ -1,3 +1,5 @@
+import type { RangeChoice } from '../types';
+import { formatWindow } from './format';
 import { PRESET_LABELS } from '../types';
 import { addDays, anchorFor, compareLabel, compareOptions, controlLabel, diffDays, eachDay, matchedWindows, rangeFor, resolveRange } from './dates';
 
@@ -149,4 +151,9 @@ test('previous_period on a calendar preset is matched day for day: March 1-30 vs
   expect(r.factWindow).toEqual({ from: '2026-03-01', to: '2026-03-30' });
   expect(r.comparison).toEqual({ from: '2026-02-01', to: '2026-02-28' });
   expect(r.compareFact).toEqual({ from: '2026-03-01', to: '2026-03-28' });
+});
+
+test('a custom comparison label shows the resolved window, not the raw pick', () => {
+  const r: RangeChoice = { kind: 'custom', window: { from: '2026-10-01', to: '2026-10-10' } };
+  expect(compareLabel(r, { kind: 'custom', window: { from: '2026-07-01', to: '2026-07-31' } }, NOW)).toBe(formatWindow({ from: '2026-07-01', to: '2026-07-10' }));
 });

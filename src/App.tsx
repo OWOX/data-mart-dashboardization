@@ -109,7 +109,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
 
   const periodShown = useMemo(() => {
     const spec = resolveRange(range, compare, now());
-    return { range: spec.range, comparison: spec.comparison };
+    // a cut comparison shows the windows actually compared
+    return spec.compareFact && spec.comparison ? { range: spec.compareFact, comparison: spec.comparison } : { range: spec.range, comparison: spec.comparison };
   }, [range, compare, now]);
 
   const marts = useMemo(

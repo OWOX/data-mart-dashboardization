@@ -166,7 +166,7 @@ export const rangeLabel = (range: RangeChoice): string => (range.kind === 'prese
 /** The text after "vs" on cards; null when comparison is off. `now` matters only for the day count of a "Previous N Days" label. */
 export function compareLabel(range: RangeChoice, compare: CompareChoice, now: Date): string | null {
   if (compare.kind === 'off') return null;
-  if (compare.kind === 'custom') return formatWindow(compare.window);
+  if (compare.kind === 'custom') return formatWindow(resolveRange(range, compare, now).comparison ?? compare.window);
   return compareName(range, compare.preset, now);
 }
 

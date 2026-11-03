@@ -56,7 +56,10 @@ export async function computeMetric(args: {
     }
 
     const result: MetricResult = {
-      fact, compareFact, comparison, diffPct: diffPct(spec.compareFact ? compareFact : fact, comparison), plan, forecast,
+      fact, compareFact,
+      // a cut fact window whose recount failed has no day-for-day partner, so no comparison at all
+      comparison: spec.compareFact && compareFact === null ? null : comparison,
+      diffPct: diffPct(spec.compareFact ? compareFact : fact, comparison), plan, forecast,
       forecastApprox: forecast !== null && (measure.fn === 'COUNT_DISTINCT' || measure.fn === null),
       status: statusOf(forecast ?? fact, plan, thresholdPct),
       trend: trendOf(daily, factWindow ?? historyWindow),

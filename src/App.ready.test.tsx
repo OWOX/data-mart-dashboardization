@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
@@ -210,4 +210,42 @@ test('a failed cache save keeps the new values on screen and shows a note', asyn
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   expect(await screen.findByText("Couldn't save the refreshed data: too big")).toBeInTheDocument();
   expect(screen.getByText('1.23K')).toBeInTheDocument();
+});
+
+test('a custom range computes the canvas without touching the cache store for its key', async () => {
+  const inner = memoryCollections();
+  const seen: string[] = [];
+  const store: CollectionsLike = {
+    collections<T>(name: string) {
+      const c = inner.collections<T>(name);
+      if (name !== 'cache') return c;
+      return { get: async (id: string) => { seen.push(`get:${id}`); return c.get(id); }, put: async (id: string, doc: T) => { seen.push(`put:${id}`); return c.put(id, doc); } };
+    },
+  };
+  const { deps, traversals } = await setup({ store, cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
+  await waitFor(() => expect(traversals()).toBeGreaterThan(0));
+  seen.length = 0;
+  const before = traversals();
+  const cal = within(screen.getByRole('group', { name: 'Range calendar' }));
+  fireEvent.click(cal.getByRole('button', { name: 'Monday, October 5, 2026' }));
+  fireEvent.click(cal.getByRole('button', { name: 'Monday, October 12, 2026' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(traversals()).toBeGreaterThan(before));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled());
+  expect(seen.filter((x) => x.includes('c:'))).toEqual([]);
+});
+
+test('the toolbar shows the cut windows when a comparison is cut short', async () => {
+  const { deps } = await setup({ cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
+  const cmp = within(screen.getByRole('group', { name: 'Comparison calendar' }));
+  fireEvent.click(cmp.getByRole('button', { name: 'Next month' }));
+  fireEvent.click(cmp.getByRole('button', { name: 'Next month' }));
+  fireEvent.click(cmp.getByRole('button', { name: 'Monday, September 7, 2026' }));
+  fireEvent.click(cmp.getByRole('button', { name: 'Wednesday, September 9, 2026' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(document.querySelector('.gy-period-shown')!.textContent).toBe('Oct 1–3, 2026vs Sep 7–9, 2026'));
 });

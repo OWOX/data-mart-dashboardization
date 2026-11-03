@@ -76,7 +76,8 @@ function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { p
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compareOn, compareSeed, rangeSeed]);
   useEffect(() => {
-    panelRef.current?.querySelector<HTMLElement>('.gy-drp-preset[aria-pressed="true"]')?.focus();
+    // on a custom range no preset is pressed; the panel itself takes focus so Escape still works
+    (panelRef.current?.querySelector<HTMLElement>('.gy-drp-preset[aria-pressed="true"]') ?? panelRef.current)?.focus();
   }, []);
 
   const pick = (cur: DateWindow | null, pending: boolean, d: Day): DateWindow =>
@@ -101,7 +102,7 @@ function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { p
   };
 
   return (
-    <div ref={panelRef} className="gy-drp-panel" role="dialog" aria-label="Date range" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+    <div ref={panelRef} className="gy-drp-panel" tabIndex={-1} role="dialog" aria-label="Date range" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       <div className="gy-drp-presets">
         {PRESET_GROUPS.flatMap((g) => g.presets).map((p) => (
           <button key={p} type="button" className="gy-drp-preset" aria-pressed={dRange.kind === 'preset' && dRange.preset === p} onClick={() => choosePreset(p)}>
