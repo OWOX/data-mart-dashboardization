@@ -96,3 +96,32 @@ test('compareFact: the diff is measured from the recounted value, fact stays who
   expect(result.comparison).toBe(100);
   expect(result.diffPct).toBe(0);
 });
+
+test('compareFact whose recount is null gives no diff rather than a mismatched one', async () => {
+  const gap = fakeOwox({
+    projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+    rows: (id, o) => {
+      const f = o.filter as { value: string }[];
+      if (!o.dateTrunc && f[1]!.value === '2026-10-11') return [];
+      return base(id, o);
+    },
+  });
+  function base(id: string, o: Record<string, unknown>) {
+    const f = o.filter as { value: string }[];
+    const from = f[0]!.value, to = addDays(f[1]!.value, -1);
+    const per = id === 'p' ? 12 : 10;
+    if (o.dateTrunc) {
+      const out = [];
+      for (let d = from; d <= to; d = addDays(d, 1)) out.push({ date: d, 'revenue | SUM': String(per) });
+      return out;
+    }
+    let days = 0;
+    for (let d = from; d <= to; d = addDays(d, 1)) days++;
+    return [{ 'revenue | SUM': per * days }];
+  }
+  const spec = { ...rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z')), compareFact: { from: '2026-10-01', to: '2026-10-10' }, comparison: { from: '2026-07-01', to: '2026-07-10' } };
+  const { result } = await computeMetric({ owox: gap, metric, spec, comparisonOn: true, thresholdPct: 20, withSpark: false });
+  expect(result.fact).toBe(230);
+  expect(result.compareFact).toBeNull();
+  expect(result.diffPct).toBeNull();
+});

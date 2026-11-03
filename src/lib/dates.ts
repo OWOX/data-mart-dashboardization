@@ -124,7 +124,11 @@ export function resolveRange(range: RangeChoice, compare: CompareChoice, now: Da
   const fact = base.factWindow;
   if (compare.kind === 'off' || !fact) return { ...base, comparison: null, compareFact: null };
   if (compare.kind === 'preset') {
-    if (compare.preset === 'previous_period') return base;
+    if (compare.preset === 'previous_period') {
+      // a calendar period can be shorter than the range so far (Feb vs a 31-day March): cut both to the shorter
+      const m = matchedWindows(fact, base.comparison!);
+      return { ...base, comparison: m.other, compareFact: m.fact.to !== fact.to ? m.fact : null };
+    }
     const w = compare.preset === 'preceding_days' ? precedingDays(fact) : clipTo(yearBefore(fact), base.anchor);
     return { ...base, comparison: w, compareFact: null };
   }
@@ -134,15 +138,10 @@ export function resolveRange(range: RangeChoice, compare: CompareChoice, now: Da
   return { ...base, comparison: m.other, compareFact: m.fact.to !== fact.to ? m.fact : null };
 }
 
-const factLength = (range: RangeChoice, now: Date): number => {
-  const spec = resolveRange(range, { kind: 'off' }, now);
-  return spec.factWindow ? lengthOf(spec.factWindow) : spec.days;
-};
-
 function compareName(range: RangeChoice, preset: ComparePreset, now: Date): string {
   if (preset === 'year_before') return 'Same Period Last Year';
   if (preset === 'previous_period' && range.kind === 'preset') return COMPARE_LABELS[range.preset];
-  return `Previous ${factLength(range, now)} Days`;
+  return `Previous ${lengthOf(baseSpec(range, now).factWindow ?? baseSpec(range, now).range)} Days`;
 }
 
 /** The comparison presets that make sense for this range, each with its window, all the same length as the fact window. */

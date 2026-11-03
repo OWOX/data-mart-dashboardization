@@ -1,3 +1,4 @@
+import { PRESET_LABELS } from '../types';
 import { addDays, anchorFor, compareLabel, compareOptions, controlLabel, diffDays, eachDay, matchedWindows, rangeFor, resolveRange } from './dates';
 
 const at = (iso: string) => new Date(iso);
@@ -72,6 +73,7 @@ test.each(['this_quarter', 'last_28d', 'yesterday'] as const)('resolveRange %s w
   const r = resolveRange(P(preset), PREV, NOW);
   const { label: _l, ...want } = rangeFor(preset, NOW);
   expect(r).toMatchObject(want);
+  expect(r.label).toBe(PRESET_LABELS[preset]);
   expect(r.compareFact).toBeNull();
 });
 
@@ -140,4 +142,11 @@ test('labels', () => {
   expect(compareLabel({ kind: 'custom', window: { from: '2026-10-01', to: '2026-11-02' } }, PREV, NOW)).toBe('Previous 33 Days');
   expect(compareLabel(P('this_quarter'), { kind: 'preset', preset: 'year_before' })).toBe('Same Period Last Year');
   expect(compareLabel(P('this_quarter'), OFF)).toBeNull();
+});
+
+test('previous_period on a calendar preset is matched day for day: March 1-30 vs February', () => {
+  const r = resolveRange(P('this_month'), PREV, at('2026-03-31T10:00:00Z')); // anchor Mar 30
+  expect(r.factWindow).toEqual({ from: '2026-03-01', to: '2026-03-30' });
+  expect(r.comparison).toEqual({ from: '2026-02-01', to: '2026-02-28' });
+  expect(r.compareFact).toEqual({ from: '2026-03-01', to: '2026-03-28' });
 });

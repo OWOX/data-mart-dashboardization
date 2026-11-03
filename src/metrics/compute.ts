@@ -81,7 +81,7 @@ export async function computeMetric(args: {
     }
 
     const result: MetricResult = {
-      fact, compareFact, comparison, diffPct: diffPct(compareFact ?? fact, comparison), plan, forecast,
+      fact, compareFact, comparison, diffPct: diffPct(spec.compareFact ? compareFact : fact, comparison), plan, forecast,
       forecastApprox: forecast !== null && (measure.fn === 'COUNT_DISTINCT' || measure.fn === null),
       status: statusOf(forecast ?? fact, plan, thresholdPct),
       trend: trendOf(daily, factWindow ?? historyWindow),
