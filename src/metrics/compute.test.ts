@@ -75,14 +75,6 @@ test('an AVG flow metric forecasts its level, not a sum of daily averages', asyn
   expect(result.forecast).toBeCloseTo(10);
 });
 
-test('matchedWindows cuts both windows to the shorter length from their starts', async () => {
-  const { matchedWindows } = await import('./compute');
-  expect(matchedWindows({ from: '2026-10-01', to: '2026-11-01' }, { from: '2025-01-01', to: '2025-12-31' }))
-    .toEqual({ fact: { from: '2026-10-01', to: '2026-11-01' }, other: { from: '2025-01-01', to: '2025-02-01' } });
-  expect(matchedWindows({ from: '2026-10-01', to: '2026-11-01' }, { from: '2026-11-01', to: '2026-11-01' }))
-    .toEqual({ fact: { from: '2026-10-01', to: '2026-10-01' }, other: { from: '2026-11-01', to: '2026-11-01' } });
-});
-
 test('comparePicked reads the picked period over the same days; recounts the value only when cut short', async () => {
   const { comparePicked } = await import('./compute');
   const calls: string[] = [];
@@ -94,4 +86,13 @@ test('comparePicked reads the picked period over the same days; recounts the val
   expect(calls).toHaveLength(1);
   const day = await comparePicked(owox, metric, 'this_quarter', 'yesterday', now);
   expect(day).toMatchObject({ fact: 42, comparison: 42, trimmed: true, factWindow: { from: '2026-10-01', to: '2026-10-01' } });
+});
+
+test('compareFact: the diff is measured from the recounted value, fact stays whole', async () => {
+  const spec = { ...rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z')), compareFact: { from: '2026-10-01', to: '2026-10-10' }, comparison: { from: '2026-07-01', to: '2026-07-10' } };
+  const { result } = await computeMetric({ owox, metric, spec, comparisonOn: true, thresholdPct: 20, withSpark: false });
+  expect(result.fact).toBe(230);
+  expect(result.compareFact).toBe(100);
+  expect(result.comparison).toBe(100);
+  expect(result.diffPct).toBe(0);
 });

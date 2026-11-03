@@ -8,13 +8,18 @@ export type Preset =
 
 export interface DateWindow { from: Day; to: Day } // both inclusive
 
+export type RangeChoice = { kind: 'preset'; preset: Preset } | { kind: 'custom'; window: DateWindow };
+export type ComparePreset = 'previous_period' | 'preceding_days' | 'year_before';
+export type CompareChoice = { kind: 'off' } | { kind: 'preset'; preset: ComparePreset } | { kind: 'custom'; window: DateWindow };
+
 export interface RangeSpec {
-  preset: Preset;
+  label: string;             // closed-control text for the range: 'This quarter' or 'Oct 1 – Nov 2, 2026'
   anchor: Day;               // yesterday
   range: DateWindow;
   days: number;              // length of range in days
   factWindow: DateWindow | null;       // range clipped to the anchor; null when the range starts after it
-  comparison: DateWindow | null;       // calendar presets: the same number of days from the start of the previous period, capped at its end; rolling presets: factWindow shifted back by `days`; null when factWindow is null
+  comparison: DateWindow | null;       // the comparison window actually queried (already matched to the fact window's length); null when off or when factWindow is null
+  compareFact: DateWindow | null;      // factWindow cut to the comparison's length; null when comparison is off or no cut is needed
   endsInFuture: boolean;     // range.to > anchor
 }
 
@@ -91,6 +96,8 @@ export interface SeriesPack {
 
 export interface MetricResult {
   fact: number | null;
+  /** The metric over `RangeSpec.compareFact`; set only when a custom comparison cut the fact window short. `diffPct` is measured from it. */
+  compareFact: number | null;
   comparison: number | null;
   diffPct: number | null;
   plan: number | null;
@@ -110,7 +117,7 @@ export interface CacheDoc {
   thresholdPct: number;      // threshold the statuses were computed with
   anchor: Day;
   refreshedAt: string;
-  preset: Preset;
+  key: string;               // cacheKey of the range and comparison
   comparison: boolean;
   cards: Record<string, CardCache>;
 }

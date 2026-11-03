@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PluginContext } from '@owox/plugin-sdk';
-import type { Blocked as BlockedInfo, CacheDoc, Model, Preset, Settings } from './types';
+import type { Blocked as BlockedInfo, CacheDoc, CompareChoice, Model, Preset, Settings } from './types';
 import { COMPARE_LABELS, DEFAULT_SETTINGS } from './types';
-import { rangeFor } from './lib/dates';
+import { resolveRange } from './lib/dates';
 import { describeError } from './lib/errors';
 import { buildModel, currentInputHash } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
@@ -44,6 +44,8 @@ function depsFrom(ctx: PluginContext): AppDeps {
     now: () => new Date(),
   };
 }
+
+const cmp = (on: boolean): CompareChoice => (on ? { kind: 'preset', preset: 'previous_period' } : { kind: 'off' });
 
 export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDeps }) {
   const [deps] = useState(() => injected ?? depsFrom(ctx));
@@ -106,7 +108,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   );
 
   const periodShown = useMemo(() => {
-    const spec = rangeFor(preset, now());
+    const spec = resolveRange({ kind: 'preset', preset }, cmp(comparisonOn), now());
     return { range: spec.range, comparison: comparisonOn ? spec.comparison : null };
   }, [preset, comparisonOn, now]);
 
@@ -119,15 +121,15 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     if (!model) return false;
     const id = ++refreshId.current;
     const current = () => id === refreshId.current;
-    const spec = rangeFor(preset, now());
-    const key = cacheKey(preset, comparisonOn);
+    const spec = resolveRange({ kind: 'preset', preset }, cmp(comparisonOn), now());
+    const key = cacheKey({ kind: 'preset', preset }, cmp(comparisonOn));
     try {
       const saved = await loadCache(store, key);
       if (!current()) return false;
       setCache(saved);
       if (!force && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); return true; }
       setRefreshing(true);
-      const doc = await refreshCanvas({ owox, model, spec, comparisonOn, thresholdPct: settings.thresholdPct, visibleIds: visible });
+      const doc = await refreshCanvas({ owox, model, spec, key, comparisonOn, thresholdPct: settings.thresholdPct, visibleIds: visible });
       if (!current()) return false;
       setCache(doc);
       setSaveNote(null);

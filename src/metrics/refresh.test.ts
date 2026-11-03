@@ -1,4 +1,4 @@
-import { cacheKey, refreshCanvas, trimToSize } from './refresh';
+import { cacheKey, persistable, refreshCanvas, trimToSize } from './refresh';
 import { fakeOwox } from '../owox/fake';
 import { addDays, rangeFor } from '../lib/dates';
 import type { CacheDoc, Model } from '../types';
@@ -16,7 +16,7 @@ test('refresh fills every card and reports progress', async () => {
     metrics: [{ id: 'a:id:COUNT_DISTINCT', martId: 'a', alias: 'A', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, plan: null }],
   };
   const progress: number[] = [];
-  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), comparisonOn: true, thresholdPct: 20, onProgress: (d) => progress.push(d) });
+  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', comparisonOn: true, thresholdPct: 20, onProgress: (d) => progress.push(d) });
   expect(doc.modelHash).toBe('h1');
   expect(doc.builtAt).toBe('');
   expect(doc.thresholdPct).toBe(20);
@@ -24,7 +24,7 @@ test('refresh fills every card and reports progress', async () => {
   expect(doc.cards.a!.metrics['a:id:COUNT_DISTINCT']!.fact).toBe(5);
   expect(doc.cards.b).toEqual({ metrics: {}, spark: null });
   expect(progress).toEqual([1]);
-  expect(cacheKey('last_7d', true)).toBe('last_7d:cmp');
+  expect(doc.key).toBe('k');
 });
 
 test('classes outside the visible set are not queried and get no card', async () => {
@@ -37,7 +37,7 @@ test('classes outside the visible set are not queried and get no card', async ()
     edges: [{ from: 'a', to: 'b' }],
     metrics: [metric('a'), metric('b')],
   };
-  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), comparisonOn: true, thresholdPct: 20, visibleIds: new Set(['a']) });
+  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', comparisonOn: true, thresholdPct: 20, visibleIds: new Set(['a']) });
   expect(Object.keys(doc.cards)).toEqual(['a']);
   expect(owox.calls.filter((c) => c.path === 'traverse:b')).toHaveLength(0);
 });
@@ -60,7 +60,7 @@ test('spark values and forecast are rounded to 4 significant digits', async () =
     edges: [],
     metrics: [{ id: 'a:id:COUNT_DISTINCT', martId: 'a', alias: 'A', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, plan: null }],
   };
-  const doc = await refreshCanvas({ owox, model, spec: rangeFor('this_month', new Date('2026-10-24T10:00:00Z')), comparisonOn: false, thresholdPct: 20 });
+  const doc = await refreshCanvas({ owox, model, spec: rangeFor('this_month', new Date('2026-10-24T10:00:00Z')), key: 'k', comparisonOn: false, thresholdPct: 20 });
   const spark = doc.cards.a!.spark!;
   expect(spark.values.length).toBeGreaterThan(0);
   expect(spark.forecast.length).toBeGreaterThan(0);
@@ -76,4 +76,17 @@ test('an oversized cache doc drops every spark', () => {
   const trimmed = trimToSize(doc, 50);
   expect(trimmed.cards.a!.spark).toBeNull();
   expect(trimmed.cards.b!.spark).toBeNull();
+});
+
+test('cacheKey and persistable: presets persist per key, custom choices do not', () => {
+  const q = { kind: 'preset', preset: 'this_quarter' } as const;
+  const prev = { kind: 'preset', preset: 'previous_period' } as const;
+  const win = { from: '2026-10-01', to: '2026-10-31' };
+  expect(cacheKey(q, prev)).toBe('this_quarter:previous_period');
+  expect(cacheKey(q, { kind: 'off' })).toBe('this_quarter:off');
+  expect(cacheKey({ kind: 'custom', window: win }, { kind: 'custom', window: win })).toBe('c:2026-10-01_2026-10-31:c:2026-10-01_2026-10-31');
+  expect(persistable(q, prev)).toBe(true);
+  expect(persistable(q, { kind: 'off' })).toBe(true);
+  expect(persistable({ kind: 'custom', window: win }, prev)).toBe(false);
+  expect(persistable(q, { kind: 'custom', window: win })).toBe(false);
 });

@@ -1,5 +1,5 @@
 import type { DateWindow, MetricDef, MetricResult, Preset, RangeSpec, SeriesPack } from '../types';
-import { addDays, eachDay, minDay, rangeFor } from '../lib/dates';
+import { addDays, eachDay, matchedWindows, minDay, rangeFor } from '../lib/dates';
 import { describeError } from '../lib/errors';
 import { diffPct, forecastFor, levelAt, planForRange, statusOf, trendOf } from '../lib/stats';
 import type { OwoxLike } from '../owox/sources';
@@ -8,7 +8,7 @@ import { queryDaily, queryTotal } from './query';
 export interface ComputeOut { result: MetricResult; spark: SeriesPack | null }
 
 const empty = (over: Partial<MetricResult> = {}): MetricResult => ({
-  fact: null, comparison: null, diffPct: null, plan: null, forecast: null, forecastApprox: false,
+  fact: null, compareFact: null, comparison: null, diffPct: null, plan: null, forecast: null, forecastApprox: false,
   status: 'neutral', trend: 'flat', note: null, error: null, ...over,
 });
 
@@ -23,15 +23,6 @@ export interface PickedComparison {
   comparisonWindow: DateWindow;
   /** True when the picked period is shorter than the range so far, so the card's value is recounted. */
   trimmed: boolean;
-}
-
-/**
- * Both windows from their own start, cut to the shorter one's length, so a sum is never compared
- * with a sum over more days. This is how the default comparison lines up too (see `rangeFor`).
- */
-export function matchedWindows(fact: DateWindow, other: DateWindow): { fact: DateWindow; other: DateWindow } {
-  const n = Math.min(eachDay(fact).length, eachDay(other).length);
-  return { fact: { from: fact.from, to: addDays(fact.from, n - 1) }, other: { from: other.from, to: addDays(other.from, n - 1) } };
 }
 
 /** The metric over another preset's window, matched day for day to the range so far; null when either has not started. */
@@ -70,6 +61,7 @@ export async function computeMetric(args: {
       !w ? Promise.resolve(null) : kind === 'flow' ? queryTotal(owox, martId, measure, dateField, w) : Promise.resolve(levelAt(daily, w));
     const fact = await read(factWindow);
     const comparison = await read(comparisonWindow);
+    const compareFact = comparisonWindow ? await read(spec.compareFact) : null;
 
     let forecast: number | null = null;
     let future: number[] = [];
@@ -89,7 +81,7 @@ export async function computeMetric(args: {
     }
 
     const result: MetricResult = {
-      fact, comparison, diffPct: diffPct(fact, comparison), plan, forecast,
+      fact, compareFact, comparison, diffPct: diffPct(compareFact ?? fact, comparison), plan, forecast,
       forecastApprox: forecast !== null && (measure.fn === 'COUNT_DISTINCT' || measure.fn === null),
       status: statusOf(forecast ?? fact, plan, thresholdPct),
       trend: trendOf(daily, factWindow ?? historyWindow),

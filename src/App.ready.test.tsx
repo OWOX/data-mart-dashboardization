@@ -44,9 +44,9 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
     const doc: CacheDoc = {
       modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct: 20,
       anchor: cache === 'fresh' ? rangeFor('this_quarter', NOW).anchor : '2000-01-01',
-      refreshedAt: '2026-10-24T09:00:00Z', preset: 'this_quarter', comparison: true, cards: {},
+      refreshedAt: '2026-10-24T09:00:00Z', key: 'this_quarter:previous_period', comparison: true, cards: {},
     };
-    await saveCache(store, cacheKey('this_quarter', true), doc);
+    await saveCache(store, cacheKey({ kind: 'preset', preset: 'this_quarter' }, { kind: 'preset', preset: 'previous_period' }), doc);
   }
   let clock = NOW.getTime();
   const deps: AppDeps = { owox, store, generate: opts.generate === undefined ? async () => goalAi : opts.generate, userId: 'u1', now: () => new Date(clock) };

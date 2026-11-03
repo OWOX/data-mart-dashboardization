@@ -1,6 +1,7 @@
-import type { CacheDoc, CardCache, MetricResult, Model, Preset, RangeSpec, SeriesPack } from '../types';
+import type { CacheDoc, CardCache, MetricResult, Model, RangeChoice, RangeSpec, CompareChoice, SeriesPack } from '../types';
 import { runPool } from '../lib/pool';
 import type { OwoxLike } from '../owox/sources';
+import { rangeKey, compareKey } from '../lib/dates';
 import { computeMetric } from './compute';
 
 const sig4 = (n: number): number => Number(n.toPrecision(4));
@@ -14,13 +15,17 @@ export function trimToSize(doc: CacheDoc, limit = MAX_DOC_CHARS): CacheDoc {
   return { ...doc, cards: Object.fromEntries(Object.entries(doc.cards).map(([id, c]) => [id, { ...c, spark: null }])) };
 }
 
-export const cacheKey = (preset: Preset, comparisonOn: boolean): string => `${preset}:${comparisonOn ? 'cmp' : 'nocmp'}`;
+export const cacheKey = (range: RangeChoice, compare: CompareChoice): string => `${rangeKey(range)}:${compareKey(compare)}`;
+
+/** Custom choices are not persisted: they would pile up per member. */
+export const persistable = (range: RangeChoice, compare: CompareChoice): boolean =>
+  range.kind !== 'custom' && compare.kind !== 'custom';
 
 export async function refreshCanvas(args: {
-  owox: OwoxLike; model: Model; spec: RangeSpec; comparisonOn: boolean; thresholdPct: number;
+  owox: OwoxLike; model: Model; spec: RangeSpec; key: string; comparisonOn: boolean; thresholdPct: number;
   visibleIds?: ReadonlySet<string> | null; onProgress?: (done: number, total: number) => void;
 }): Promise<CacheDoc> {
-  const { owox, model, spec, comparisonOn, thresholdPct, visibleIds, onProgress } = args;
+  const { owox, model, spec, key, comparisonOn, thresholdPct, visibleIds, onProgress } = args;
   const classes = model.classes.filter((c) => !visibleIds || visibleIds.has(c.id));
   const byId = new Map(model.metrics.map((m) => [m.id, m]));
   const keyIds = new Set(classes.map((c) => c.keyMetricId).filter((id): id is string => !!id));
@@ -47,6 +52,6 @@ export async function refreshCanvas(args: {
   }
   return trimToSize({
     modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct, anchor: spec.anchor,
-    refreshedAt: new Date().toISOString(), preset: spec.preset, comparison: comparisonOn, cards,
+    refreshedAt: new Date().toISOString(), key, comparison: comparisonOn, cards,
   });
 }
