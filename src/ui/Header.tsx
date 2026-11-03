@@ -1,5 +1,6 @@
 import { RefreshCw, Settings as SettingsIcon } from 'lucide-react';
-import { PRESET_GROUPS, PRESET_LABELS, type CacheDoc, type Preset } from '../types';
+import type { CacheDoc, CompareChoice, RangeChoice } from '../types';
+import { DateRangePicker } from './DateRangePicker';
 
 function relativeTime(iso: string, now: Date): string {
   const s = Math.max(0, Math.round((now.getTime() - new Date(iso).getTime()) / 1000));
@@ -30,26 +31,16 @@ export function Header({ title, cache, now }: Props) {
 }
 
 /**
- * The comparison toggle, the date range, then Refresh and Settings as icons. They sit on the
- * canvas toolbar, level with the context chips.
+ * The date range control, then Refresh and Settings as icons. They sit on the canvas toolbar,
+ * level with the context chips.
  */
-export function RangeControls({ preset, comparisonOn, refreshing = false, onPreset, onComparison, onRefresh, onSettings }: {
-  preset: Preset; comparisonOn: boolean; refreshing?: boolean;
-  onPreset: (p: Preset) => void; onComparison: (on: boolean) => void; onRefresh: () => void; onSettings: () => void;
+export function RangeControls({ range, compare, now, refreshing = false, onChange, onRefresh, onSettings }: {
+  range: RangeChoice; compare: CompareChoice; now: Date; refreshing?: boolean;
+  onChange: (range: RangeChoice, compare: CompareChoice) => void; onRefresh: () => void; onSettings: () => void;
 }) {
   return (
     <div className="gy-range">
-      <label className="gy-check">
-        <input type="checkbox" checked={comparisonOn} onChange={(e) => onComparison(e.target.checked)} />
-        Compare with previous period
-      </label>
-      <select className="gy-select" aria-label="Date range" value={preset} onChange={(e) => onPreset(e.target.value as Preset)}>
-        {PRESET_GROUPS.map((g) => (
-          <optgroup key={g.label} label={g.label}>
-            {g.presets.map((p) => <option key={p} value={p}>{PRESET_LABELS[p]}</option>)}
-          </optgroup>
-        ))}
-      </select>
+      <DateRangePicker range={range} compare={compare} now={now} onChange={onChange} />
       <button type="button" className="gy-icon-btn" aria-label="Refresh" title="Refresh" onClick={onRefresh} disabled={refreshing}>
         <RefreshCw size={16} className={refreshing ? 'gy-spin' : undefined} />
       </button>

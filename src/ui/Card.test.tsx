@@ -86,25 +86,6 @@ test('no comparison row when comparison is off; a dash when the period has no da
   expect(container.querySelector('.gy-delta')!.textContent).toBe('—');
 });
 
-test('picking another period on a card compares against it; the default option goes back', async () => {
-  const onCompare = vi.fn().mockResolvedValue({ fact: null, comparison: 2_000_000, trimmed: false, factWindow: { from: '2026-10-01', to: '2026-11-01' }, comparisonWindow: { from: '2025-01-01', to: '2025-02-01' } });
-  render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn compareLabel="Last Month" onToggleDiff={() => {}} onCompare={onCompare} refreshing={false} onRetry={() => {}} />);
-  fireEvent.change(screen.getByLabelText('Compare with'), { target: { value: 'last_year' } });
-  expect(onCompare).toHaveBeenCalledWith(arr, 'last_year');
-  expect(await screen.findByRole('button', { name: '−38.0%' })).toBeInTheDocument();
-  expect(document.querySelector('.gy-compare')!.getAttribute('data-sign')).toBe('down');
-  expect(document.querySelector('.gy-trend')!.getAttribute('data-sign')).toBe('down');
-  expect(screen.getByText('Oct 1 – Nov 1, 2026 vs Jan 1 – Feb 1, 2025')).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Compare with'), { target: { value: '' } });
-  expect(screen.getByRole('button', { name: '+24.0%' })).toBeInTheDocument();
-});
-
-test('a failed period read shows a dash, not a stale difference', async () => {
-  render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn compareLabel="Last Month" onCompare={() => Promise.reject(new Error('x'))} refreshing={false} onRetry={() => {}} />);
-  fireEvent.change(screen.getByLabelText('Compare with'), { target: { value: 'last_year' } });
-  expect(await screen.findByRole('button', { name: '—' })).toBeDisabled();
-});
-
 test('a unique count names its metric Count under the class name', () => {
   const only = { ...cls, keyMetricId: 'uc', metricIds: ['uc'] };
   render(<Card cls={only} metrics={[uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
@@ -117,15 +98,13 @@ test('an all-time metric gets no comparison row', () => {
   expect(container.querySelector('.gy-compare')).toBeNull();
 });
 
-test('a picked period shorter than the range recounts the value over the same days', async () => {
-  const onCompare = vi.fn().mockResolvedValue({ fact: 40_000, comparison: 50_000, trimmed: true, factWindow: { from: '2026-10-01', to: '2026-10-01' }, comparisonWindow: { from: '2026-11-01', to: '2026-11-01' } });
-  render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn compareLabel="Last Month" onToggleDiff={() => {}} onCompare={onCompare} refreshing={false} onRetry={() => {}} />);
-  fireEvent.change(screen.getByLabelText('Compare with'), { target: { value: 'yesterday' } });
-  expect(await screen.findByText('40K')).toBeInTheDocument();
+test('a recounted compareFact replaces the big number and drives the diff and the arrow', () => {
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ fact: 1_240_000, compareFact: 40_000, comparison: 50_000, diffPct: -20, trend: 'up' })} comparisonOn compareLabel="Previous 1 Days" onToggleDiff={() => {}} refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('40K')).toBeInTheDocument();
+  expect(screen.queryByText('1.24M')).toBeNull();
   expect(screen.getByRole('button', { name: '−20.0%' })).toBeInTheDocument();
-  expect(screen.getByText('Oct 1, 2026 vs Nov 1, 2026')).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Compare with'), { target: { value: '' } });
-  expect(screen.getByText('1.24M')).toBeInTheDocument();
+  expect(container.querySelector('.gy-trend')!.getAttribute('data-sign')).toBe('down');
+  expect(container.querySelector('.gy-compare')!.textContent).toContain('vs Previous 1 Days');
 });
 
 test('the arrow before the number follows the comparison, or the series when comparison is off', () => {

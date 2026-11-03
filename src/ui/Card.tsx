@@ -1,9 +1,7 @@
-import { useState } from 'react';
 import { Info } from 'lucide-react';
-import { PRESET_GROUPS, PRESET_LABELS, type CardCache, type ClassNode, type MetricDef, type Preset } from '../types';
-import type { PickedComparison } from '../metrics/compute';
+import type { CardCache, ClassNode, MetricDef } from '../types';
 import { diffPct } from '../lib/stats';
-import { compact, formatDelta, formatPct, formatWindow } from '../lib/format';
+import { compact, formatDelta, formatPct } from '../lib/format';
 import { Badge } from './Badge';
 import { MartIcon } from './MartIcon';
 import { Sparkline } from './Sparkline';
@@ -24,8 +22,6 @@ interface Props {
   /** The diff chip shows an absolute difference instead of a relative one. */
   absolute?: boolean;
   onToggleDiff?: () => void;
-  /** Reads the key metric over another preset's window. Without it the period is plain text. */
-  onCompare?: (metric: MetricDef, preset: Preset) => Promise<PickedComparison | null>;
   onRetry: () => void;
 }
 
@@ -55,36 +51,22 @@ function CardHead({ title, metric, mart, metrics }: { title: string; metric?: st
   );
 }
 
-/** A chip with the difference (pressing it swaps relative and absolute), then "vs" and the period, which can be changed. */
-function Compare({ delta, pct, sign, label, absolute, onToggle, choice, onChoose, loading }: {
+/** A chip with the difference (pressing it swaps relative and absolute), then "vs" and the comparison's name. */
+function Compare({ delta, pct, sign, label, absolute, onToggle }: {
   delta: number | null; pct: number | null; sign: Sign; label: string; absolute: boolean; onToggle?: () => void;
-  choice: Preset | ''; onChoose?: (p: Preset | '') => void; loading: boolean;
 }) {
   // A zero comparison has no relative difference, so the chip can only say the absolute one.
   const showAbs = absolute || pct === null;
-  const text = loading ? '…' : delta === null ? '—' : showAbs ? formatDelta(delta) : formatPct(pct);
+  const text = delta === null ? '—' : showAbs ? formatDelta(delta) : formatPct(pct);
   return (
-    <div className="gy-compare" data-sign={loading ? 'flat' : sign}>
+    <div className="gy-compare" data-sign={sign}>
       <button
-        type="button" className="num gy-delta" onClick={onToggle} disabled={!onToggle || pct === null || loading}
+        type="button" className="num gy-delta" onClick={onToggle} disabled={!onToggle || pct === null}
         title={showAbs ? 'Show the difference in %' : 'Show the difference in absolute numbers'}
       >
         {text}
       </button>
-      <span className="gy-compare-label">vs</span>
-      {onChoose ? (
-        <select className="gy-period" aria-label="Compare with" value={choice} onChange={(e) => onChoose(e.target.value as Preset | '')}>
-          {/* The default: the previous period, matched day for day to the range so far. */}
-          <optgroup label="Previous period"><option value="">{label}</option></optgroup>
-          {PRESET_GROUPS.map((g) => (
-            <optgroup key={g.label} label={g.label}>
-              {g.presets.map((p) => <option key={p} value={p}>{PRESET_LABELS[p]}</option>)}
-            </optgroup>
-          ))}
-        </select>
-      ) : (
-        <span className="gy-compare-label">{label}</span>
-      )}
+      <span className="gy-compare-label">vs {label}</span>
     </div>
   );
 }
@@ -111,10 +93,7 @@ function TrendArrow({ sign }: { sign: Sign }) {
   );
 }
 
-export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, compareLabel, absolute = false, onToggleDiff, onCompare, onRetry }: Props) {
-  // A period picked on this card alone, for this session. The canvas remounts the card when the
-  // header's date range changes, which puts it back on the default comparison.
-  const [against, setAgainst] = useState<{ preset: Preset; picked: PickedComparison | null; loading: boolean; failed: boolean } | null>(null);
+export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, compareLabel, absolute = false, onToggleDiff, onRetry }: Props) {
   const key = metrics.find((m) => m.id === cls.keyMetricId);
   const res = key ? cache?.metrics[key.id] : undefined;
   const header = <CardHead title={cls.title} metric={noAccess || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess ? [] : metrics} />;
@@ -153,10 +132,9 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
     );
   }
 
-  // A picked period shorter than the range so far recounts the value over the same number of days.
-  const picked = against && !against.loading && !against.failed ? against.picked : null;
-  const fact = picked?.trimmed ? picked.fact : res.fact;
-  const comparison = against ? picked?.comparison ?? null : res.comparison;
+  // A comparison shorter than the range recounts the value over the same number of days.
+  const fact = res.compareFact ?? res.fact;
+  const comparison = res.comparison;
   const canCompare = comparisonOn && !!compareLabel && res.fact !== null && key.dateField !== null;
   const delta = canCompare && fact !== null && comparison !== null ? fact - comparison : null;
   // Against the comparison when there is one, else the series' own direction.
@@ -183,19 +161,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
         <Compare
           delta={delta} pct={fact !== null ? diffPct(fact, comparison) : null} sign={sign}
           label={compareLabel} absolute={absolute} onToggle={onToggleDiff}
-          choice={against?.preset ?? ''} loading={!!against?.loading}
-          onChoose={onCompare && ((p) => {
-            if (!p) { setAgainst(null); return; }
-            setAgainst({ preset: p, picked: null, loading: true, failed: false });
-            onCompare(key, p).then(
-              (r) => setAgainst((cur) => (cur?.preset === p ? { preset: p, picked: r, loading: false, failed: false } : cur)),
-              () => setAgainst((cur) => (cur?.preset === p ? { preset: p, picked: null, loading: false, failed: true } : cur)),
-            );
-          })}
         />
-      )}
-      {picked && (
-        <div className="gy-card-foot num gy-windows">{formatWindow(picked.factWindow)} vs {formatWindow(picked.comparisonWindow)}</div>
       )}
       {res.note && (
         <footer className="gy-card-foot">

@@ -16,7 +16,7 @@ test('refresh fills every card and reports progress', async () => {
     metrics: [{ id: 'a:id:COUNT_DISTINCT', martId: 'a', alias: 'A', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, plan: null }],
   };
   const progress: number[] = [];
-  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', comparisonOn: true, thresholdPct: 20, onProgress: (d) => progress.push(d) });
+  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', thresholdPct: 20, onProgress: (d) => progress.push(d) });
   expect(doc.modelHash).toBe('h1');
   expect(doc.builtAt).toBe('');
   expect(doc.thresholdPct).toBe(20);
@@ -37,7 +37,7 @@ test('classes outside the visible set are not queried and get no card', async ()
     edges: [{ from: 'a', to: 'b' }],
     metrics: [metric('a'), metric('b')],
   };
-  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', comparisonOn: true, thresholdPct: 20, visibleIds: new Set(['a']) });
+  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', thresholdPct: 20, visibleIds: new Set(['a']) });
   expect(Object.keys(doc.cards)).toEqual(['a']);
   expect(owox.calls.filter((c) => c.path === 'traverse:b')).toHaveLength(0);
 });
@@ -60,7 +60,7 @@ test('spark values and forecast are rounded to 4 significant digits', async () =
     edges: [],
     metrics: [{ id: 'a:id:COUNT_DISTINCT', martId: 'a', alias: 'A', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, plan: null }],
   };
-  const doc = await refreshCanvas({ owox, model, spec: rangeFor('this_month', new Date('2026-10-24T10:00:00Z')), key: 'k', comparisonOn: false, thresholdPct: 20 });
+  const doc = await refreshCanvas({ owox, model, spec: { ...rangeFor('this_month', new Date('2026-10-24T10:00:00Z')), comparison: null, compareFact: null }, key: 'k', thresholdPct: 20 });
   const spark = doc.cards.a!.spark!;
   expect(spark.values.length).toBeGreaterThan(0);
   expect(spark.forecast.length).toBeGreaterThan(0);

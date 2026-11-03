@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { Header, RangeControls } from './Header';
 
 const controls = (over: Partial<Parameters<typeof RangeControls>[0]> = {}) => (
-  <RangeControls preset="this_quarter" comparisonOn onPreset={() => {}} onComparison={() => {}} onRefresh={() => {}} onSettings={() => {}} {...over} />
+  <RangeControls range={{ kind: 'preset', preset: 'this_quarter' }} compare={{ kind: 'preset', preset: 'previous_period' }} now={new Date('2026-10-24T10:00:00Z')} onChange={() => {}} onRefresh={() => {}} onSettings={() => {}} {...over} />
 );
 
 test('the header holds the title and the update time, no controls', () => {
@@ -17,7 +17,7 @@ test('refresh and settings icons follow the date range, settings last', () => {
   const onSettings = vi.fn();
   const { container } = render(controls({ onRefresh, onSettings }));
   const row = container.querySelector('.gy-range')!;
-  expect([...row.children].map((c) => c.getAttribute('aria-label') ?? c.tagName)).toEqual(['LABEL', 'Date range', 'Refresh', 'Settings']);
+  expect([...row.children].map((c) => c.querySelector('[aria-label]')?.getAttribute('aria-label') ?? c.getAttribute('aria-label') ?? c.tagName)).toEqual(['Date range', 'Refresh', 'Settings']);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   expect(onRefresh).toHaveBeenCalledTimes(1);
@@ -29,12 +29,17 @@ test('refresh is disabled while refreshing', () => {
   expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled();
 });
 
-test('range controls change the preset and the comparison', () => {
-  const onPreset = vi.fn();
-  const onComparison = vi.fn();
-  render(controls({ onPreset, onComparison }));
-  fireEvent.change(screen.getByRole('combobox', { name: 'Date range' }), { target: { value: 'last_month' } });
-  fireEvent.click(screen.getByLabelText('Compare with previous period'));
-  expect(onPreset).toHaveBeenCalledWith('last_month');
-  expect(onComparison).toHaveBeenCalledWith(false);
+test('the date range is one button that shows the range and the comparison', () => {
+  render(controls());
+  expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent('This quarter vs previous');
+  expect(screen.queryByRole('combobox')).toBeNull();
+});
+
+test('picking in the control reports both the range and the comparison', () => {
+  const onChange = vi.fn();
+  render(controls({ onChange }));
+  fireEvent.click(screen.getByRole('button', { name: 'Date range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onChange).toHaveBeenCalledWith({ kind: 'preset', preset: 'last_month' }, { kind: 'preset', preset: 'previous_period' });
 });

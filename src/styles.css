@@ -171,22 +171,7 @@ h2 { margin: 0; }
 .gy-delta:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .gy-delta:disabled { cursor: default; }
 .gy-compare-label { color: var(--muted-foreground); white-space: nowrap; }
-/* The period reads as text until pointed at; then its chip border and arrow show it opens the
-   preset list. Padding stays the same either way, so nothing shifts. It sizes to the one it shows. */
-.gy-period {
-  appearance: none; field-sizing: content; min-width: 0; max-width: 9rem;
-  height: 1.375rem; padding: 0 1.25rem 0 0.375rem; margin-left: -0.375rem; border: 1px solid transparent; border-radius: 999px;
-  background: transparent no-repeat right 0.375rem center / 0.625rem;
-  color: var(--muted-foreground); font: inherit; font-size: 0.875rem; cursor: pointer;
-  text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
-}
-.gy-period:hover, .gy-period:focus-visible {
-  border-color: var(--border); background-color: var(--card); color: var(--foreground);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5'/%3E%3C/svg%3E");
-}
-.gy-period:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .gy-card-foot { margin: 0.375rem 0 0 var(--indent); font-size: 0.6875rem; color: var(--muted-foreground); }
-.gy-windows { margin-top: 0.125rem; }
 
 /* The sparkline is the card's floor: a fill flush with its bottom border, a 1px line on top.
    `margin-top: auto` keeps it on the floor when a row stretches the card taller than its content. */
@@ -229,7 +214,7 @@ h2 { margin: 0; }
 @keyframes gy-spin { to { rotate: 360deg; } }
 @media (prefers-reduced-motion: reduce) { .gy-spin { animation: none; } }
 .gy-toolbar-end { display: flex; flex-direction: column; align-items: flex-end; gap: 0.375rem; margin-left: auto; }
-.gy-range { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem 0.75rem; font-size: 0.8125rem; }
+.gy-range { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; font-size: 0.8125rem; min-height: 2rem; }
 .gy-select, .gy-input {
   height: 2rem; padding: 0 0.625rem; border: 1px solid var(--border); border-radius: 0.375rem;
   background: var(--card); color: var(--foreground); font: inherit; font-size: 0.875rem;

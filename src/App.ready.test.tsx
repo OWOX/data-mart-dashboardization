@@ -83,7 +83,7 @@ test('Settings and Back set the route', async () => {
   expect(setRoute).toHaveBeenCalledWith('/settings');
   fireEvent.click(screen.getByRole('button', { name: 'Back' }));
   expect(setRoute).toHaveBeenLastCalledWith('/');
-  expect(await screen.findByRole('combobox', { name: 'Date range' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Date range' })).toBeInTheDocument();
 });
 
 test('Rebuild with unchanged inputs still refreshes the canvas', async () => {
@@ -140,7 +140,7 @@ test('retry after a failed initial load re-runs the load, not the AI build', asy
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   expect(await screen.findByText('boom')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-  expect(await screen.findByRole('combobox', { name: 'Date range' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Date range' })).toBeInTheDocument();
   expect(generate).not.toHaveBeenCalled();
 });
 
@@ -151,14 +151,14 @@ test('a blocked rebuild can go back to the existing canvas', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Rebuild model' }));
   expect(await screen.findByRole('heading', { name: "Goal can't be tracked" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to canvas' }));
-  expect(await screen.findByRole('combobox', { name: 'Date range' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Date range' })).toBeInTheDocument();
 });
 
 test('modifiedAt churn alone shows no banner; a class-mart formula change does', async () => {
   const { deps, d } = await setup({ cache: 'none' });
   d.marts = d.marts.map((m) => ({ ...m, modifiedAt: 'later' }));
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  await screen.findByRole('combobox', { name: 'Date range' });
+  await screen.findByRole('button', { name: 'Date range' });
   await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
   await new Promise((r) => setTimeout(r, 50));
   expect(screen.queryByText('Descriptions or schemas changed since this model was built.')).toBeNull();
@@ -176,7 +176,7 @@ test('a refused contexts call skips the out-of-date check', async () => {
   const inner = deps.owox;
   deps.owox = { ...inner, getJson: async (path: string, q?: Record<string, unknown>) => { if (path === '/api/contexts') throw new Error('403'); return inner.getJson(path, q); } } as AppDeps['owox'];
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  await screen.findByRole('combobox', { name: 'Date range' });
+  await screen.findByRole('button', { name: 'Date range' });
   await new Promise((r) => setTimeout(r, 50));
   expect(screen.queryByText('Descriptions or schemas changed since this model was built.')).toBeNull();
 });

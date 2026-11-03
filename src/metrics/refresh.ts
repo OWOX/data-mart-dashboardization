@@ -22,10 +22,10 @@ export const persistable = (range: RangeChoice, compare: CompareChoice): boolean
   range.kind !== 'custom' && compare.kind !== 'custom';
 
 export async function refreshCanvas(args: {
-  owox: OwoxLike; model: Model; spec: RangeSpec; key: string; comparisonOn: boolean; thresholdPct: number;
+  owox: OwoxLike; model: Model; spec: RangeSpec; key: string; thresholdPct: number;
   visibleIds?: ReadonlySet<string> | null; onProgress?: (done: number, total: number) => void;
 }): Promise<CacheDoc> {
-  const { owox, model, spec, key, comparisonOn, thresholdPct, visibleIds, onProgress } = args;
+  const { owox, model, spec, key, thresholdPct, visibleIds, onProgress } = args;
   const classes = model.classes.filter((c) => !visibleIds || visibleIds.has(c.id));
   const byId = new Map(model.metrics.map((m) => [m.id, m]));
   const keyIds = new Set(classes.map((c) => c.keyMetricId).filter((id): id is string => !!id));
@@ -37,7 +37,7 @@ export async function refreshCanvas(args: {
   let done = 0;
 
   await runPool([...ids].map((id) => async () => {
-    const out = await computeMetric({ owox, metric: byId.get(id)!, spec, comparisonOn, thresholdPct, withSpark: keyIds.has(id) });
+    const out = await computeMetric({ owox, metric: byId.get(id)!, spec, thresholdPct, withSpark: keyIds.has(id) });
     results.set(id, out.result);
     sparks.set(id, out.spark);
     onProgress?.(++done, ids.size);
@@ -52,6 +52,6 @@ export async function refreshCanvas(args: {
   }
   return trimToSize({
     modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct, anchor: spec.anchor,
-    refreshedAt: new Date().toISOString(), key, comparison: comparisonOn, cards,
+    refreshedAt: new Date().toISOString(), key, comparison: spec.comparison !== null, cards,
   });
 }

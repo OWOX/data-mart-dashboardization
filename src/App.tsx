@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PluginContext } from '@owox/plugin-sdk';
-import type { Blocked as BlockedInfo, CacheDoc, CompareChoice, Model, Preset, Settings } from './types';
-import { COMPARE_LABELS, DEFAULT_SETTINGS } from './types';
-import { resolveRange } from './lib/dates';
+import type { Blocked as BlockedInfo, CacheDoc, CompareChoice, Model, RangeChoice, Settings } from './types';
+import { DEFAULT_SETTINGS } from './types';
+import { compareLabel, resolveRange } from './lib/dates';
 import { describeError } from './lib/errors';
 import { buildModel, currentInputHash } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
 import { fetchInputs, type Inputs, type OwoxLike } from './owox/sources';
-import { comparePicked } from './metrics/compute';
-import { cacheKey, refreshCanvas } from './metrics/refresh';
+import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
   isStale, loadCache, loadModel, loadSettings, saveCache, saveModel, saveSettings, type CollectionsLike,
 } from './store/collections';
@@ -45,7 +44,8 @@ function depsFrom(ctx: PluginContext): AppDeps {
   };
 }
 
-const cmp = (on: boolean): CompareChoice => (on ? { kind: 'preset', preset: 'previous_period' } : { kind: 'off' });
+const rangeOf = (s: Settings): RangeChoice => ({ kind: 'preset', preset: s.defaultPreset });
+const compareOf = (s: Settings): CompareChoice => (s.comparisonDefault ? { kind: 'preset', preset: 'previous_period' } : { kind: 'off' });
 
 export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDeps }) {
   const [deps] = useState(() => injected ?? depsFrom(ctx));
@@ -54,8 +54,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [view, setView] = useState<View>({ name: 'loading' });
   const [model, setModel] = useState<Model | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [preset, setPreset] = useState<Preset>(DEFAULT_SETTINGS.defaultPreset);
-  const [comparisonOn, setComparisonOn] = useState(DEFAULT_SETTINGS.comparisonDefault);
+  const [range, setRange] = useState<RangeChoice>(() => rangeOf(DEFAULT_SETTINGS));
+  const [compare, setCompare] = useState<CompareChoice>(() => compareOf(DEFAULT_SETTINGS));
   const [cache, setCache] = useState<CacheDoc | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [outdated, setOutdated] = useState(false);
@@ -74,8 +74,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     try {
       const [s, m] = await Promise.all([loadSettings(store), loadModel(store)]);
       setSettings(s);
-      setPreset(s.defaultPreset);
-      setComparisonOn(s.comparisonDefault);
+      setRange(rangeOf(s));
+      setCompare(compareOf(s));
       setModel(m);
       setView(m ? { name: 'ready' } : { name: 'intro' });
     } catch (e) {
@@ -108,9 +108,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   );
 
   const periodShown = useMemo(() => {
-    const spec = resolveRange({ kind: 'preset', preset }, cmp(comparisonOn), now());
-    return { range: spec.range, comparison: comparisonOn ? spec.comparison : null };
-  }, [preset, comparisonOn, now]);
+    const spec = resolveRange(range, compare, now());
+    return { range: spec.range, comparison: spec.comparison };
+  }, [range, compare, now]);
 
   const marts = useMemo(
     () => new Map((inputs?.data?.marts ?? []).map((m) => [m.id, { description: m.description, icon: m.icon ?? null }])),
@@ -121,22 +121,28 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     if (!model) return false;
     const id = ++refreshId.current;
     const current = () => id === refreshId.current;
-    const spec = resolveRange({ kind: 'preset', preset }, cmp(comparisonOn), now());
-    const key = cacheKey({ kind: 'preset', preset }, cmp(comparisonOn));
+    const at = now();
+    const spec = resolveRange(range, compare, at);
+    const key = cacheKey(range, compare);
+    const keep = persistable(range, compare);
     try {
-      const saved = await loadCache(store, key);
+      // Custom choices are not persisted: they compute and stay in state only.
+      const saved = keep ? await loadCache(store, key) : null;
       if (!current()) return false;
-      setCache(saved);
-      if (!force && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); return true; }
+      if (keep) setCache(saved);
+      else setCache((c) => (c?.key === key ? c : null));
+      if (!force && keep && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); return true; }
       setRefreshing(true);
-      const doc = await refreshCanvas({ owox, model, spec, key, comparisonOn, thresholdPct: settings.thresholdPct, visibleIds: visible });
+      const doc = await refreshCanvas({ owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible });
       if (!current()) return false;
       setCache(doc);
       setSaveNote(null);
-      try {
-        await saveCache(store, key, doc);
-      } catch (e) {
-        if (current()) setSaveNote(`Couldn't save the refreshed data: ${describeError(e)}`);
+      if (keep) {
+        try {
+          await saveCache(store, key, doc);
+        } catch (e) {
+          if (current()) setSaveNote(`Couldn't save the refreshed data: ${describeError(e)}`);
+        }
       }
     } catch {
       // cards keep their last cached values
@@ -144,7 +150,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (current()) setRefreshing(false);
     }
     return current();
-  }, [model, preset, comparisonOn, owox, store, now, settings.thresholdPct, visible]);
+  }, [model, range, compare, owox, store, now, settings.thresholdPct, visible]);
 
   const inReady = view.name === 'ready';
   useEffect(() => {
@@ -176,8 +182,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setSettingsError(`Couldn't save settings: ${describeError(e)}`);
       return;
     }
-    if (s.defaultPreset !== settings.defaultPreset) setPreset(s.defaultPreset);
-    if (s.comparisonDefault !== settings.comparisonDefault) setComparisonOn(s.comparisonDefault);
+    if (s.defaultPreset !== settings.defaultPreset) setRange(rangeOf(s));
+    if (s.comparisonDefault !== settings.comparisonDefault) setCompare(compareOf(s));
     setSettings(s);
     leaveSettings();
   };
@@ -231,7 +237,12 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
               <button type="button" className="gy-btn" onClick={() => void build()}>Rebuild model</button>
             </div>
           )}
-          <Canvas tools={<RangeControls preset={preset} comparisonOn={comparisonOn} refreshing={refreshing} onPreset={setPreset} onComparison={setComparisonOn} onRefresh={() => void refresh(true)} onSettings={openSettings} />} model={model} cache={cache} visibleIds={visible} marts={marts} compareLabel={COMPARE_LABELS[preset]} period={periodShown} onCompare={(metric, p) => comparePicked(owox, metric, preset, p, now())} comparisonOn={comparisonOn} refreshing={refreshing} onRetry={() => void refresh(true)} />
+          <Canvas
+            tools={<RangeControls range={range} compare={compare} now={now()} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); }} onRefresh={() => void refresh(true)} onSettings={openSettings} />}
+            model={model} cache={cache} visibleIds={visible} marts={marts}
+            compareLabel={compareLabel(range, compare, now()) ?? undefined} period={periodShown}
+            comparisonOn={compare.kind !== 'off'} refreshing={refreshing} onRetry={() => void refresh(true)}
+          />
         </main>
       );
     }

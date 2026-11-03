@@ -163,8 +163,8 @@ export function compareOptions(range: RangeChoice, now: Date): { preset: Compare
 
 export const rangeLabel = (range: RangeChoice): string => (range.kind === 'preset' ? PRESET_LABELS[range.preset] : formatWindow(range.window));
 
-/** The text after "vs" on cards; null when comparison is off. `now` only matters for the day count of a "Previous N Days" label. */
-export function compareLabel(range: RangeChoice, compare: CompareChoice, now: Date = new Date()): string | null {
+/** The text after "vs" on cards; null when comparison is off. `now` matters only for the day count of a "Previous N Days" label. */
+export function compareLabel(range: RangeChoice, compare: CompareChoice, now: Date): string | null {
   if (compare.kind === 'off') return null;
   if (compare.kind === 'custom') return formatWindow(compare.window);
   return compareName(range, compare.preset, now);

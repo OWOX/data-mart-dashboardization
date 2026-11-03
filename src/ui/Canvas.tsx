@@ -1,9 +1,8 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Network, Target } from 'lucide-react';
-import type { CacheDoc, ClassNode, DateWindow, MetricDef, Model, Preset, Status } from '../types';
+import type { CacheDoc, ClassNode, DateWindow, Model, Status } from '../types';
 import { formatWindow } from '../lib/format';
 import { Card, type MartInfo } from './Card';
-import type { PickedComparison } from '../metrics/compute';
 import { contextsOf, layoutFor, type Connector } from './layout';
 
 interface Props {
@@ -21,8 +20,6 @@ interface Props {
   period?: { range: DateWindow; comparison: DateWindow | null };
   /** Controls shown at the end of the toolbar, level with the context chips. */
   tools?: ReactNode;
-  /** Reads a metric over another preset's window, for a period picked on one card. */
-  onCompare?: (metric: MetricDef, preset: Preset) => Promise<PickedComparison | null>;
   onRetry: () => void;
 }
 
@@ -72,7 +69,7 @@ export function curve(a: Box, b: Box): string {
   return `M${x1} ${y1} C${right ? x1 + pull : x1 - pull} ${y1} ${right ? x2 - pull : x2 + pull} ${y2} ${x2} ${y2}`;
 }
 
-export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, marts, compareLabel, period, tools, onCompare, onRetry }: Props) {
+export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, marts, compareLabel, period, tools, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const [hover, setHover] = useState<string | null>(null);
@@ -131,8 +128,6 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
   const card = (cls: ClassNode) => (
     <div key={cls.id} className="gy-slot" onPointerEnter={() => setHover(cls.id)} onPointerLeave={() => setHover(null)}>
       <Card
-        // A new date range in the header puts every card back on its default comparison.
-        key={compareLabel}
         cls={cls}
         mart={marts?.get(cls.id)}
         metrics={cls.metricIds.flatMap((id) => metricsById.get(id) ?? [])}
@@ -141,7 +136,6 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         refreshing={refreshing}
         noAccess={!!visibleIds && !visibleIds.has(cls.id)}
         compareLabel={compareLabel}
-        onCompare={onCompare}
         absolute={absolute}
         onToggleDiff={() => setAbsolute((a) => !a)}
         onRetry={onRetry}

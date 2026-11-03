@@ -127,7 +127,7 @@ test('the selected range and the comparison window show top right; no driver cou
 });
 
 test('toolbar tools sit in the same row as the context chips', () => {
-  const { container } = render(<Canvas model={model} cache={null} comparisonOn refreshing={false} onRetry={() => {}} tools={<select aria-label="Date range" />} />);
+  const { container } = render(<Canvas model={model} cache={null} comparisonOn refreshing={false} onRetry={() => {}} tools={<button type="button" aria-label="Date range" />} />);
   const toolbar = container.querySelector('.gy-toolbar')!;
   expect(toolbar.querySelector('.gy-chips')).not.toBeNull();
   expect(toolbar.querySelector('.gy-toolbar-end [aria-label="Date range"]')).not.toBeNull();

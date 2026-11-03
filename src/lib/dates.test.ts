@@ -138,10 +138,10 @@ test('labels', () => {
   expect(controlLabel(P('this_quarter'), { kind: 'preset', preset: 'year_before' })).toBe('This quarter vs last year');
   expect(controlLabel(P('this_quarter'), { kind: 'custom', window: { from: '2026-07-01', to: '2026-08-02' } })).toBe('This quarter vs Jul 1 – Aug 2, 2026');
   expect(controlLabel({ kind: 'custom', window: { from: '2026-10-01', to: '2026-11-02' } }, OFF)).toBe('Oct 1 – Nov 2, 2026');
-  expect(compareLabel(P('this_quarter'), PREV)).toBe('Last Quarter');
+  expect(compareLabel(P('this_quarter'), PREV, NOW)).toBe('Last Quarter');
   expect(compareLabel({ kind: 'custom', window: { from: '2026-10-01', to: '2026-11-02' } }, PREV, NOW)).toBe('Previous 33 Days');
-  expect(compareLabel(P('this_quarter'), { kind: 'preset', preset: 'year_before' })).toBe('Same Period Last Year');
-  expect(compareLabel(P('this_quarter'), OFF)).toBeNull();
+  expect(compareLabel(P('this_quarter'), { kind: 'preset', preset: 'year_before' }, NOW)).toBe('Same Period Last Year');
+  expect(compareLabel(P('this_quarter'), OFF, NOW)).toBeNull();
 });
 
 test('previous_period on a calendar preset is matched day for day: March 1-30 vs February', () => {
