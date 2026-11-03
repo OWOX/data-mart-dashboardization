@@ -1,0 +1,130 @@
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { anchorFor, compareOptions, controlLabel, resolveRange } from '../lib/dates';
+import { formatWindow } from '../lib/format';
+import { PRESET_GROUPS, PRESET_LABELS, type CompareChoice, type DateWindow, type Day, type RangeChoice } from '../types';
+import { Calendar, monthStart } from './Calendar';
+
+type Props = {
+  range: RangeChoice; compare: CompareChoice; now: Date;
+  onChange: (range: RangeChoice, compare: CompareChoice) => void;
+};
+
+/** The month to open on: the window's end, or yesterday when the end is in a later month. */
+const openMonth = (w: DateWindow | null, anchor: Day): Day => monthStart(!w || w.to.slice(0, 7) > anchor.slice(0, 7) ? anchor : w.to);
+
+export function DateRangePicker(props: Props) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const close = () => { setOpen(false); trigger.current?.focus(); };
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!panel.current?.contains(t) && !trigger.current?.contains(t)) close();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); };
+  }, [open]);
+
+  return (
+    <div className="gy-drp">
+      <button ref={trigger} type="button" className="gy-select gy-drp-trigger" aria-label="Date range" aria-haspopup="dialog" aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}>
+        <CalendarIcon size={14} aria-hidden />
+        <span>{controlLabel(props.range, props.compare)}</span>
+      </button>
+      {open && <Panel {...props} panelRef={panel} onClose={close} />}
+    </div>
+  );
+}
+
+function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { panelRef: React.RefObject<HTMLDivElement | null>; onClose: () => void }) {
+  const anchor = anchorFor(now);
+  const [dRange, setDRange] = useState<RangeChoice>(range);
+  const [compareOn, setCompareOn] = useState(compare.kind !== 'off');
+  const [dCompare, setDCompare] = useState<Exclude<CompareChoice, { kind: 'off' }>>(compare.kind === 'off' ? { kind: 'preset', preset: 'previous_period' } : compare);
+  // After a first click the next click closes the window instead of starting a new one.
+  const [pendingRange, setPendingRange] = useState(false);
+  const [pendingCompare, setPendingCompare] = useState(false);
+  const effective: CompareChoice = compareOn ? dCompare : { kind: 'off' };
+  const spec = resolveRange(dRange, effective, now);
+  const drawn = dRange.kind === 'custom' ? dRange.window : spec.range;
+  const comparison = dCompare.kind === 'custom' ? dCompare.window : resolveRange(dRange, dCompare, now).comparison;
+  const [rangeMonth, setRangeMonth] = useState(() => openMonth(drawn, anchor));
+  const [compareMonth, setCompareMonth] = useState(() => openMonth(comparison, anchor));
+  const id = useId();
+
+  const pick = (cur: DateWindow | null, pending: boolean, d: Day): DateWindow =>
+    pending && cur ? (d < cur.from ? { from: d, to: cur.from } : { from: cur.from, to: d }) : { from: d, to: d };
+
+  const pickRange = (d: Day) => {
+    setDRange({ kind: 'custom', window: pick(dRange.kind === 'custom' ? dRange.window : null, pendingRange, d) });
+    setPendingRange(!pendingRange);
+  };
+  const pickCompare = (d: Day) => {
+    setDCompare({ kind: 'custom', window: pick(dCompare.kind === 'custom' ? dCompare.window : null, pendingCompare, d) });
+    setPendingCompare(!pendingCompare);
+  };
+  const choosePreset = (preset: Extract<RangeChoice, { kind: 'preset' }>['preset']) => {
+    const next: RangeChoice = { kind: 'preset', preset };
+    setDRange(next); setPendingRange(false);
+    setRangeMonth(openMonth(resolveRange(next, { kind: 'off' }, now).range, anchor));
+  };
+  const toggleCompare = (on: boolean) => {
+    setCompareOn(on);
+    if (on && dCompare.kind === 'preset' && dCompare.preset !== 'previous_period' && !compareOptions(dRange, now).some((o) => o.preset === dCompare.preset)) {
+      setDCompare({ kind: 'preset', preset: 'previous_period' });
+    }
+    if (on) setCompareMonth(openMonth(comparison, anchor));
+  };
+  const options = compareOptions(dRange, now);
+
+  return (
+    <div ref={panelRef} className="gy-drp-panel" role="dialog" aria-label="Date range">
+      <div className="gy-drp-presets">
+        {PRESET_GROUPS.flatMap((g) => g.presets).map((p) => (
+          <button key={p} type="button" className="gy-drp-preset" aria-pressed={dRange.kind === 'preset' && dRange.preset === p} onClick={() => choosePreset(p)}>
+            {PRESET_LABELS[p]}
+          </button>
+        ))}
+        <span className="gy-drp-preset gy-drp-custom" aria-pressed={dRange.kind === 'custom'} role="note">Custom</span>
+      </div>
+      <div className="gy-drp-main">
+        <Calendar month={rangeMonth} selected={drawn} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
+        <label className="gy-check gy-drp-compare" htmlFor={`${id}-cmp`}>
+          <input id={`${id}-cmp`} type="checkbox" checked={compareOn} onChange={(e) => toggleCompare(e.target.checked)} />
+          Compare
+        </label>
+        {compareOn && (
+          <>
+            <div className="gy-drp-options">
+              {options.map((o) => (
+                <button key={o.preset} type="button" className="gy-chip" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
+                  onClick={() => { setDCompare({ kind: 'preset', preset: o.preset }); setPendingCompare(false); setCompareMonth(openMonth(o.window, anchor)); }}>
+                  {o.label}
+                </button>
+              ))}
+              <button type="button" className="gy-chip" aria-pressed={dCompare.kind === 'custom'}
+                onClick={() => { if (comparison) { setDCompare({ kind: 'custom', window: comparison }); setPendingCompare(false); } }}>
+                Custom
+              </button>
+            </div>
+            <Calendar month={compareMonth} selected={comparison} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />
+          </>
+        )}
+        <div className="gy-drp-foot">
+          <span className="gy-drp-windows">
+            {formatWindow(drawn)}{compareOn && comparison ? ` vs ${formatWindow(comparison)}` : ''}
+          </span>
+          <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>
+        </div>
+      </div>
+    </div>
+  );
+}
