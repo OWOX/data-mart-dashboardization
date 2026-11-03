@@ -35,3 +35,11 @@ test('unknown default preset falls back', async () => {
   await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'constructor' as never });
   expect((await loadSettings(ctx)).defaultPreset).toBe('this_quarter');
 });
+
+test('weekStart is validated', async () => {
+  const ctx = memoryCollections();
+  await saveSettings(ctx, { ...DEFAULT_SETTINGS, weekStart: 'sunday' });
+  expect((await loadSettings(ctx)).weekStart).toBe('sunday');
+  await saveSettings(ctx, { ...DEFAULT_SETTINGS, weekStart: 'friday' as never });
+  expect((await loadSettings(ctx)).weekStart).toBe('monday');
+});

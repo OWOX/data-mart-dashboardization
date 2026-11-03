@@ -21,6 +21,7 @@ export async function loadSettings(ctx: CollectionsLike): Promise<Settings> {
     thresholdPct: typeof t === 'number' && Number.isFinite(t) ? Math.min(100, Math.max(1, t)) : d.thresholdPct,
     defaultPreset: typeof raw.defaultPreset === 'string' && Object.hasOwn(PRESET_LABELS, raw.defaultPreset) ? (raw.defaultPreset as Preset) : d.defaultPreset,
     comparisonDefault: typeof raw.comparisonDefault === 'boolean' ? raw.comparisonDefault : d.comparisonDefault,
+    weekStart: raw.weekStart === 'monday' || raw.weekStart === 'sunday' ? raw.weekStart : d.weekStart,
   };
 }
 export const saveSettings = async (ctx: CollectionsLike, s: Settings): Promise<void> => { await ctx.collections<Settings>('settings').put('project', s); };

@@ -1,7 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Network, Target } from 'lucide-react';
-import type { CacheDoc, ClassNode, DateWindow, Model, Status } from '../types';
-import { formatWindow } from '../lib/format';
+import type { CacheDoc, ClassNode, Model, Status } from '../types';
 import { Card, type MartInfo } from './Card';
 import { contextsOf, layoutFor, type Connector } from './layout';
 
@@ -16,8 +15,6 @@ interface Props {
   marts?: ReadonlyMap<string, MartInfo>;
   /** 'vs Last Month' and the like, for the comparison row under each number. */
   compareLabel?: string;
-  /** The selected date range and, when comparison is on, the default comparison window, shown top right. */
-  period?: { range: DateWindow; comparison: DateWindow | null };
   /** Controls shown at the end of the toolbar, level with the context chips. */
   tools?: ReactNode;
   onRetry: () => void;
@@ -69,7 +66,7 @@ export function curve(a: Box, b: Box): string {
   return `M${x1} ${y1} C${right ? x1 + pull : x1 - pull} ${y1} ${right ? x2 - pull : x2 + pull} ${y2} ${x2} ${y2}`;
 }
 
-export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, marts, compareLabel, period, tools, onRetry }: Props) {
+export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, marts, compareLabel, tools, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const [hover, setHover] = useState<string | null>(null);
@@ -152,17 +149,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
             <button key={x.id} type="button" className="gy-chip" aria-pressed={selected.has(x.id)} onClick={() => toggle(x.id)}>{x.name}</button>
           ))}
         </div>
-        {(tools || period) && (
-          <div className="gy-toolbar-end">
-            {tools}
-            {period && (
-              <div className="gy-period-shown num">
-                <span>{formatWindow(period.range)}</span>
-                {period.comparison && <span className="gy-muted">vs {formatWindow(period.comparison)}</span>}
-              </div>
-            )}
-          </div>
-        )}
+        {tools && <div className="gy-toolbar-end">{tools}</div>}
       </div>
       <div className="gy-canvas" ref={ref} data-hover={hover ?? undefined}>
         {refreshing && <div className="gy-progress" role="progressbar" aria-label="Refreshing" />}

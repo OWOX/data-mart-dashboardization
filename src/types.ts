@@ -122,9 +122,10 @@ export interface CacheDoc {
   cards: Record<string, CardCache>;
 }
 
-export interface Settings { thresholdPct: number; defaultPreset: Preset; comparisonDefault: boolean }
+export type WeekStart = 'monday' | 'sunday';
+export interface Settings { thresholdPct: number; defaultPreset: Preset; comparisonDefault: boolean; weekStart: WeekStart }
 
-export const DEFAULT_SETTINGS: Settings = { thresholdPct: 20, defaultPreset: 'this_quarter', comparisonDefault: true };
+export const DEFAULT_SETTINGS: Settings = { thresholdPct: 20, defaultPreset: 'this_quarter', comparisonDefault: true, weekStart: 'monday' };
 
 export const PRESET_LABELS: Record<Preset, string> = {
   last_year: 'Last year', last_quarter: 'Last quarter', last_month: 'Last month', last_week: 'Last week',

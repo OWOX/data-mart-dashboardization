@@ -18,3 +18,13 @@ test('rebuild model lives on the settings page', () => {
   rerender(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} onRebuild={onRebuild} canRebuild={false} />);
   expect(screen.getByRole('button', { name: 'Rebuild model' })).toBeDisabled();
 });
+
+test('saves the chosen week start', () => {
+  const onSave = vi.fn();
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={onSave} onBack={() => {}} />);
+  const select = screen.getByLabelText('Week starts on') as HTMLSelectElement;
+  expect(select.value).toBe('monday');
+  fireEvent.change(select, { target: { value: 'sunday' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(onSave).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, weekStart: 'sunday' });
+});

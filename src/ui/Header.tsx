@@ -1,5 +1,6 @@
 import { RefreshCw, Settings as SettingsIcon } from 'lucide-react';
-import type { CacheDoc, CompareChoice, RangeChoice } from '../types';
+import { formatWindow } from '../lib/format';
+import type { CacheDoc, CompareChoice, DateWindow, RangeChoice, WeekStart } from '../types';
 import { DateRangePicker } from './DateRangePicker';
 
 function relativeTime(iso: string, now: Date): string {
@@ -16,16 +17,20 @@ interface Props {
   title: string;
   cache: CacheDoc | null;
   now: Date;
+  /** The selected range and, when comparison is on, the window it is compared with. */
+  period?: { range: DateWindow; comparison: DateWindow | null };
 }
 
-export function Header({ title, cache, now }: Props) {
+export function Header({ title, cache, now, period }: Props) {
+  const updated = cache ? `Updated ${relativeTime(cache.refreshedAt, now)}` : 'Not loaded yet';
+  const windows = period ? `${formatWindow(period.range)}${period.comparison ? ` vs ${formatWindow(period.comparison)}` : ''}` : null;
   return (
     <header className="gy-header">
-      <div>
-        <div className="label">GYROSCOPE</div>
+      <div className="label">GYROSCOPE</div>
+      <div className="gy-header-line">
         <h1 className="gy-header-title">{title}</h1>
+        <span className="gy-header-sub num">{windows ? `${windows} · ${updated}` : updated}</span>
       </div>
-      <span className="gy-muted gy-header-tools">{cache ? `Updated ${relativeTime(cache.refreshedAt, now)}` : 'Not loaded yet'}</span>
     </header>
   );
 }
@@ -34,13 +39,13 @@ export function Header({ title, cache, now }: Props) {
  * The date range control, then Refresh and Settings as icons. They sit on the canvas toolbar,
  * level with the context chips.
  */
-export function RangeControls({ range, compare, now, refreshing = false, onChange, onRefresh, onSettings }: {
-  range: RangeChoice; compare: CompareChoice; now: Date; refreshing?: boolean;
+export function RangeControls({ range, compare, now, weekStart = 'monday', refreshing = false, onChange, onRefresh, onSettings }: {
+  range: RangeChoice; compare: CompareChoice; now: Date; weekStart?: WeekStart; refreshing?: boolean;
   onChange: (range: RangeChoice, compare: CompareChoice) => void; onRefresh: () => void; onSettings: () => void;
 }) {
   return (
     <div className="gy-range">
-      <DateRangePicker range={range} compare={compare} now={now} onChange={onChange} />
+      <DateRangePicker range={range} compare={compare} now={now} weekStart={weekStart} onChange={onChange} />
       <button type="button" className="gy-icon-btn" aria-label="Refresh" title="Refresh" onClick={onRefresh} disabled={refreshing}>
         <RefreshCw size={16} className={refreshing ? 'gy-spin' : undefined} />
       </button>

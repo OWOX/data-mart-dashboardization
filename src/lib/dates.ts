@@ -1,4 +1,4 @@
-import { COMPARE_LABELS, PRESET_LABELS, type CompareChoice, type ComparePreset, type DateWindow, type Day, type Preset, type RangeChoice, type RangeSpec } from '../types';
+import { COMPARE_LABELS, PRESET_LABELS, type CompareChoice, type ComparePreset, type DateWindow, type Day, type Preset, type RangeChoice, type RangeSpec, type WeekStart } from '../types';
 import { formatWindow } from './format';
 
 const DAY_MS = 86_400_000;
@@ -21,12 +21,15 @@ export const anchorFor = (now: Date): Day => addDays(toDay(now.getTime()), -1);
 const ymd = (y: number, m: number, d: number): Day => toDay(Date.UTC(y, m - 1, d));
 const parts = (d: Day) => ({ y: Number(d.slice(0, 4)), m: Number(d.slice(5, 7)) });
 
+/** 0 for the first day of the week (Monday or Sunday), 6 for the last. */
+export const weekdayIndex = (d: Day, ws: WeekStart = 'monday'): number => (new Date(parseDay(d)).getUTCDay() + (ws === 'monday' ? 6 : 0)) % 7;
+
 type Unit = 'week' | 'month' | 'quarter' | 'year';
 
-function periodOf(d: Day, unit: Unit): DateWindow {
+function periodOf(d: Day, unit: Unit, ws: WeekStart = 'monday'): DateWindow {
   const { y, m } = parts(d);
   if (unit === 'week') {
-    const dow = (new Date(parseDay(d)).getUTCDay() + 6) % 7;
+    const dow = weekdayIndex(d, ws);
     const from = addDays(d, -dow);
     return { from, to: addDays(from, 6) };
   }
@@ -38,20 +41,20 @@ function periodOf(d: Day, unit: Unit): DateWindow {
   return { from: ymd(y, 1, 1), to: ymd(y, 12, 31) };
 }
 
-const previous = (d: Day, unit: Unit): DateWindow => periodOf(addDays(periodOf(d, unit).from, -1), unit);
+const previous = (d: Day, unit: Unit, ws: WeekStart): DateWindow => periodOf(addDays(periodOf(d, unit, ws).from, -1), unit, ws);
 
-function windowFor(preset: Preset, anchor: Day): DateWindow {
+function windowFor(preset: Preset, anchor: Day, ws: WeekStart): DateWindow {
   const today = addDays(anchor, 1);
   switch (preset) {
     case 'yesterday': return { from: anchor, to: anchor };
     case 'last_7d': return { from: addDays(anchor, -6), to: anchor };
     case 'last_28d': return { from: addDays(anchor, -27), to: anchor };
-    case 'last_week': return previous(today, 'week');
-    case 'last_month': return previous(today, 'month');
-    case 'last_quarter': return previous(today, 'quarter');
-    case 'last_year': return previous(today, 'year');
+    case 'last_week': return previous(today, 'week', ws);
+    case 'last_month': return previous(today, 'month', ws);
+    case 'last_quarter': return previous(today, 'quarter', ws);
+    case 'last_year': return previous(today, 'year', ws);
     case 'ytd': return { from: periodOf(anchor, 'year').from, to: anchor };
-    case 'this_week': return periodOf(today, 'week');
+    case 'this_week': return periodOf(today, 'week', ws);
     case 'this_month': return periodOf(today, 'month');
     case 'this_quarter': return periodOf(today, 'quarter');
     case 'this_year': return periodOf(today, 'year');
@@ -65,15 +68,15 @@ const CALENDAR_UNIT: Partial<Record<Preset, Unit>> = {
   last_year: 'year', this_year: 'year', ytd: 'year',
 };
 
-export function rangeFor(preset: Preset, now: Date): RangeSpec {
+export function rangeFor(preset: Preset, now: Date, ws: WeekStart = 'monday'): RangeSpec {
   const anchor = anchorFor(now);
-  const range = windowFor(preset, anchor);
+  const range = windowFor(preset, anchor, ws);
   const days = diffDays(range.from, range.to) + 1;
   const factWindow = range.from > anchor ? null : { from: range.from, to: minDay(range.to, anchor) };
   const unit = CALENDAR_UNIT[preset];
   let comparison: DateWindow | null = null;
   if (factWindow && unit) {
-    const prev = periodOf(addDays(range.from, -1), unit);
+    const prev = periodOf(addDays(range.from, -1), unit, ws);
     const len = diffDays(factWindow.from, factWindow.to) + 1;
     comparison = { from: prev.from, to: minDay(prev.to, addDays(prev.from, len - 1)) };
   } else if (factWindow) {
@@ -108,8 +111,8 @@ function yearBefore(fact: DateWindow): DateWindow {
   return { from, to: addDays(from, lengthOf(fact) - 1) };
 }
 
-function baseSpec(range: RangeChoice, now: Date): RangeSpec {
-  if (range.kind === 'preset') return rangeFor(range.preset, now);
+function baseSpec(range: RangeChoice, now: Date, ws: WeekStart): RangeSpec {
+  if (range.kind === 'preset') return rangeFor(range.preset, now, ws);
   const anchor = anchorFor(now);
   const w = range.window;
   const factWindow = clipTo(w, anchor);
@@ -119,8 +122,8 @@ function baseSpec(range: RangeChoice, now: Date): RangeSpec {
   };
 }
 
-export function resolveRange(range: RangeChoice, compare: CompareChoice, now: Date): RangeSpec {
-  const base = baseSpec(range, now);
+export function resolveRange(range: RangeChoice, compare: CompareChoice, now: Date, ws: WeekStart = 'monday'): RangeSpec {
+  const base = baseSpec(range, now, ws);
   const fact = base.factWindow;
   if (compare.kind === 'off' || !fact) return { ...base, comparison: null, compareFact: null };
   if (compare.kind === 'preset') {
@@ -138,36 +141,36 @@ export function resolveRange(range: RangeChoice, compare: CompareChoice, now: Da
   return { ...base, comparison: m.other, compareFact: m.fact.to !== fact.to ? m.fact : null };
 }
 
-function compareName(range: RangeChoice, preset: ComparePreset, now: Date): string {
+function compareName(range: RangeChoice, preset: ComparePreset, now: Date, ws: WeekStart): string {
   if (preset === 'year_before') return 'Same Period Last Year';
   if (preset === 'previous_period' && range.kind === 'preset') return COMPARE_LABELS[range.preset];
-  return `Previous ${lengthOf(baseSpec(range, now).factWindow ?? baseSpec(range, now).range)} Days`;
+  return `Previous ${lengthOf(baseSpec(range, now, ws).factWindow ?? baseSpec(range, now, ws).range)} Days`;
 }
 
 /** The comparison presets that make sense for this range, each with its window, all the same length as the fact window. */
-export function compareOptions(range: RangeChoice, now: Date): { preset: ComparePreset; label: string; window: DateWindow }[] {
-  const base = baseSpec(range, now);
+export function compareOptions(range: RangeChoice, now: Date, ws: WeekStart = 'monday'): { preset: ComparePreset; label: string; window: DateWindow }[] {
+  const base = baseSpec(range, now, ws);
   const fact = base.factWindow;
   if (!fact) return [];
   const out: { preset: ComparePreset; label: string; window: DateWindow }[] = [];
   const prev = base.comparison!;
-  out.push({ preset: 'previous_period', label: compareName(range, 'previous_period', now), window: prev });
+  out.push({ preset: 'previous_period', label: compareName(range, 'previous_period', now, ws), window: prev });
   const preceding = precedingDays(fact);
   if (preceding.from !== prev.from || preceding.to !== prev.to) {
-    out.push({ preset: 'preceding_days', label: compareName(range, 'preceding_days', now), window: preceding });
+    out.push({ preset: 'preceding_days', label: compareName(range, 'preceding_days', now, ws), window: preceding });
   }
   const year = clipTo(yearBefore(fact), base.anchor);
-  if (year) out.push({ preset: 'year_before', label: compareName(range, 'year_before', now), window: year });
+  if (year) out.push({ preset: 'year_before', label: compareName(range, 'year_before', now, ws), window: year });
   return out;
 }
 
 export const rangeLabel = (range: RangeChoice): string => (range.kind === 'preset' ? PRESET_LABELS[range.preset] : formatWindow(range.window));
 
 /** The text after "vs" on cards; null when comparison is off. `now` matters only for the day count of a "Previous N Days" label. */
-export function compareLabel(range: RangeChoice, compare: CompareChoice, now: Date): string | null {
+export function compareLabel(range: RangeChoice, compare: CompareChoice, now: Date, ws: WeekStart = 'monday'): string | null {
   if (compare.kind === 'off') return null;
-  if (compare.kind === 'custom') return formatWindow(resolveRange(range, compare, now).comparison ?? compare.window);
-  return compareName(range, compare.preset, now);
+  if (compare.kind === 'custom') return formatWindow(resolveRange(range, compare, now, ws).comparison ?? compare.window);
+  return compareName(range, compare.preset, now, ws);
 }
 
 /** The closed control's text: 'This quarter vs previous', 'This quarter vs last year', 'This quarter'. */

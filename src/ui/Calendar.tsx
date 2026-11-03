@@ -1,8 +1,11 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { addDays, eachDay, parseDay } from '../lib/dates';
-import type { DateWindow, Day } from '../types';
+import { addDays, eachDay, parseDay, weekdayIndex } from '../lib/dates';
+import type { DateWindow, Day, WeekStart } from '../types';
 
-const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+const WEEKDAYS: Record<WeekStart, string[]> = {
+  monday: ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
+  sunday: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
+};
 const TITLE = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const LONG = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
@@ -12,17 +15,17 @@ export const shiftMonth = (d: Day, n: number): Day => {
   return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + n, 1)).toISOString().slice(0, 10);
 };
 
-/** Whole Monday-first weeks covering the month. */
-function gridDays(month: Day): Day[] {
+/** Whole weeks, starting on `ws`, covering the month. */
+function gridDays(month: Day, ws: WeekStart): Day[] {
   const first = monthStart(month);
-  const dow = (new Date(parseDay(first)).getUTCDay() + 6) % 7;
+  const dow = weekdayIndex(first, ws);
   const last = addDays(shiftMonth(first, 1), -1);
-  const lastDow = (new Date(parseDay(last)).getUTCDay() + 6) % 7;
+  const lastDow = weekdayIndex(last, ws);
   return eachDay({ from: addDays(first, -dow), to: addDays(last, 6 - lastDow) });
 }
 
-export function Calendar({ month, selected, isDisabled, onPick, onMonth, 'aria-label': label }: {
-  month: Day; selected: DateWindow | null; isDisabled?: (d: Day) => boolean;
+export function Calendar({ month, selected, isDisabled, weekStart = 'monday', onPick, onMonth, 'aria-label': label }: {
+  month: Day; selected: DateWindow | null; isDisabled?: (d: Day) => boolean; weekStart?: WeekStart;
   onPick: (d: Day) => void; onMonth: (month: Day) => void; 'aria-label': string;
 }) {
   const ym = month.slice(0, 7);
@@ -34,8 +37,8 @@ export function Calendar({ month, selected, isDisabled, onPick, onMonth, 'aria-l
         <button type="button" className="gy-cal-nav" aria-label="Next month" onClick={() => onMonth(shiftMonth(month, 1))}><ChevronRight size={16} aria-hidden /></button>
       </div>
       <div className="gy-cal-grid">
-        {WEEKDAYS.map((w) => <span key={w} className="gy-cal-dow" aria-hidden>{w}</span>)}
-        {gridDays(month).map((d) => {
+        {WEEKDAYS[weekStart].map((w) => <span key={w} className="gy-cal-dow" aria-hidden>{w}</span>)}
+        {gridDays(month, weekStart).map((d) => {
           const inRange = !!selected && d >= selected.from && d <= selected.to;
           const end = !!selected && (d === selected.from || d === selected.to);
           const cls = ['gy-cal-day', d.slice(0, 7) !== ym && 'is-out', inRange && !end && 'is-mid', end && 'is-end'].filter(Boolean).join(' ');

@@ -132,3 +132,27 @@ test('comparison days after yesterday are disabled', () => {
   expect(within(cal).getByRole('button', { name: 'Tuesday, November 3, 2026' })).toBeDisabled();
   expect(within(cal).getByRole('button', { name: 'Monday, November 2, 2026' })).toBeEnabled();
 });
+
+test('Compare and the comparison presets live in the left column, under the range presets', () => {
+  const { container } = render(<DateRangePicker range={Q} compare={OFF} now={now} onChange={() => {}} />);
+  open();
+  const left = container.querySelector('.gy-drp-left')!;
+  expect(within(left as HTMLElement).queryByRole('button', { name: 'Previous period' })).toBeNull();
+  fireEvent.click(within(left as HTMLElement).getByRole('checkbox', { name: 'Compare' }));
+  const lists = left.querySelectorAll('.gy-drp-presets');
+  expect(lists).toHaveLength(2);
+  expect(left.children[1]!.querySelector('input[type=checkbox]')).not.toBeNull();
+  expect(within(lists[0] as HTMLElement).getByRole('button', { name: 'Last month' })).toBeInTheDocument();
+  expect(within(lists[1] as HTMLElement).getByRole('button', { name: 'Previous period' })).toHaveAttribute('aria-pressed', 'true');
+  expect(within(lists[1] as HTMLElement).getByRole('button', { name: 'Custom' })).toBeInTheDocument();
+  expect(container.querySelector('.gy-drp-right')!.querySelectorAll('[role=group]')).toHaveLength(2);
+});
+
+test('a Sunday week start shows Su first in both calendars', () => {
+  render(<DateRangePicker range={Q} compare={PREV} now={now} weekStart="sunday" onChange={() => {}} />);
+  open();
+  for (const name of ['Range calendar', 'Comparison calendar']) {
+    const cal = screen.getByRole('group', { name });
+    expect(cal.querySelector('.gy-cal-dow')!.textContent).toBe('Su');
+  }
+});

@@ -43,3 +43,15 @@ test('picking in the control reports both the range and the comparison', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onChange).toHaveBeenCalledWith({ kind: 'preset', preset: 'last_month' }, { kind: 'preset', preset: 'previous_period' });
 });
+
+test('the windows and the update time sit next to the title', () => {
+  const now = new Date('2026-11-03T12:00:00Z');
+  const period = { range: { from: '2026-10-01', to: '2026-11-02' }, comparison: { from: '2026-07-01', to: '2026-08-02' } };
+  const cache = { refreshedAt: '2026-11-03T11:48:00Z' } as never;
+  const { container, rerender } = render(<Header title="Customers" cache={cache} now={now} period={period} />);
+  const line = container.querySelector('.gy-header-line')!;
+  expect(line.firstElementChild).toBe(screen.getByRole('heading', { name: 'Customers' }));
+  expect(line.querySelector('.gy-header-sub')!.textContent).toBe('Oct 1 – Nov 2, 2026 vs Jul 1 – Aug 2, 2026 · Updated 12 min ago');
+  rerender(<Header title="Customers" cache={null} now={now} period={{ ...period, comparison: null }} />);
+  expect(line.querySelector('.gy-header-sub')!.textContent).toBe('Oct 1 – Nov 2, 2026 · Not loaded yet');
+});

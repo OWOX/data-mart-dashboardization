@@ -120,9 +120,9 @@ test('a line wears the plan status of the calculated metric it stands for', asyn
   expect(lineTone(line, plain, cache('below'))).toBe('none');
 });
 
-test('the selected range and the comparison window show top right; no driver count', () => {
-  const { container } = render(<Canvas model={rich} cache={null} comparisonOn refreshing={false} period={{ range: { from: '2026-10-01', to: '2026-12-31' }, comparison: { from: '2026-07-01', to: '2026-08-01' } }} onRetry={() => {}} />);
-  expect(container.querySelector('.gy-period-shown')!.textContent).toBe('Oct 1 – Dec 31, 2026vs Jul 1 – Aug 1, 2026');
+test('the canvas shows no period block (it lives in the header); no driver count', () => {
+  const { container } = render(<Canvas model={rich} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-period-shown')).toBeNull();
   expect(container.querySelector('.gy-band-count')).toBeNull();
 });
 

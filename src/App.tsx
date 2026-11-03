@@ -108,10 +108,10 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   );
 
   const periodShown = useMemo(() => {
-    const spec = resolveRange(range, compare, now());
+    const spec = resolveRange(range, compare, now(), settings.weekStart);
     // a cut comparison shows the windows actually compared
     return spec.compareFact && spec.comparison ? { range: spec.compareFact, comparison: spec.comparison } : { range: spec.range, comparison: spec.comparison };
-  }, [range, compare, now]);
+  }, [range, compare, now, settings.weekStart]);
 
   const marts = useMemo(
     () => new Map((inputs?.data?.marts ?? []).map((m) => [m.id, { description: m.description, icon: m.icon ?? null }])),
@@ -123,8 +123,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     const id = ++refreshId.current;
     const current = () => id === refreshId.current;
     const at = now();
-    const spec = resolveRange(range, compare, at);
-    const key = cacheKey(range, compare);
+    const spec = resolveRange(range, compare, at, settings.weekStart);
+    const key = cacheKey(range, compare, settings.weekStart);
     const keep = persistable(range, compare);
     try {
       // Custom choices are not persisted: they compute and stay in state only.
@@ -151,7 +151,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (current()) setRefreshing(false);
     }
     return current();
-  }, [model, range, compare, owox, store, now, settings.thresholdPct, visible]);
+  }, [model, range, compare, owox, store, now, settings.thresholdPct, settings.weekStart, visible]);
 
   const inReady = view.name === 'ready';
   useEffect(() => {
@@ -230,7 +230,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const main = model.classes.find((c) => c.id === model.goal.classId) ?? model.classes[0];
       return (
         <main className="gy-main">
-          <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} />
+          <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
           {outdated && (
             <div className="gy-banner">
@@ -239,9 +239,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             </div>
           )}
           <Canvas
-            tools={<RangeControls range={range} compare={compare} now={now()} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); }} onRefresh={() => void refresh(true)} onSettings={openSettings} />}
+            tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); }} onRefresh={() => void refresh(true)} onSettings={openSettings} />}
             model={model} cache={cache} visibleIds={visible} marts={marts}
-            compareLabel={compareLabel(range, compare, now()) ?? undefined} period={periodShown}
+            compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
             comparisonOn={compare.kind !== 'off'} refreshing={refreshing} onRetry={() => void refresh(true)}
           />
         </main>

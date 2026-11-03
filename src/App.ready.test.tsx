@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
 import { cacheKey } from './metrics/refresh';
 import { rangeFor } from './lib/dates';
-import { memoryCollections, saveCache, saveModel, type CollectionsLike } from './store/collections';
-import type { CacheDoc, Model } from './types';
+import { loadModel, memoryCollections, saveCache, saveModel, saveSettings, type CollectionsLike } from './store/collections';
+import { DEFAULT_SETTINGS, type CacheDoc, type Model } from './types';
 
 const GID = '11111111-1111-1111-1111-111111111111';
 const NOW = new Date('2026-10-24T10:00:00Z');
@@ -59,7 +59,7 @@ const ctxWith = (setRoute = vi.fn()) => ({ ctx: { projectId: 'p', ui: { setRoute
 test('a fresh cache renders at once without refreshing', async () => {
   const { deps, traversals } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  expect(await screen.findByText('Updated 1 h ago')).toBeInTheDocument();
+  expect(await screen.findByText(/Updated 1 h ago/)).toBeInTheDocument();
   expect(traversals()).toBe(0);
 });
 
@@ -101,7 +101,7 @@ test('saving a changed threshold refreshes; an unchanged one does not', async ()
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await screen.findByText('Updated 1 h ago');
+  await screen.findByText(/Updated 1 h ago/);
   expect(traversals()).toBe(0);
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   fireEvent.change(screen.getByLabelText(/Red when below plan/), { target: { value: '15' } });
@@ -247,5 +247,25 @@ test('the toolbar shows the cut windows when a comparison is cut short', async (
   fireEvent.click(cmp.getByRole('button', { name: 'Monday, September 7, 2026' }));
   fireEvent.click(cmp.getByRole('button', { name: 'Wednesday, September 9, 2026' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  await waitFor(() => expect(document.querySelector('.gy-period-shown')!.textContent).toBe('Oct 1–3, 2026vs Sep 7–9, 2026'));
+  await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–3, 2026 vs Sep 7–9, 2026 · /));
+  expect(document.querySelector('.gy-period-shown')).toBeNull();
+});
+
+test('the week start setting changes the cache key of a week preset', async () => {
+  const mk = async (weekStart: 'monday' | 'sunday') => {
+    const { deps, store, traversals } = await setup({ cache: 'none' });
+    await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'this_week', comparisonDefault: false, weekStart });
+    // a fresh doc under the Monday key only
+    const monday = cacheKey({ kind: 'preset', preset: 'this_week' }, { kind: 'off' });
+    const m = (await loadModel(store))!;
+    await saveCache(store, monday, { modelHash: m.inputHash, builtAt: m.builtAt, thresholdPct: 20, anchor: rangeFor('this_week', NOW).anchor, refreshedAt: '2026-10-24T09:00:00Z', key: monday, comparison: false, cards: {} });
+    render(<App ctx={ctxWith().ctx} deps={deps} />);
+    return traversals;
+  };
+  const monTraversals = await mk('monday');
+  await screen.findByText(/Updated 1 h ago/);
+  expect(monTraversals()).toBe(0);
+  cleanup();
+  const sunTraversals = await mk('sunday');
+  await waitFor(() => expect(sunTraversals()).toBeGreaterThan(0));
 });

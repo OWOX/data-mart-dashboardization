@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { PRESET_GROUPS, PRESET_LABELS, type Preset, type Settings } from '../types';
+import { PRESET_GROUPS, PRESET_LABELS, type Preset, type Settings, type WeekStart } from '../types';
 
 export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, error }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
@@ -9,12 +9,13 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
 }) {
   const [threshold, setThreshold] = useState(String(settings.thresholdPct));
   const [preset, setPreset] = useState<Preset>(settings.defaultPreset);
+  const [weekStart, setWeekStart] = useState<WeekStart>(settings.weekStart);
   const [comparison, setComparison] = useState(settings.comparisonDefault);
 
   const save = () => {
     const n = Number(threshold);
     const thresholdPct = Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : settings.thresholdPct;
-    onSave({ thresholdPct, defaultPreset: preset, comparisonDefault: comparison });
+    onSave({ thresholdPct, defaultPreset: preset, comparisonDefault: comparison, weekStart });
   };
 
   return (
@@ -39,6 +40,13 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
                   {g.presets.map((p) => <option key={p} value={p}>{PRESET_LABELS[p]}</option>)}
                 </optgroup>
               ))}
+            </select>
+          </div>
+          <div className="gy-field">
+            <label htmlFor="gy-week-start">Week starts on</label>
+            <select id="gy-week-start" className="gy-select" value={weekStart} onChange={(e) => setWeekStart(e.target.value as WeekStart)}>
+              <option value="monday">Monday</option>
+              <option value="sunday">Sunday</option>
             </select>
           </div>
           <label className="gy-check">

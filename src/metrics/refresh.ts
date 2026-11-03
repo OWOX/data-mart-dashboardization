@@ -1,4 +1,4 @@
-import type { CacheDoc, CardCache, MetricResult, Model, RangeChoice, RangeSpec, CompareChoice, SeriesPack } from '../types';
+import type { CacheDoc, CardCache, MetricResult, Model, RangeChoice, RangeSpec, CompareChoice, SeriesPack, WeekStart } from '../types';
 import { runPool } from '../lib/pool';
 import type { OwoxLike } from '../owox/sources';
 import { rangeKey, compareKey } from '../lib/dates';
@@ -15,7 +15,11 @@ export function trimToSize(doc: CacheDoc, limit = MAX_DOC_CHARS): CacheDoc {
   return { ...doc, cards: Object.fromEntries(Object.entries(doc.cards).map(([id, c]) => [id, { ...c, spark: null }])) };
 }
 
-export const cacheKey = (range: RangeChoice, compare: CompareChoice): string => `${rangeKey(range)}:${compareKey(compare)}`;
+/** Week presets resolve to other days under a Sunday start, so only they carry it (Monday keeps the old keys). */
+export const cacheKey = (range: RangeChoice, compare: CompareChoice, weekStart: WeekStart = 'monday'): string => {
+  const weekly = range.kind === 'preset' && (range.preset === 'this_week' || range.preset === 'last_week') && weekStart === 'sunday';
+  return `${rangeKey(range)}:${compareKey(compare)}${weekly ? ':sun' : ''}`;
+};
 
 /** Custom choices are not persisted: they would pile up per member. */
 export const persistable = (range: RangeChoice, compare: CompareChoice): boolean =>

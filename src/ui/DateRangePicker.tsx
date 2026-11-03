@@ -2,11 +2,11 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { addDays, anchorFor, compareOptions, controlLabel, diffDays, resolveRange } from '../lib/dates';
 import { formatWindow } from '../lib/format';
-import { PRESET_GROUPS, PRESET_LABELS, type CompareChoice, type ComparePreset, type DateWindow, type Day, type RangeChoice } from '../types';
+import { PRESET_GROUPS, PRESET_LABELS, type CompareChoice, type ComparePreset, type DateWindow, type Day, type RangeChoice, type WeekStart } from '../types';
 import { Calendar, monthStart } from './Calendar';
 
 type Props = {
-  range: RangeChoice; compare: CompareChoice; now: Date;
+  range: RangeChoice; compare: CompareChoice; now: Date; weekStart?: WeekStart;
   onChange: (range: RangeChoice, compare: CompareChoice) => void;
 };
 
@@ -46,7 +46,7 @@ export function DateRangePicker(props: Props) {
   );
 }
 
-function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { panelRef: React.RefObject<HTMLDivElement | null>; onClose: () => void }) {
+function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, onClose }: Props & { panelRef: React.RefObject<HTMLDivElement | null>; onClose: () => void }) {
   const anchor = anchorFor(now);
   const [dRange, setDRange] = useState<RangeChoice>(range);
   const [compareOn, setCompareOn] = useState(compare.kind !== 'off');
@@ -55,16 +55,16 @@ function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { p
   const [pendingRange, setPendingRange] = useState(false);
   const [pendingCompare, setPendingCompare] = useState(false);
   const effective: CompareChoice = compareOn ? dCompare : { kind: 'off' };
-  const spec = resolveRange(dRange, effective, now);
+  const spec = resolveRange(dRange, effective, now, weekStart);
   const drawn = dRange.kind === 'custom' ? dRange.window : spec.range;
   // The resolved (clipped, length-matched) window is what gets queried, so it is what we show; the raw pick goes to onChange.
-  const comparison = resolveRange(dRange, dCompare, now).comparison;
+  const comparison = resolveRange(dRange, dCompare, now, weekStart).comparison;
   const rawCompare = dCompare.kind === 'custom' ? dCompare.window : null;
   const factDays = spec.factWindow ? diffDays(spec.factWindow.from, spec.factWindow.to) + 1 : spec.days;
   const [rangeMonth, setRangeMonth] = useState(() => openMonth(drawn, anchor));
   const [compareMonth, setCompareMonth] = useState(() => openMonth(comparison, anchor));
   const id = useId();
-  const options = compareOptions(dRange, now);
+  const options = compareOptions(dRange, now, weekStart);
   const stillOffered = dCompare.kind !== 'preset' || options.some((o) => o.preset === dCompare.preset);
   const compareSeed = dCompare.kind === 'preset' ? dCompare.preset : 'custom';
   const rangeSeed = dRange.kind === 'preset' ? dRange.preset : `${dRange.window.from}_${dRange.window.to}`;
@@ -94,7 +94,7 @@ function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { p
   const choosePreset = (preset: Extract<RangeChoice, { kind: 'preset' }>['preset']) => {
     const next: RangeChoice = { kind: 'preset', preset };
     setDRange(next); setPendingRange(false);
-    setRangeMonth(openMonth(resolveRange(next, { kind: 'off' }, now).range, anchor));
+    setRangeMonth(openMonth(resolveRange(next, { kind: 'off' }, now, weekStart).range, anchor));
   };
   const toggleCompare = (on: boolean) => {
     setCompareOn(on);
@@ -102,45 +102,55 @@ function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { p
   };
 
   return (
-    <div ref={panelRef} className="gy-drp-panel" tabIndex={-1} role="dialog" aria-label="Date range" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
-      <div className="gy-drp-presets">
-        {PRESET_GROUPS.flatMap((g) => g.presets).map((p) => (
-          <button key={p} type="button" className="gy-drp-preset" aria-pressed={dRange.kind === 'preset' && dRange.preset === p} onClick={() => choosePreset(p)}>
-            {PRESET_LABELS[p]}
-          </button>
-        ))}
-        <span className="gy-drp-preset gy-drp-custom" aria-current={dRange.kind === 'custom' ? 'true' : undefined}>Custom</span>
-      </div>
-      <div className="gy-drp-main">
-        <Calendar month={rangeMonth} selected={drawn} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
+    <div ref={panelRef} className="gy-drp-panel" style={{ '--gy-rows': compareOn ? 3 : 2 } as React.CSSProperties} tabIndex={-1} role="dialog" aria-label="Date range"
+      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+      {/* Both columns share the grid rows, so each list is as tall as the calendar beside it. */}
+      <div className="gy-drp-left">
+        <div className="gy-drp-presets">
+          <div className="gy-drp-list">
+            {PRESET_GROUPS.flatMap((g) => g.presets).map((p) => (
+              <button key={p} type="button" className="gy-drp-preset" aria-pressed={dRange.kind === 'preset' && dRange.preset === p} onClick={() => choosePreset(p)}>
+                {PRESET_LABELS[p]}
+              </button>
+            ))}
+            <span className="gy-drp-preset gy-drp-custom" aria-current={dRange.kind === 'custom' ? 'true' : undefined}>Custom</span>
+          </div>
+        </div>
         <label className="gy-check gy-drp-compare" htmlFor={`${id}-cmp`}>
           <input id={`${id}-cmp`} type="checkbox" checked={compareOn} onChange={(e) => toggleCompare(e.target.checked)} />
           Compare
         </label>
         {compareOn && (
-          <>
-            <div className="gy-drp-options">
+          <div className="gy-drp-presets">
+            <div className="gy-drp-list">
               {options.map((o) => (
-                <button key={o.preset} type="button" className="gy-chip" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
+                <button key={o.preset} type="button" className="gy-drp-preset" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
                   onClick={() => { setDCompare({ kind: 'preset', preset: o.preset }); setPendingCompare(false); setCompareMonth(openMonth(o.window, anchor)); }}>
                   {compareChipLabel(o.preset, factDays)}
                 </button>
               ))}
-              <button type="button" className="gy-chip" aria-pressed={dCompare.kind === 'custom'}
+              <button type="button" className="gy-drp-preset" aria-pressed={dCompare.kind === 'custom'}
                 onClick={() => { if (comparison) { setDCompare({ kind: 'custom', window: comparison }); setPendingCompare(false); } }}>
                 Custom
               </button>
             </div>
-            <Calendar month={compareMonth} selected={comparison} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />
-          </>
+          </div>
         )}
-        <div className="gy-drp-foot">
-          <span className="gy-drp-windows">
-            {formatWindow(drawn)}{compareOn && comparison ? ` vs ${formatWindow(comparison)}` : ''}
-          </span>
-          <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
-          <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>
-        </div>
+      </div>
+      <div className="gy-drp-right">
+        <Calendar month={rangeMonth} selected={drawn} weekStart={weekStart} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
+        {compareOn && (
+          <div className="gy-drp-cmpcal">
+            <Calendar month={compareMonth} selected={comparison} weekStart={weekStart} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />
+          </div>
+        )}
+      </div>
+      <div className="gy-drp-foot">
+        <span className="gy-drp-windows">
+          {formatWindow(drawn)}{compareOn && comparison ? ` vs ${formatWindow(comparison)}` : ''}
+        </span>
+        <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
+        <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>
       </div>
     </div>
   );

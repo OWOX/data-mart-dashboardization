@@ -157,3 +157,21 @@ test('a custom comparison label shows the resolved window, not the raw pick', ()
   const r: RangeChoice = { kind: 'custom', window: { from: '2026-10-01', to: '2026-10-10' } };
   expect(compareLabel(r, { kind: 'custom', window: { from: '2026-07-01', to: '2026-07-31' } }, NOW)).toBe(formatWindow({ from: '2026-07-01', to: '2026-07-10' }));
 });
+
+test('week presets follow the week start; Monday is the default', () => {
+  const now = at('2026-10-24T10:00:00Z'); // Saturday
+  expect(rangeFor('this_week', now).range).toEqual({ from: '2026-10-19', to: '2026-10-25' });
+  expect(rangeFor('this_week', now, 'sunday').range).toEqual({ from: '2026-10-18', to: '2026-10-24' });
+  expect(rangeFor('last_week', now, 'sunday').range).toEqual({ from: '2026-10-11', to: '2026-10-17' });
+  expect(rangeFor('last_week', now, 'sunday').label).toBe('Last week');
+});
+
+test('resolveRange and compareOptions pass the week start through', () => {
+  const now = at('2026-10-24T10:00:00Z');
+  const w = { kind: 'preset', preset: 'this_week' } as const;
+  const spec = resolveRange(w, { kind: 'preset', preset: 'previous_period' }, now, 'sunday');
+  expect(spec.range).toEqual({ from: '2026-10-18', to: '2026-10-24' });
+  // the fact window ends yesterday (Oct 23), so the comparison is cut to the same six days
+  expect(spec.comparison).toEqual({ from: '2026-10-11', to: '2026-10-16' });
+  expect(compareOptions(w, now, 'sunday')[0]!.window).toEqual({ from: '2026-10-11', to: '2026-10-16' });
+});

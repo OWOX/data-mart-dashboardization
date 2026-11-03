@@ -90,3 +90,13 @@ test('cacheKey and persistable: presets persist per key, custom choices do not',
   expect(persistable({ kind: 'custom', window: win }, prev)).toBe(false);
   expect(persistable(q, { kind: 'custom', window: win })).toBe(false);
 });
+
+test('cacheKey carries a Sunday week start for week presets only', () => {
+  const off = { kind: 'off' } as const;
+  const w = { kind: 'preset', preset: 'last_week' } as const;
+  const q = { kind: 'preset', preset: 'this_quarter' } as const;
+  expect(cacheKey(w, off)).toBe('last_week:off');
+  expect(cacheKey(w, off, 'monday')).toBe('last_week:off');
+  expect(cacheKey(w, off, 'sunday')).toBe('last_week:off:sun');
+  expect(cacheKey(q, off, 'sunday')).toBe('this_quarter:off');
+});
