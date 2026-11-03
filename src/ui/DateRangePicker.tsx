@@ -1,8 +1,8 @@
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { anchorFor, compareOptions, controlLabel, resolveRange } from '../lib/dates';
+import { addDays, anchorFor, compareOptions, controlLabel, diffDays, resolveRange } from '../lib/dates';
 import { formatWindow } from '../lib/format';
-import { PRESET_GROUPS, PRESET_LABELS, type CompareChoice, type DateWindow, type Day, type RangeChoice } from '../types';
+import { PRESET_GROUPS, PRESET_LABELS, type CompareChoice, type ComparePreset, type DateWindow, type Day, type RangeChoice } from '../types';
 import { Calendar, monthStart } from './Calendar';
 
 type Props = {
@@ -10,8 +10,12 @@ type Props = {
   onChange: (range: RangeChoice, compare: CompareChoice) => void;
 };
 
-/** The month to open on: the window's end, or yesterday when the end is in a later month. */
-const openMonth = (w: DateWindow | null, anchor: Day): Day => monthStart(!w || w.to.slice(0, 7) > anchor.slice(0, 7) ? anchor : w.to);
+/** The month to open on: the window's end, or yesterday when the end is past the current month. */
+const openMonth = (w: DateWindow | null, anchor: Day): Day => monthStart(!w || w.to.slice(0, 7) > addDays(anchor, 1).slice(0, 7) ? anchor : w.to);
+
+/** Picker wording; the cards use the Title Case names from dates.ts. */
+const compareChipLabel = (preset: ComparePreset, days: number): string =>
+  preset === 'previous_period' ? 'Previous period' : preset === 'preceding_days' ? `Previous ${days} days` : 'Same period last year';
 
 export function DateRangePicker(props: Props) {
   const [open, setOpen] = useState(false);
@@ -21,22 +25,21 @@ export function DateRangePicker(props: Props) {
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (!panel.current?.contains(t) && !trigger.current?.contains(t)) close();
     };
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', onDown);
-    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
   }, [open]);
 
+  const labelId = useId();
   return (
     <div className="gy-drp">
-      <button ref={trigger} type="button" className="gy-select gy-drp-trigger" aria-label="Date range" aria-haspopup="dialog" aria-expanded={open}
+      <button ref={trigger} type="button" className="gy-select gy-drp-trigger" aria-label="Date range" aria-describedby={labelId} aria-haspopup="dialog" aria-expanded={open}
         onClick={() => setOpen((o) => !o)}>
         <CalendarIcon size={14} aria-hidden />
-        <span>{controlLabel(props.range, props.compare)}</span>
+        <span id={labelId}>{controlLabel(props.range, props.compare)}</span>
       </button>
       {open && <Panel {...props} panelRef={panel} onClose={close} />}
     </div>
@@ -54,10 +57,27 @@ function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { p
   const effective: CompareChoice = compareOn ? dCompare : { kind: 'off' };
   const spec = resolveRange(dRange, effective, now);
   const drawn = dRange.kind === 'custom' ? dRange.window : spec.range;
-  const comparison = dCompare.kind === 'custom' ? dCompare.window : resolveRange(dRange, dCompare, now).comparison;
+  // The resolved (clipped, length-matched) window is what gets queried, so it is what we show; the raw pick goes to onChange.
+  const comparison = resolveRange(dRange, dCompare, now).comparison;
+  const rawCompare = dCompare.kind === 'custom' ? dCompare.window : null;
+  const factDays = spec.factWindow ? diffDays(spec.factWindow.from, spec.factWindow.to) + 1 : spec.days;
   const [rangeMonth, setRangeMonth] = useState(() => openMonth(drawn, anchor));
   const [compareMonth, setCompareMonth] = useState(() => openMonth(comparison, anchor));
   const id = useId();
+  const options = compareOptions(dRange, now);
+  const stillOffered = dCompare.kind !== 'preset' || options.some((o) => o.preset === dCompare.preset);
+  const compareSeed = dCompare.kind === 'preset' ? dCompare.preset : 'custom';
+  const rangeSeed = dRange.kind === 'preset' ? dRange.preset : `${dRange.window.from}_${dRange.window.to}`;
+
+  useEffect(() => { if (!stillOffered) setDCompare({ kind: 'preset', preset: 'previous_period' }); }, [stillOffered]);
+  // Follow the comparison when the range or the comparison kind changes; custom picks keep the month the user is looking at.
+  useEffect(() => {
+    if (compareOn) setCompareMonth(openMonth(comparison, anchor));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareOn, compareSeed, rangeSeed]);
+  useEffect(() => {
+    panelRef.current?.querySelector<HTMLElement>('.gy-drp-preset[aria-pressed="true"]')?.focus();
+  }, []);
 
   const pick = (cur: DateWindow | null, pending: boolean, d: Day): DateWindow =>
     pending && cur ? (d < cur.from ? { from: d, to: cur.from } : { from: cur.from, to: d }) : { from: d, to: d };
@@ -67,7 +87,7 @@ function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { p
     setPendingRange(!pendingRange);
   };
   const pickCompare = (d: Day) => {
-    setDCompare({ kind: 'custom', window: pick(dCompare.kind === 'custom' ? dCompare.window : null, pendingCompare, d) });
+    setDCompare({ kind: 'custom', window: pick(rawCompare, pendingCompare, d) });
     setPendingCompare(!pendingCompare);
   };
   const choosePreset = (preset: Extract<RangeChoice, { kind: 'preset' }>['preset']) => {
@@ -77,22 +97,18 @@ function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { p
   };
   const toggleCompare = (on: boolean) => {
     setCompareOn(on);
-    if (on && dCompare.kind === 'preset' && dCompare.preset !== 'previous_period' && !compareOptions(dRange, now).some((o) => o.preset === dCompare.preset)) {
-      setDCompare({ kind: 'preset', preset: 'previous_period' });
-    }
     if (on) setCompareMonth(openMonth(comparison, anchor));
   };
-  const options = compareOptions(dRange, now);
 
   return (
-    <div ref={panelRef} className="gy-drp-panel" role="dialog" aria-label="Date range">
+    <div ref={panelRef} className="gy-drp-panel" role="dialog" aria-label="Date range" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       <div className="gy-drp-presets">
         {PRESET_GROUPS.flatMap((g) => g.presets).map((p) => (
           <button key={p} type="button" className="gy-drp-preset" aria-pressed={dRange.kind === 'preset' && dRange.preset === p} onClick={() => choosePreset(p)}>
             {PRESET_LABELS[p]}
           </button>
         ))}
-        <span className="gy-drp-preset gy-drp-custom" aria-pressed={dRange.kind === 'custom'} role="note">Custom</span>
+        <span className="gy-drp-preset gy-drp-custom" aria-current={dRange.kind === 'custom' ? 'true' : undefined}>Custom</span>
       </div>
       <div className="gy-drp-main">
         <Calendar month={rangeMonth} selected={drawn} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
@@ -106,7 +122,7 @@ function Panel({ range, compare, now, onChange, panelRef, onClose }: Props & { p
               {options.map((o) => (
                 <button key={o.preset} type="button" className="gy-chip" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
                   onClick={() => { setDCompare({ kind: 'preset', preset: o.preset }); setPendingCompare(false); setCompareMonth(openMonth(o.window, anchor)); }}>
-                  {o.label}
+                  {compareChipLabel(o.preset, factDays)}
                 </button>
               ))}
               <button type="button" className="gy-chip" aria-pressed={dCompare.kind === 'custom'}

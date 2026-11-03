@@ -283,6 +283,7 @@ h2 { margin: 0; }
 .gy-drp-preset[aria-pressed='true'] { background: var(--muted); font-weight: 500; }
 .gy-drp-preset:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .gy-drp-custom { cursor: default; color: var(--muted-foreground); }
+.gy-drp-custom[aria-current='true'] { background: var(--muted); font-weight: 500; }
 .gy-drp-main { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.75rem; }
 .gy-drp-compare { align-self: flex-start; }
 .gy-drp-options { display: flex; flex-wrap: wrap; gap: 0.375rem; }

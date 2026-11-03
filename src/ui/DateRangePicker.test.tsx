@@ -34,7 +34,7 @@ test('open shows presets and one calendar; compare toggles the second', () => {
   expect(screen.getAllByRole('group')).toHaveLength(1);
   fireEvent.click(screen.getByRole('checkbox', { name: 'Compare' }));
   expect(screen.getAllByRole('group')).toHaveLength(2);
-  expect(screen.getByRole('button', { name: /same period last year/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Same period last year' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('checkbox', { name: 'Compare' }));
   expect(screen.getAllByRole('group')).toHaveLength(1);
 });
@@ -60,20 +60,52 @@ test('two clicks make a custom range, reversed clicks are swapped', () => {
 test('comparison preset and custom comparison', () => {
   const onChange = setup();
   open();
-  fireEvent.click(screen.getByRole('button', { name: /same period last year/i }));
+  fireEvent.click(screen.getByRole('button', { name: 'Same period last year' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onChange).toHaveBeenLastCalledWith(Q, { kind: 'preset', preset: 'year_before' });
 
   open();
   fireEvent.click(screen.getByRole('button', { name: 'Custom', pressed: false }));
-  const cal = 'Comparison calendar';
-  const first = within(screen.getByRole('group', { name: cal })).getAllByRole('button', { name: /^\w+day, / }).filter((b) => !b.classList.contains('is-out'));
-  fireEvent.click(first[4]!);
-  fireEvent.click(first[1]!);
+  // Seeded with the previous quarter (props still say previous_period); reversed clicks swap.
+  const cal = within(screen.getByRole('group', { name: 'Comparison calendar' }));
+  expect(cal.getByText('August 2026')).toBeInTheDocument();
+  fireEvent.click(cal.getByRole('button', { name: 'Monday, August 31, 2026' }));
+  fireEvent.click(cal.getByRole('button', { name: 'Monday, August 3, 2026' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  const [, cmp] = onChange.mock.calls.at(-1)!;
-  expect(cmp.kind).toBe('custom');
-  expect(cmp.window.from < cmp.window.to).toBe(true);
+  expect(onChange).toHaveBeenLastCalledWith(Q, { kind: 'custom', window: { from: '2026-08-03', to: '2026-08-31' } });
+});
+
+test('comparison calendar follows the range and shows the resolved window', () => {
+  setup(Q, PREV);
+  open();
+  fireEvent.click(screen.getByRole('button', { name: 'Last year' }));
+  const cal = within(screen.getByRole('group', { name: 'Comparison calendar' }));
+  expect(cal.getByText(/2024$/)).toBeInTheDocument(); // year before last year
+  const lit = cal.getAllByRole('button', { pressed: true });
+  expect(lit.length).toBeGreaterThan(0);
+  lit.forEach((b) => expect(b.getAttribute('aria-label')).toMatch(/, 2024$/));
+});
+
+test('custom comparison longer than the range is shown cut to the matched length', () => {
+  const onChange = setup(Q, OFF);
+  open();
+  fireEvent.click(screen.getByRole('button', { name: 'Yesterday' })); // one day
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Compare' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Custom', pressed: false }));
+  const cal = within(screen.getByRole('group', { name: 'Comparison calendar' }));
+  fireEvent.click(cal.getByRole('button', { name: 'Sunday, November 1, 2026' }));
+  fireEvent.click(cal.getByRole('button', { name: 'Monday, November 2, 2026' }));
+  expect(screen.getByRole('dialog').querySelector('.gy-drp-windows')).toHaveTextContent('Nov 2, 2026 vs Nov 1, 2026');
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onChange.mock.calls[0]![1]).toEqual({ kind: 'custom', window: { from: '2026-11-01', to: '2026-11-02' } });
+});
+
+test('outside click closes without applying', () => {
+  const onChange = setup();
+  open();
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(onChange).not.toHaveBeenCalled();
 });
 
 test('Cancel and Escape do not apply', () => {
@@ -83,7 +115,7 @@ test('Cancel and Escape do not apply', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(screen.queryByRole('dialog')).toBeNull();
   open();
-  fireEvent.keyDown(document, { key: 'Escape' });
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(onChange).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: 'Date range' })).toHaveFocus();
@@ -92,8 +124,6 @@ test('Cancel and Escape do not apply', () => {
 test('comparison days after yesterday are disabled', () => {
   setup(Q, PREV);
   open();
-  fireEvent.click(screen.getByRole('button', { name: 'Last year' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
   fireEvent.click(screen.getByRole('button', { name: 'Custom', pressed: false }));
   const cal = screen.getByRole('group', { name: 'Comparison calendar' });
   for (let i = 0; i < 6 && !within(cal).queryByText('November 2026'); i++) {
