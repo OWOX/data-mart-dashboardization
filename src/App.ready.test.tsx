@@ -269,3 +269,9 @@ test('the week start setting changes the cache key of a week preset', async () =
   const sunTraversals = await mk('sunday');
   await waitFor(() => expect(sunTraversals()).toBeGreaterThan(0));
 });
+
+test('with a comparison the header shows the days so far, not the whole range', async () => {
+  const { deps } = await setup();
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–\d+, 2026 vs Jul 1–\d+, 2026 · /));
+});
