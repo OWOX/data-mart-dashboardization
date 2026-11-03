@@ -1,14 +1,23 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Header, RangeControls } from './Header';
 
-test('refresh and settings are icon buttons, refresh first, settings last', () => {
+const controls = (over: Partial<Parameters<typeof RangeControls>[0]> = {}) => (
+  <RangeControls preset="this_quarter" comparisonOn onPreset={() => {}} onComparison={() => {}} onRefresh={() => {}} onSettings={() => {}} {...over} />
+);
+
+test('the header holds the title and the update time, no controls', () => {
+  render(<Header title="Customers" cache={null} now={new Date()} />);
+  expect(screen.getByRole('heading', { name: 'Customers' })).toBeInTheDocument();
+  expect(screen.getByText('Not loaded yet')).toBeInTheDocument();
+  expect(screen.queryByRole('button')).toBeNull();
+});
+
+test('refresh and settings icons follow the date range, settings last', () => {
   const onRefresh = vi.fn();
   const onSettings = vi.fn();
-  const { container } = render(<Header title="Customers" cache={null} now={new Date()} onRefresh={onRefresh} onRebuild={() => {}} onSettings={onSettings} />);
-  const icons = [...container.querySelectorAll('.gy-header-tools .gy-icon-btn')];
-  expect(icons.map((b) => b.getAttribute('aria-label'))).toEqual(['Refresh', 'Settings']);
-  expect(container.querySelector('.gy-header-tools')!.lastElementChild).toBe(icons[1]);
-  expect(screen.queryByRole('combobox', { name: 'Date range' })).toBeNull();
+  const { container } = render(controls({ onRefresh, onSettings }));
+  const row = container.querySelector('.gy-range')!;
+  expect([...row.children].map((c) => c.getAttribute('aria-label') ?? c.tagName)).toEqual(['LABEL', 'Date range', 'Refresh', 'Settings']);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   expect(onRefresh).toHaveBeenCalledTimes(1);
@@ -16,14 +25,14 @@ test('refresh and settings are icon buttons, refresh first, settings last', () =
 });
 
 test('refresh is disabled while refreshing', () => {
-  render(<Header title="Customers" cache={null} now={new Date()} refreshing onRefresh={() => {}} onRebuild={() => {}} onSettings={() => {}} />);
+  render(controls({ refreshing: true }));
   expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled();
 });
 
 test('range controls change the preset and the comparison', () => {
   const onPreset = vi.fn();
   const onComparison = vi.fn();
-  render(<RangeControls preset="this_quarter" comparisonOn onPreset={onPreset} onComparison={onComparison} />);
+  render(controls({ onPreset, onComparison }));
   fireEvent.change(screen.getByRole('combobox', { name: 'Date range' }), { target: { value: 'last_month' } });
   fireEvent.click(screen.getByLabelText('Compare with previous period'));
   expect(onPreset).toHaveBeenCalledWith('last_month');

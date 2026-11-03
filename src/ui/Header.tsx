@@ -15,36 +15,27 @@ interface Props {
   title: string;
   cache: CacheDoc | null;
   now: Date;
-  refreshing?: boolean;
-  onRefresh: () => void;
-  onRebuild: () => void;
-  onSettings: () => void;
 }
 
-export function Header({ title, cache, now, refreshing = false, onRefresh, onRebuild, onSettings }: Props) {
+export function Header({ title, cache, now }: Props) {
   return (
     <header className="gy-header">
       <div>
         <div className="label">GYROSCOPE</div>
         <h1 className="gy-header-title">{title}</h1>
       </div>
-      <div className="gy-header-tools">
-        <span className="gy-muted">{cache ? `Updated ${relativeTime(cache.refreshedAt, now)}` : 'Not loaded yet'}</span>
-        <button type="button" className="gy-btn" onClick={onRebuild}>Rebuild model</button>
-        <button type="button" className="gy-icon-btn" aria-label="Refresh" title="Refresh" onClick={onRefresh} disabled={refreshing}>
-          <RefreshCw size={16} className={refreshing ? 'gy-spin' : undefined} />
-        </button>
-        <button type="button" className="gy-icon-btn" aria-label="Settings" title="Settings" onClick={onSettings}>
-          <SettingsIcon size={16} />
-        </button>
-      </div>
+      <span className="gy-muted gy-header-tools">{cache ? `Updated ${relativeTime(cache.refreshedAt, now)}` : 'Not loaded yet'}</span>
     </header>
   );
 }
 
-/** The date range and the comparison toggle; they sit on the canvas toolbar, level with the context chips. */
-export function RangeControls({ preset, comparisonOn, onPreset, onComparison }: {
-  preset: Preset; comparisonOn: boolean; onPreset: (p: Preset) => void; onComparison: (on: boolean) => void;
+/**
+ * The comparison toggle, the date range, then Refresh and Settings as icons. They sit on the
+ * canvas toolbar, level with the context chips.
+ */
+export function RangeControls({ preset, comparisonOn, refreshing = false, onPreset, onComparison, onRefresh, onSettings }: {
+  preset: Preset; comparisonOn: boolean; refreshing?: boolean;
+  onPreset: (p: Preset) => void; onComparison: (on: boolean) => void; onRefresh: () => void; onSettings: () => void;
 }) {
   return (
     <div className="gy-range">
@@ -59,6 +50,12 @@ export function RangeControls({ preset, comparisonOn, onPreset, onComparison }: 
           </optgroup>
         ))}
       </select>
+      <button type="button" className="gy-icon-btn" aria-label="Refresh" title="Refresh" onClick={onRefresh} disabled={refreshing}>
+        <RefreshCw size={16} className={refreshing ? 'gy-spin' : undefined} />
+      </button>
+      <button type="button" className="gy-icon-btn" aria-label="Settings" title="Settings" onClick={onSettings}>
+        <SettingsIcon size={16} />
+      </button>
     </div>
   );
 }

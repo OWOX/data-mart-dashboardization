@@ -210,6 +210,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <SettingsPage
           settings={settings}
           onBack={leaveSettings}
+          onRebuild={() => { ctx.ui?.setRoute?.('/'); void build(); }}
+          canRebuild={!!generate}
           error={settingsError}
           onSave={(s) => void saveSettingsAndLeave(s)}
         />
@@ -219,15 +221,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const main = model.classes.find((c) => c.id === model.goal.classId) ?? model.classes[0];
       return (
         <main className="gy-main">
-          <Header
-            title={main?.title ?? 'Gyroscope'}
-            cache={cache}
-            now={now()}
-            refreshing={refreshing}
-            onRefresh={() => void refresh(true)}
-            onRebuild={() => void build()}
-            onSettings={openSettings}
-          />
+          <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
           {outdated && (
             <div className="gy-banner">
@@ -235,7 +229,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
               <button type="button" className="gy-btn" onClick={() => void build()}>Rebuild model</button>
             </div>
           )}
-          <Canvas tools={<RangeControls preset={preset} comparisonOn={comparisonOn} onPreset={setPreset} onComparison={setComparisonOn} />} model={model} cache={cache} visibleIds={visible} marts={marts} compareLabel={COMPARE_LABELS[preset]} period={periodShown} onCompare={(metric, p) => comparePicked(owox, metric, preset, p, now())} comparisonOn={comparisonOn} refreshing={refreshing} onRetry={() => void refresh(true)} />
+          <Canvas tools={<RangeControls preset={preset} comparisonOn={comparisonOn} refreshing={refreshing} onPreset={setPreset} onComparison={setComparisonOn} onRefresh={() => void refresh(true)} onSettings={openSettings} />} model={model} cache={cache} visibleIds={visible} marts={marts} compareLabel={COMPARE_LABELS[preset]} period={periodShown} onCompare={(metric, p) => comparePicked(owox, metric, preset, p, now())} comparisonOn={comparisonOn} refreshing={refreshing} onRetry={() => void refresh(true)} />
         </main>
       );
     }

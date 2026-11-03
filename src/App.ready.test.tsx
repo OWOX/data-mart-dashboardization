@@ -89,7 +89,8 @@ test('Settings and Back set the route', async () => {
 test('Rebuild with unchanged inputs still refreshes the canvas', async () => {
   const { deps, traversals, tick } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  const rebuild = await screen.findByRole('button', { name: 'Rebuild model' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  const rebuild = screen.getByRole('button', { name: 'Rebuild model' });
   tick();
   fireEvent.click(rebuild);
   await waitFor(() => expect(traversals()).toBeGreaterThan(0));
@@ -146,7 +147,8 @@ test('retry after a failed initial load re-runs the load, not the AI build', asy
 test('a blocked rebuild can go back to the existing canvas', async () => {
   const { deps } = await setup({ generate: async () => missingAi });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rebuild model' }));
   expect(await screen.findByRole('heading', { name: "Goal can't be tracked" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to canvas' }));
   expect(await screen.findByRole('combobox', { name: 'Date range' })).toBeInTheDocument();

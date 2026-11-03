@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { PRESET_GROUPS, PRESET_LABELS, type Preset, type Settings } from '../types';
 
-export function SettingsPage({ settings, onSave, onBack, error }: { settings: Settings; onSave: (s: Settings) => void; onBack: () => void; error?: string | null }) {
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, error }: {
+  settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
+  /** Reads the descriptions and schemas again and replaces the model for everyone. */
+  onRebuild?: () => void; canRebuild?: boolean; error?: string | null;
+}) {
   const [threshold, setThreshold] = useState(String(settings.thresholdPct));
   const [preset, setPreset] = useState<Preset>(settings.defaultPreset);
   const [comparison, setComparison] = useState(settings.comparisonDefault);
@@ -47,6 +51,19 @@ export function SettingsPage({ settings, onSave, onBack, error }: { settings: Se
             <button type="button" className="gy-btn" onClick={onBack}>Cancel</button>
           </div>
         </form>
+        {onRebuild && (
+          <section className="dm-card gy-form" aria-labelledby="gy-model-title">
+            <h2 id="gy-model-title" className="gy-form-title">Model</h2>
+            <p className="dm-muted gy-form-note">
+              Reads the project description and the Data Mart schemas again and redraws the canvas for everyone.
+              Use it after changing the metrics table, links or calculated fields.
+            </p>
+            <div className="gy-form-actions">
+              <button type="button" className="gy-btn" onClick={onRebuild} disabled={!canRebuild}>Rebuild model</button>
+            </div>
+            {!canRebuild && <p className="dm-muted gy-form-note">Ask a project admin to map an AI model</p>}
+          </section>
+        )}
       </main>
     </div>
   );
