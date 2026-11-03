@@ -125,3 +125,10 @@ test('the selected range and the comparison window show top right; no driver cou
   expect(container.querySelector('.gy-period-shown')!.textContent).toBe('Oct 1 – Dec 31, 2026vs Jul 1 – Aug 1, 2026');
   expect(container.querySelector('.gy-band-count')).toBeNull();
 });
+
+test('toolbar tools sit in the same row as the context chips', () => {
+  const { container } = render(<Canvas model={model} cache={null} comparisonOn refreshing={false} onRetry={() => {}} tools={<select aria-label="Date range" />} />);
+  const toolbar = container.querySelector('.gy-toolbar')!;
+  expect(toolbar.querySelector('.gy-chips')).not.toBeNull();
+  expect(toolbar.querySelector('.gy-toolbar-end [aria-label="Date range"]')).not.toBeNull();
+});

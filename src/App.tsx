@@ -14,7 +14,7 @@ import {
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { Canvas } from './ui/Canvas';
-import { Header } from './ui/Header';
+import { Header, RangeControls } from './ui/Header';
 import { SettingsPage } from './ui/SettingsPage';
 
 export interface AppDeps {
@@ -221,12 +221,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <main className="gy-main">
           <Header
             title={main?.title ?? 'Gyroscope'}
-            preset={preset}
-            comparisonOn={comparisonOn}
             cache={cache}
             now={now()}
-            onPreset={setPreset}
-            onComparison={setComparisonOn}
+            refreshing={refreshing}
             onRefresh={() => void refresh(true)}
             onRebuild={() => void build()}
             onSettings={openSettings}
@@ -238,7 +235,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
               <button type="button" className="gy-btn" onClick={() => void build()}>Rebuild model</button>
             </div>
           )}
-          <Canvas model={model} cache={cache} visibleIds={visible} marts={marts} compareLabel={COMPARE_LABELS[preset]} period={periodShown} onCompare={(metric, p) => comparePicked(owox, metric, preset, p, now())} comparisonOn={comparisonOn} refreshing={refreshing} onRetry={() => void refresh(true)} />
+          <Canvas tools={<RangeControls preset={preset} comparisonOn={comparisonOn} onPreset={setPreset} onComparison={setComparisonOn} />} model={model} cache={cache} visibleIds={visible} marts={marts} compareLabel={COMPARE_LABELS[preset]} period={periodShown} onCompare={(metric, p) => comparePicked(owox, metric, preset, p, now())} comparisonOn={comparisonOn} refreshing={refreshing} onRetry={() => void refresh(true)} />
         </main>
       );
     }

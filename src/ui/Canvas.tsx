@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Network, Target } from 'lucide-react';
 import type { CacheDoc, ClassNode, DateWindow, MetricDef, Model, Preset, Status } from '../types';
 import { formatWindow } from '../lib/format';
@@ -19,6 +19,8 @@ interface Props {
   compareLabel?: string;
   /** The selected date range and, when comparison is on, the default comparison window, shown top right. */
   period?: { range: DateWindow; comparison: DateWindow | null };
+  /** Controls shown at the end of the toolbar, level with the context chips. */
+  tools?: ReactNode;
   /** Reads a metric over another preset's window, for a period picked on one card. */
   onCompare?: (metric: MetricDef, preset: Preset) => Promise<PickedComparison | null>;
   onRetry: () => void;
@@ -70,7 +72,7 @@ export function curve(a: Box, b: Box): string {
   return `M${x1} ${y1} C${right ? x1 + pull : x1 - pull} ${y1} ${right ? x2 - pull : x2 + pull} ${y2} ${x2} ${y2}`;
 }
 
-export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, marts, compareLabel, period, onCompare, onRetry }: Props) {
+export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, marts, compareLabel, period, tools, onCompare, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const [hover, setHover] = useState<string | null>(null);
@@ -156,10 +158,15 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
             <button key={x.id} type="button" className="gy-chip" aria-pressed={selected.has(x.id)} onClick={() => toggle(x.id)}>{x.name}</button>
           ))}
         </div>
-        {period && (
-          <div className="gy-period-shown num">
-            <span>{formatWindow(period.range)}</span>
-            {period.comparison && <span className="gy-muted">vs {formatWindow(period.comparison)}</span>}
+        {(tools || period) && (
+          <div className="gy-toolbar-end">
+            {tools}
+            {period && (
+              <div className="gy-period-shown num">
+                <span>{formatWindow(period.range)}</span>
+                {period.comparison && <span className="gy-muted">vs {formatWindow(period.comparison)}</span>}
+              </div>
+            )}
           </div>
         )}
       </div>
