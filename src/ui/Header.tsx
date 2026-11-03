@@ -1,5 +1,5 @@
 import { RefreshCw, Settings as SettingsIcon } from 'lucide-react';
-import { formatWindow } from '../lib/format';
+import { formatPeriod } from '../lib/format';
 import type { CacheDoc, CompareChoice, DateWindow, RangeChoice, WeekStart } from '../types';
 import { DateRangePicker } from './DateRangePicker';
 
@@ -23,7 +23,7 @@ interface Props {
 
 export function Header({ title, cache, now, period }: Props) {
   const updated = cache ? `Updated ${relativeTime(cache.refreshedAt, now)}` : 'Not loaded yet';
-  const windows = period ? `${formatWindow(period.range)}${period.comparison ? ` vs ${formatWindow(period.comparison)}` : ''}` : null;
+  const windows = period ? formatPeriod(period.range, period.comparison) : null;
   return (
     <header className="gy-header">
       <div className="label">GYROSCOPE</div>

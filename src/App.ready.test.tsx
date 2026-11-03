@@ -247,7 +247,7 @@ test('the toolbar shows the cut windows when a comparison is cut short', async (
   fireEvent.click(cmp.getByRole('button', { name: 'Monday, September 7, 2026' }));
   fireEvent.click(cmp.getByRole('button', { name: 'Wednesday, September 9, 2026' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–3, 2026 vs Sep 7–9, 2026 · /));
+  await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–3 vs Sep 7–9, 2026 · /));
   expect(document.querySelector('.gy-period-shown')).toBeNull();
 });
 
@@ -273,7 +273,7 @@ test('the week start setting changes the cache key of a week preset', async () =
 test('with a comparison the header shows the days so far, not the whole range', async () => {
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–\d+, 2026 vs Jul 1–\d+, 2026 · /));
+  await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–\d+ vs Jul 1–\d+, 2026 · /));
 });
 
 test('opens on the saved range and comparison', async () => {

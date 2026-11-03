@@ -95,7 +95,7 @@ test('custom comparison longer than the range is shown cut to the matched length
   const cal = within(screen.getByRole('group', { name: 'Comparison calendar' }));
   fireEvent.click(cal.getByRole('button', { name: 'Sunday, November 1, 2026' }));
   fireEvent.click(cal.getByRole('button', { name: 'Monday, November 2, 2026' }));
-  expect(screen.getByRole('dialog').querySelector('.gy-drp-windows')).toHaveTextContent('Nov 2, 2026 vs Nov 1, 2026');
+  expect(screen.getByRole('dialog').querySelector('.gy-drp-windows')).toHaveTextContent('Nov 2 vs Nov 1, 2026');
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onChange.mock.calls[0]![1]).toEqual({ kind: 'custom', window: { from: '2026-11-01', to: '2026-11-02' } });
 });

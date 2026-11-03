@@ -1,7 +1,7 @@
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { addDays, anchorFor, compareOptions, controlLabel, diffDays, resolveRange } from '../lib/dates';
-import { formatWindow } from '../lib/format';
+import { formatPeriod } from '../lib/format';
 import { PRESET_GROUPS, PRESET_LABELS, type CompareChoice, type ComparePreset, type DateWindow, type Day, type RangeChoice, type WeekStart } from '../types';
 import { Calendar, monthStart } from './Calendar';
 
@@ -102,7 +102,7 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
   };
 
   return (
-    <div ref={panelRef} className="gy-drp-panel" tabIndex={-1} role="dialog" aria-label="Date range"
+    <div ref={panelRef} className="gy-drp-panel" data-compare={compareOn} tabIndex={-1} role="dialog" aria-label="Date range"
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       {/* The columns' wrappers don't box their children: each list shares a grid row with its calendar, so it is as tall as the calendar. */}
       <div className="gy-drp-left">
@@ -150,7 +150,7 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
       </div>
       <div className="gy-drp-foot">
         <span className="gy-drp-windows">
-          {formatWindow(drawn)}{compareOn && comparison ? ` vs ${formatWindow(comparison)}` : ''}
+          {formatPeriod(drawn, compareOn ? comparison : null)}
         </span>
         <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
         <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>

@@ -12,13 +12,21 @@ export function formatPct(p: number | null): string {
 const DAY_FMT = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
 /** `Oct 1–7, 2026`, `Oct 1 – Nov 1, 2026`, `Dec 30, 2025 – Jan 5, 2026`; days are UTC 'YYYY-MM-DD'. */
-export function formatWindow(w: { from: string; to: string }): string {
+export function formatWindow(w: { from: string; to: string }, withYear = true): string {
   const a = new Date(`${w.from}T00:00:00Z`), b = new Date(`${w.to}T00:00:00Z`);
   const ya = a.getUTCFullYear(), yb = b.getUTCFullYear();
-  if (w.from === w.to) return `${DAY_FMT.format(a)}, ${ya}`;
+  const y = withYear ? `, ${ya}` : '';
+  if (w.from === w.to) return `${DAY_FMT.format(a)}${y}`;
   if (ya !== yb) return `${DAY_FMT.format(a)}, ${ya} – ${DAY_FMT.format(b)}, ${yb}`;
-  if (a.getUTCMonth() === b.getUTCMonth()) return `${DAY_FMT.format(a)}–${b.getUTCDate()}, ${ya}`;
-  return `${DAY_FMT.format(a)} – ${DAY_FMT.format(b)}, ${ya}`;
+  if (a.getUTCMonth() === b.getUTCMonth()) return `${DAY_FMT.format(a)}–${b.getUTCDate()}${y}`;
+  return `${DAY_FMT.format(a)} – ${DAY_FMT.format(b)}${y}`;
+}
+
+/** A range and what it is compared with; when every day falls in one year, the year is written once, at the end. */
+export function formatPeriod(range: { from: string; to: string }, comparison: { from: string; to: string } | null): string {
+  if (!comparison) return formatWindow(range);
+  const oneYear = new Set([range.from, range.to, comparison.from, comparison.to].map((d) => d.slice(0, 4))).size === 1;
+  return `${formatWindow(range, !oneYear)} vs ${formatWindow(comparison)}`;
 }
 
 /** A signed compact difference: `+12.4K`, `−3`, `0`. */

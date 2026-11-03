@@ -51,7 +51,7 @@ test('the windows and the update time sit next to the title', () => {
   const { container, rerender } = render(<Header title="Customers" cache={cache} now={now} period={period} />);
   const line = container.querySelector('.gy-header-line')!;
   expect(line.firstElementChild).toBe(screen.getByRole('heading', { name: 'Customers' }));
-  expect(line.querySelector('.gy-header-sub')!.textContent).toBe('Oct 1 – Nov 2, 2026 vs Jul 1 – Aug 2, 2026 · Updated 12 min ago');
+  expect(line.querySelector('.gy-header-sub')!.textContent).toBe('Oct 1 – Nov 2 vs Jul 1 – Aug 2, 2026 · Updated 12 min ago');
   rerender(<Header title="Customers" cache={null} now={now} period={{ ...period, comparison: null }} />);
   expect(line.querySelector('.gy-header-sub')!.textContent).toBe('Oct 1 – Nov 2, 2026 · Not loaded yet');
 });
