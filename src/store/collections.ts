@@ -1,4 +1,5 @@
-import { DEFAULT_SETTINGS, PRESET_LABELS, type CacheDoc, type Day, type Model, type Preset, type Settings } from '../types';
+import { toDay } from '../lib/dates';
+import { DEFAULT_SETTINGS, PRESET_LABELS, type CacheDoc, type CompareChoice, type ComparePreset, type DateWindow, type Day, type RangeChoice, type Model, type Preset, type Settings } from '../types';
 
 export interface CollectionsLike {
   collections<T>(name: string): {
@@ -25,6 +26,37 @@ export async function loadSettings(ctx: CollectionsLike): Promise<Settings> {
   };
 }
 export const saveSettings = async (ctx: CollectionsLike, s: Settings): Promise<void> => { await ctx.collections<Settings>('settings').put('project', s); };
+
+const COMPARE_PRESETS: readonly ComparePreset[] = ['previous_period', 'preceding_days', 'year_before'];
+const isDay = (v: unknown): v is Day => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && toDay(Date.parse(`${v}T00:00:00Z`)) === v;
+function windowOf(v: unknown): DateWindow | null {
+  const w = (v ?? {}) as Record<string, unknown>;
+  return isDay(w.from) && isDay(w.to) && w.from <= w.to ? { from: w.from, to: w.to } : null;
+}
+function rangeOf(v: unknown): RangeChoice | null {
+  const r = (v ?? {}) as Record<string, unknown>;
+  if (r.kind === 'preset') return typeof r.preset === 'string' && Object.hasOwn(PRESET_LABELS, r.preset) ? { kind: 'preset', preset: r.preset as Preset } : null;
+  const window = r.kind === 'custom' ? windowOf(r.window) : null;
+  return window ? { kind: 'custom', window } : null;
+}
+function compareOf(v: unknown): CompareChoice | null {
+  const c = (v ?? {}) as Record<string, unknown>;
+  if (c.kind === 'off') return { kind: 'off' };
+  if (c.kind === 'preset') return COMPARE_PRESETS.includes(c.preset as ComparePreset) ? { kind: 'preset', preset: c.preset as ComparePreset } : null;
+  const window = c.kind === 'custom' ? windowOf(c.window) : null;
+  return window ? { kind: 'custom', window } : null;
+}
+
+export interface Preferences { range: RangeChoice | null; compare: CompareChoice | null }
+/** The member's last applied choice; a part that fails validation is null and falls back to the settings default. */
+export async function loadPreferences(ctx: CollectionsLike): Promise<Preferences | null> {
+  const raw = (await ctx.collections<Record<string, unknown>>('preferences').get('current'))?.document;
+  if (!raw || typeof raw !== 'object') return null;
+  const range = rangeOf(raw.range);
+  const compare = compareOf(raw.compare);
+  return range || compare ? { range, compare } : null;
+}
+export const savePreferences = async (ctx: CollectionsLike, p: { range: RangeChoice; compare: CompareChoice }): Promise<void> => { await ctx.collections<unknown>('preferences').put('current', p); };
 
 export async function loadCache(ctx: CollectionsLike, key: string): Promise<CacheDoc | null> {
   return (await ctx.collections<CacheDoc>('cache').get(key))?.document ?? null;

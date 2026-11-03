@@ -6,6 +6,7 @@
   "collections": [
     { "name": "model", "scope": "project" },
     { "name": "cache", "scope": "member" },
-    { "name": "settings", "scope": "project" }
+    { "name": "settings", "scope": "project" },
+    { "name": "preferences", "scope": "member" }
   ]
 }

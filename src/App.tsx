@@ -9,7 +9,7 @@ import { aiGenerate, type Generate } from './model/interpret';
 import { fetchInputs, type Inputs, type OwoxLike } from './owox/sources';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
-  isStale, loadCache, loadModel, loadSettings, saveCache, saveModel, saveSettings, type CollectionsLike,
+  isStale, loadCache, loadModel, loadPreferences, loadSettings, saveCache, saveModel, savePreferences, saveSettings, type CollectionsLike,
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { Canvas } from './ui/Canvas';
@@ -72,10 +72,10 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const load = useCallback(async () => {
     setView({ name: 'loading' });
     try {
-      const [s, m] = await Promise.all([loadSettings(store), loadModel(store)]);
+      const [s, m, prefs] = await Promise.all([loadSettings(store), loadModel(store), loadPreferences(store).catch(() => null)]);
       setSettings(s);
-      setRange(rangeOf(s));
-      setCompare(compareOf(s));
+      setRange(prefs?.range ?? rangeOf(s));
+      setCompare(prefs?.compare ?? compareOf(s));
       setModel(m);
       setView(m ? { name: 'ready' } : { name: 'intro' });
     } catch (e) {
@@ -177,6 +177,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const openSettings = () => { ctx.ui?.setRoute?.('/settings'); setSettingsError(null); setView({ name: 'settings' }); };
   const leaveSettings = () => { ctx.ui?.setRoute?.('/'); setView({ name: 'ready' }); };
   const backToCanvas = model ? () => setView({ name: 'ready' }) : undefined;
+  // Fire and forget: losing the remembered choice must not disturb the canvas.
+  const remember = (r: RangeChoice, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
   const saveSettingsAndLeave = async (s: Settings) => {
     try {
       await saveSettings(store, s);
@@ -184,8 +186,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setSettingsError(`Couldn't save settings: ${describeError(e)}`);
       return;
     }
-    if (s.defaultPreset !== settings.defaultPreset) setRange(rangeOf(s));
-    if (s.comparisonDefault !== settings.comparisonDefault) setCompare(compareOf(s));
+    const nextRange = s.defaultPreset !== settings.defaultPreset ? rangeOf(s) : range;
+    const nextCompare = s.comparisonDefault !== settings.comparisonDefault ? compareOf(s) : compare;
+    if (nextRange !== range || nextCompare !== compare) { setRange(nextRange); setCompare(nextCompare); remember(nextRange, nextCompare); }
     setSettings(s);
     leaveSettings();
   };
@@ -240,7 +243,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             </div>
           )}
           <Canvas
-            tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); }} onRefresh={() => void refresh(true)} onSettings={openSettings} />}
+            tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={openSettings} />}
             model={model} cache={cache} visibleIds={visible} marts={marts}
             compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
             comparisonOn={compare.kind !== 'off'} refreshing={refreshing} onRetry={() => void refresh(true)}

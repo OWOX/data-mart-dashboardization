@@ -156,3 +156,23 @@ test('a Sunday week start shows Su first in both calendars', () => {
     expect(cal.querySelector('.gy-cal-dow')!.textContent).toBe('Su');
   }
 });
+
+test('a preset stays relative: Apply passes the preset while the calendar shows its days', () => {
+  const onChange = setup(Q, OFF);
+  open();
+  fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
+  const cal = within(screen.getByRole('group', { name: 'Range calendar' }));
+  expect(cal.getByRole('button', { name: 'Thursday, October 1, 2026' }).className).toMatch(/is-end/);
+  expect(cal.getByRole('button', { name: 'Saturday, October 31, 2026' }).className).toMatch(/is-end/);
+  expect(cal.getByRole('button', { name: 'Monday, October 12, 2026' }).className).toMatch(/is-mid/);
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onChange).toHaveBeenCalledWith({ kind: 'preset', preset: 'last_month' }, OFF);
+});
+
+test('the separator shows only with Compare on', () => {
+  setup(Q, OFF);
+  open();
+  expect(screen.queryByRole('separator')).toBeNull();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Compare' }));
+  expect(screen.getByRole('separator')).toBeInTheDocument();
+});

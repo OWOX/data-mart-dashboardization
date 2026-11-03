@@ -4,7 +4,7 @@ import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
 import { cacheKey } from './metrics/refresh';
 import { rangeFor } from './lib/dates';
-import { loadModel, memoryCollections, saveCache, saveModel, saveSettings, type CollectionsLike } from './store/collections';
+import { loadModel, loadPreferences, memoryCollections, saveCache, saveModel, savePreferences, saveSettings, type CollectionsLike } from './store/collections';
 import { DEFAULT_SETTINGS, type CacheDoc, type Model } from './types';
 
 const GID = '11111111-1111-1111-1111-111111111111';
@@ -274,4 +274,46 @@ test('with a comparison the header shows the days so far, not the whole range', 
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–\d+, 2026 vs Jul 1–\d+, 2026 · /));
+});
+
+test('opens on the saved range and comparison', async () => {
+  const { deps, store } = await setup({ cache: 'none' });
+  await savePreferences(store, { range: { kind: 'preset', preset: 'last_month' }, compare: { kind: 'off' } });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  expect(await screen.findByRole('button', { name: 'Date range' })).toHaveTextContent(/^Last month$/);
+});
+
+test('applying a range saves it as the member preference', async () => {
+  const { deps, store } = await setup({ cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(async () => expect(await loadPreferences(store)).toEqual({ range: { kind: 'preset', preset: 'last_month' }, compare: { kind: 'preset', preset: 'previous_period' } }));
+});
+
+test('a failed preferences save leaves the canvas working', async () => {
+  const mem = memoryCollections();
+  const store: CollectionsLike = {
+    collections: <T,>(name: string) => {
+      const c = mem.collections<T>(name);
+      return name === 'preferences' ? { ...c, put: async () => { throw new Error('boom'); } } : c;
+    },
+  };
+  const { deps } = await setup({ store, cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent('Last month'));
+  expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
+});
+
+test('changing the default range in settings resets the choice and saves it', async () => {
+  const { deps, store } = await setup({ cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.change(screen.getByLabelText(/Default date range/i), { target: { value: 'last_month' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(async () => expect((await loadPreferences(store))?.range).toEqual({ kind: 'preset', preset: 'last_month' }));
 });

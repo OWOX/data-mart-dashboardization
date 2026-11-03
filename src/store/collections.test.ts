@@ -1,4 +1,4 @@
-import { isStale, loadCache, loadModel, loadSettings, memoryCollections, saveCache, saveModel, saveSettings } from './collections';
+import { isStale, loadCache, loadModel, loadPreferences, loadSettings, memoryCollections, saveCache, saveModel, savePreferences, saveSettings } from './collections';
 import { DEFAULT_SETTINGS, type CacheDoc, type Model } from '../types';
 
 const model = { version: 1, inputHash: 'h', builtAt: 'b1' } as Model;
@@ -42,4 +42,27 @@ test('weekStart is validated', async () => {
   expect((await loadSettings(ctx)).weekStart).toBe('sunday');
   await saveSettings(ctx, { ...DEFAULT_SETTINGS, weekStart: 'friday' as never });
   expect((await loadSettings(ctx)).weekStart).toBe('monday');
+});
+
+test('preferences round trip', async () => {
+  const ctx = memoryCollections();
+  expect(await loadPreferences(ctx)).toBeNull();
+  const p = { range: { kind: 'custom', window: { from: '2026-10-01', to: '2026-10-09' } }, compare: { kind: 'preset', preset: 'year_before' } } as const;
+  await savePreferences(ctx, p);
+  expect(await loadPreferences(ctx)).toEqual(p);
+  await savePreferences(ctx, { range: { kind: 'preset', preset: 'last_month' }, compare: { kind: 'off' } });
+  expect(await loadPreferences(ctx)).toEqual({ range: { kind: 'preset', preset: 'last_month' }, compare: { kind: 'off' } });
+});
+
+test('invalid preference parts fall back to null', async () => {
+  const ctx = memoryCollections();
+  const put = (doc: unknown) => ctx.collections<unknown>('preferences').put('current', doc);
+  await put({ range: { kind: 'preset', preset: 'next_decade' }, compare: { kind: 'preset', preset: 'previous_period' } });
+  expect(await loadPreferences(ctx)).toEqual({ range: null, compare: { kind: 'preset', preset: 'previous_period' } });
+  await put({ range: { kind: 'custom', window: { from: '2026-10-09', to: '2026-10-01' } }, compare: { kind: 'custom', window: { from: '2026-13-01', to: '2026-13-02' } } });
+  expect(await loadPreferences(ctx)).toBeNull();
+  await put({ range: { kind: 'preset', preset: 'constructor' }, compare: { kind: 'preset', preset: 'bogus' } });
+  expect(await loadPreferences(ctx)).toBeNull();
+  await put('junk');
+  expect(await loadPreferences(ctx)).toBeNull();
 });

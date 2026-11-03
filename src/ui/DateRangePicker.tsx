@@ -102,7 +102,7 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
   };
 
   return (
-    <div ref={panelRef} className="gy-drp-panel" style={{ '--gy-rows': compareOn ? 3 : 2 } as React.CSSProperties} tabIndex={-1} role="dialog" aria-label="Date range"
+    <div ref={panelRef} className="gy-drp-panel" style={{ '--gy-rows': compareOn ? 4 : 2, '--gy-chk': compareOn ? 3 : 2 } as React.CSSProperties} tabIndex={-1} role="dialog" aria-label="Date range"
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       {/* Both columns share the grid rows, so each list is as tall as the calendar beside it. */}
       <div className="gy-drp-left">
@@ -121,7 +121,7 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
           Compare
         </label>
         {compareOn && (
-          <div className="gy-drp-presets">
+          <div className="gy-drp-presets gy-drp-cmplist">
             <div className="gy-drp-list">
               {options.map((o) => (
                 <button key={o.preset} type="button" className="gy-drp-preset" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
@@ -137,6 +137,7 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
           </div>
         )}
       </div>
+      {compareOn && <div className="gy-drp-sep" role="separator" />}
       <div className="gy-drp-right">
         <Calendar month={rangeMonth} selected={drawn} weekStart={weekStart} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
         {compareOn && (
