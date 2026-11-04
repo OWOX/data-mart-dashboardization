@@ -274,12 +274,11 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     setModel(m);
     leaveSettings();
   };
+  const ontologyDetails = useMemo(() => (health && health.model === model ? health.details : new Map<string, MartDetail>()), [health, model]);
+  // null: the access check failed, so the editor verifies nothing
+  const ontologyMarts = useMemo(() => (inputs && inputs.model === model && inputs.data ? inputs.data.marts.map((x) => ({ id: x.id, title: x.title })) : null), [inputs, model]);
   const ontologyProps = model && inputs && inputs.model === model
-    ? {
-      model, owox, now, onSave: saveOntologyAndLeave,
-      details: health && health.model === model ? health.details : new Map<string, MartDetail>(),
-      marts: (inputs.data?.marts ?? []).map((x) => ({ id: x.id, title: x.title })),
-    }
+    ? { model, owox, now, onSave: saveOntologyAndLeave, details: ontologyDetails, marts: ontologyMarts }
     : null;
   const saveSettingsAndLeave = async (s: Settings) => {
     try {

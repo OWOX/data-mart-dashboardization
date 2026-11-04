@@ -97,3 +97,24 @@ test('Cancel on the Ontology tab writes nothing and returns to the canvas', asyn
   expect(puts).toHaveLength(0);
   expect(within(document.body).queryByRole('tablist')).toBeNull();
 });
+
+test('switching tabs keeps the draft', async () => {
+  const { deps } = await setup();
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  const box = await screen.findByRole('checkbox', { name: 'Customers' });
+  fireEvent.click(box);
+  fireEvent.click(screen.getByRole('tab', { name: 'General' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  expect(screen.getByRole('checkbox', { name: 'Customers' })).not.toBeChecked();
+});
+
+test('a failed access check shows the note and flags nothing', async () => {
+  const s = await setup();
+  const o = s.deps.owox;
+  const owox = { ...o, dataMarts: { ...o.dataMarts, list: async () => { throw new Error('boom'); } } } as AppDeps['owox'];
+  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={{ ...s.deps, owox }} />);
+  expect(await screen.findByText(/references aren't verified/)).toBeInTheDocument();
+  expect(document.querySelectorAll('.gy-bad')).toHaveLength(0);
+});

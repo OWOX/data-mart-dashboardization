@@ -356,3 +356,5 @@ h2 { margin: 0; }
 .gy-bad { border-color: var(--red); color: var(--red); }
 .gy-bad-text { color: var(--red); font-size: 0.8125rem; }
 @media (max-width: 640px) { .gy-onto-label { width: 100%; } .gy-onto-name { width: 100%; } .gy-onto-pick { flex: 1 1 8rem; } }
+.dm-page-content[hidden] { display: none; }
+.gy-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

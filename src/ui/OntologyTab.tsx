@@ -7,6 +7,7 @@ import { AGGS, FieldPicker, dateFields, martFields, type Option } from './FieldP
 const ROLES: MetricRole[] = ['critical', 'leading', 'lagging', 'unique'];
 const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
 const CALCULATED = 'CALC';
+type DetailStatus = 'ok' | 'loading' | 'unreadable' | 'gone';
 const NO_MART: Option = { value: '', label: 'None' };
 
 /** Goal first, then closest to the goal: the canvas order. */
@@ -33,11 +34,13 @@ export function validateDraft(model: Model): string | null {
 }
 
 /** Field, aggregation and date field of one source. `noDate` is the date select's empty choice. */
-function Source({ label, detail, loading, measure, dateField, noDate, onMeasure, onDate, children }: {
-  label: string; detail: MartDetail | undefined; loading: boolean; measure: Measure; dateField: string; noDate?: Option;
+function Source({ label, detail, status, measure, dateField, noDate, onMeasure, onDate, children }: {
+  label: string; detail: MartDetail | undefined; status: DetailStatus; measure: Measure; dateField: string; noDate?: Option;
   onMeasure: (m: Measure) => void; onDate: (d: string) => void; children?: React.ReactNode;
 }) {
   const infos = martFields(detail?.fields ?? []);
+  // a schema that is still loading, or couldn't be read, flags nothing
+  const unverified = status === 'loading' || status === 'unreadable';
   const toOption = (x: { path: string }): Option => ({ value: x.path, label: x.path });
   const pick = (path: string) => {
     const calc = infos.find((x) => x.path === path)?.field.calculated?.level === 'metric';
@@ -45,13 +48,13 @@ function Source({ label, detail, loading, measure, dateField, noDate, onMeasure,
   };
   return (
     <>
-      <FieldPicker label={`${label} field`} value={measure.field} options={infos.map(toOption)} loading={loading} onChange={pick} />
+      <FieldPicker label={`${label} field`} value={measure.field} options={infos.map(toOption)} unverified={unverified} note={status === 'unreadable' ? "Couldn't read the schema" : undefined} onChange={pick} />
       <FieldPicker
         label={`${label} aggregation`} value={measure.fn ?? CALCULATED}
         options={[{ value: CALCULATED, label: 'Calculated' }, ...AGGS.map((a) => ({ value: a, label: a }))]}
         onChange={(v) => onMeasure({ ...measure, fn: v === CALCULATED ? null : (v as Measure['fn']) })}
       />
-      <FieldPicker label={`${label} date field`} value={dateField} options={dateFields(infos).map(toOption)} none={noDate} loading={loading} onChange={onDate} />
+      <FieldPicker label={`${label} date field`} value={dateField} options={dateFields(infos).map(toOption)} none={noDate} unverified={unverified} onChange={onDate} />
       {children}
     </>
   );
@@ -61,8 +64,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   model: Model;
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
-  /** The Data Marts this member can choose from. */
-  marts: { id: string; title: string }[];
+  /** The Data Marts this member can choose from; null when the access check failed, so nothing is verified. */
+  marts: { id: string; title: string }[] | null;
   owox: OwoxLike;
   now: () => Date;
   onSave: (m: Model) => Promise<void>;
@@ -75,7 +78,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   // schemas fetched here; null: the fetch failed
   const [extra, setExtra] = useState<ReadonlyMap<string, MartDetail | null>>(new Map());
   const requested = useRef(new Set<string>());
-  const accessible = useMemo(() => new Set(marts.map((m) => m.id)), [marts]);
+  const accessible = useMemo(() => (marts ? new Set(marts.map((m) => m.id)) : null), [marts]);
   const original = useMemo(() => new Map(model.metrics.map((m) => [m.id, m])), [model]);
 
   // every Data Mart the draft references gets its schema, from the health check or from a fetch
@@ -87,15 +90,18 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   }, [draft]);
   useEffect(() => {
     for (const id of referenced) {
-      if (details.has(id) || requested.current.has(id) || !accessible.has(id)) continue;
+      if (details.has(id) || requested.current.has(id) || (accessible && !accessible.has(id))) continue;
       requested.current.add(id);
       fetchMartDetail(owox, id).catch(() => null).then((d) => setExtra((p) => new Map(p).set(id, d)));
     }
   }, [referenced, details, accessible, owox]);
 
-  const detailOf = (id: string): { detail: MartDetail | undefined; loading: boolean } => {
+  const detailOf = (id: string): { detail: MartDetail | undefined; status: DetailStatus } => {
     const detail = details.get(id) ?? extra.get(id) ?? undefined;
-    return { detail, loading: !detail && accessible.has(id) && extra.get(id) !== null };
+    if (detail) return { detail, status: 'ok' };
+    // gone only when the access list was read and doesn't hold it
+    if (accessible && !accessible.has(id)) return { detail, status: 'gone' };
+    return { detail, status: extra.get(id) === null ? 'unreadable' : 'loading' };
   };
 
   const patchMetric = (id: string, f: (m: MetricDef) => MetricDef) => setDraft((d) => ({ ...d, metrics: d.metrics.map((m) => (m.id === id ? f(m) : m)) }));
@@ -122,7 +128,11 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     }
   };
 
-  const martOptions: Option[] = marts.map((m) => ({ value: m.id, label: m.title }));
+  // without an access list only the Data Marts already referenced can be offered
+  const martOptions: Option[] = marts
+    ? marts.map((m) => ({ value: m.id, label: m.title }))
+    : [...referenced].map((id) => ({ value: id, label: details.get(id)?.title ?? extra.get(id)?.title ?? id }));
+  const martsUnchecked = marts === null;
 
   const emptyMeasure = (): Measure => ({ field: '', fn: 'SUM' });
 
@@ -130,6 +140,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     <div className="gy-onto">
       <section className="dm-card gy-onto-intro">
         <p className="gy-onto-note">Your model. Changes here only affect what you see.</p>
+        {martsUnchecked && <p className="gy-bad-text">Couldn&apos;t check which Data Marts you can access; references aren&apos;t verified.</p>}
         {onRebuild && (
           <>
             <p className="dm-muted gy-form-note">
@@ -147,7 +158,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
       {canvasOrder(draft).map((c) => {
         const goal = c.id === draft.goal.classId;
         const classMart = detailOf(c.martId);
-        const martGone = !classMart.detail && !classMart.loading;
+        const classNote = classMart.status === 'gone' ? 'Data Mart not found or not accessible' : classMart.status === 'unreadable' ? "Couldn't read the schema" : null;
         const metrics = c.metricIds.map((id) => draft.metrics.find((m) => m.id === id)).filter((m): m is MetricDef => !!m);
         return (
           <section key={c.id} className="dm-card gy-onto-class" aria-label={c.title}>
@@ -160,7 +171,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                 <strong>{c.title}</strong>
               </label>
               {c.contexts.length > 0 && <span className="dm-muted gy-onto-contexts">{c.contexts.map((x) => x.name).join(', ')}</span>}
-              {martGone && <span className="gy-bad-text" role="status">Data Mart not found or not accessible</span>}
+              {classNote && <span className="gy-bad-text">{classNote}</span>}
             </div>
             {metrics.map((m) => {
               const label = original.get(m.id)?.alias ?? m.alias;
@@ -196,7 +207,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                   <div className="gy-onto-line">
                     <span className="gy-onto-label">Plan</span>
                     <FieldPicker
-                      label="Plan data mart" value={plan?.martId ?? ''} options={martOptions} none={NO_MART}
+                      label="Plan data mart" value={plan?.martId ?? ''} options={martOptions} none={NO_MART} unverified={martsUnchecked}
                       onChange={(id) => patchMetric(m.id, (x) => ({
                         ...x, plan: id === '' ? null : { martId: id, measure: emptyMeasure(), dateField: '', shape: x.plan?.shape ?? 'daily' } satisfies PlanDef,
                       }))}
@@ -216,7 +227,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                   <div className="gy-onto-line">
                     <span className="gy-onto-label">Forecast</span>
                     <FieldPicker
-                      label="Forecast data mart" value={forecast?.martId ?? ''} options={martOptions} none={{ value: '', label: 'Extrapolated' }}
+                      label="Forecast data mart" value={forecast?.martId ?? ''} options={martOptions} none={{ value: '', label: 'Extrapolated' }} unverified={martsUnchecked}
                       onChange={(id) => patchMetric(m.id, (x) => ({
                         ...x, forecast: id === '' ? null : { martId: id, measure: emptyMeasure(), dateField: '' } satisfies ForecastDef,
                       }))}

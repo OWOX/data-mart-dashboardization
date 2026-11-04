@@ -23,7 +23,7 @@ const model = (): Model => ({
 const DETAILS = new Map([['a', detail('a', 'Orders')], ['c', detail('c', 'Customers')], ['p', detail('p', 'Targets', [field('goal'), field('stat_day', 'DATE'), field('note', 'STRING')])]]);
 const MARTS = [{ id: 'a', title: 'Orders' }, { id: 'c', title: 'Customers' }, { id: 'p', title: 'Targets' }];
 
-function setup(m: Model = model(), details = DETAILS, marts = MARTS) {
+function setup(m: Model = model(), details = DETAILS, marts: typeof MARTS | null = MARTS) {
   const onSave = vi.fn(async () => undefined);
   const onCancel = vi.fn();
   const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(details), blendables: {} });
@@ -135,4 +135,35 @@ test('a Data Mart picked from the list has its schema fetched', async () => {
   fireEvent.change(row('Revenue').getByLabelText('Plan data mart'), { target: { value: 'p' } });
   await waitFor(() => expect(within(row('Revenue').getByLabelText('Plan field')).getByRole('option', { name: 'goal' })).toBeInTheDocument());
   expect(owox.calls.map((c) => c.path)).toContain('/api/data-marts/p');
+});
+
+test('a failed access check flags nothing, keeps values, and says so once', () => {
+  const m = model();
+  m.metrics[0] = { ...m.metrics[0]!, plan: { martId: 'gone', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day', shape: 'daily' } };
+  setup(m, DETAILS, null);
+  expect(screen.getAllByText("Couldn't check which Data Marts you can access; references aren't verified.")).toHaveLength(1);
+  expect(document.querySelectorAll('.gy-bad')).toHaveLength(0);
+  const plan = row('Revenue').getByLabelText('Plan data mart') as HTMLSelectElement;
+  expect(plan.value).toBe('gone');
+  // only the Data Marts the model already uses are offered
+  expect(within(plan).getAllByRole('option').map((o) => o.getAttribute('value')).sort()).toEqual(['', 'a', 'c', 'gone']);
+  expect((row('Revenue').getByLabelText('Fact field') as HTMLSelectElement).value).toBe('revenue');
+});
+
+test('a schema that fails to load says so instead of flagging missing', async () => {
+  const details = new Map(DETAILS);
+  details.delete('a');
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {} });
+  render(<OntologyTab model={model()} details={details} marts={MARTS} owox={owox} now={() => new Date()} onSave={async () => undefined} onCancel={() => {}} />);
+  await waitFor(() => expect(screen.getAllByText("Couldn't read the schema").length).toBeGreaterThan(0));
+  expect(document.querySelectorAll('.gy-bad')).toHaveLength(0);
+  expect(screen.queryByText(/\(missing\)/)).toBeNull();
+});
+
+test('a class whose Data Mart is gone is flagged', () => {
+  const details = new Map(DETAILS);
+  details.delete('c');
+  setup(model(), details, MARTS.filter((x) => x.id !== 'c'));
+  expect(within(screen.getByRole('region', { name: 'Customers' })).getByText('Data Mart not found or not accessible')).toBeInTheDocument();
+  expect(within(screen.getByRole('region', { name: 'Orders' })).queryByText('Data Mart not found or not accessible')).toBeNull();
 });

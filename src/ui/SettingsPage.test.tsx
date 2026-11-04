@@ -32,7 +32,7 @@ test('the tabs are a tablist that arrow keys move through', () => {
   expect(onto).toHaveAttribute('aria-selected', 'true');
   expect(onto).toHaveFocus();
   expect(onTabChange).toHaveBeenLastCalledWith('ontology');
-  expect(screen.queryByLabelText(/Red when below plan/)).toBeNull();
+  expect(screen.getByLabelText(/Red when below plan/)).not.toBeVisible();
   fireEvent.keyDown(onto, { key: 'ArrowRight' });
   expect(general).toHaveAttribute('aria-selected', 'true');
   fireEvent.keyDown(general, { key: 'End' });
@@ -45,4 +45,9 @@ test('General no longer holds the model rebuild; the Ontology tab does', () => {
   const onRebuild = vi.fn();
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} onRebuild={onRebuild} tab="general" />);
   expect(screen.queryByRole('button', { name: 'Rebuild model' })).toBeNull();
+});
+
+test('every tab points at an existing panel', () => {
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} />);
+  for (const t of screen.getAllByRole('tab')) expect(document.getElementById(t.getAttribute('aria-controls')!)).not.toBeNull();
 });

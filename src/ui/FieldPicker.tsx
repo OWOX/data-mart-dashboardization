@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { DATE_TYPES, type SchemaField } from '../owox/sources';
 import type { AggFn } from '../types';
 
@@ -22,21 +23,30 @@ export interface Option { value: string; label: string }
  * A select whose current value may no longer exist: the old value stays as a disabled "(missing)" option and the
  * select turns red. While the schema is still loading the value is kept as it is, unflagged.
  */
-export function FieldPicker({ label, value, options, none, loading = false, onChange }: {
-  label: string; value: string; options: Option[]; none?: Option; loading?: boolean; onChange: (v: string) => void;
+export function FieldPicker({ label, value, options, none, unverified = false, note, onChange }: {
+  label: string; value: string; options: Option[]; none?: Option; onChange: (v: string) => void;
+  /** The schema or the access list isn't known (loading, unreadable, not checked): nothing is flagged. */
+  unverified?: boolean;
+  /** Shown beside the select, e.g. why it couldn't be verified. */
+  note?: string;
 }) {
+  const hint = useId();
   const known = options.some((o) => o.value === value);
   const empty = value === '' || (none !== undefined && value === none.value);
-  const missing = !loading && !known && !empty;
+  const missing = !unverified && !known && !empty;
+  const text = missing ? `${value} no longer exists` : note;
   return (
-    <select
-      className={`gy-select gy-onto-pick${missing ? ' gy-bad' : ''}`} aria-label={label} aria-invalid={missing || undefined}
-      title={missing ? `${value} no longer exists` : undefined}
-      value={value} onChange={(e) => onChange(e.target.value)}
-    >
-      {none ? <option value={none.value}>{none.label}</option> : value === '' && <option value="" disabled>Select…</option>}
-      {!known && !empty && (loading ? <option value={value}>{value}</option> : <option value={value} disabled>{value} (missing)</option>)}
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    <>
+      <select
+        className={`gy-select gy-onto-pick${missing ? ' gy-bad' : ''}`} aria-label={label} aria-invalid={missing || undefined}
+        aria-describedby={text ? hint : undefined} title={text}
+        value={value} onChange={(e) => onChange(e.target.value)}
+      >
+        {none ? <option value={none.value}>{none.label}</option> : value === '' && <option value="" disabled>Select…</option>}
+        {!known && !empty && (unverified ? <option value={value}>{value}</option> : <option value={value} disabled>{value} (missing)</option>)}
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      {text && <span id={hint} className={missing ? 'gy-sr' : 'gy-bad-text'}>{text}</span>}
+    </>
   );
 }

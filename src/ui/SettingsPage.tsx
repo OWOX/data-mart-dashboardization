@@ -12,7 +12,7 @@ const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'Gen
 export interface OntologyProps {
   model: Model;
   details: ReadonlyMap<string, MartDetail>;
-  marts: { id: string; title: string }[];
+  marts: { id: string; title: string }[] | null;
   owox: OwoxLike;
   now: () => Date;
   onSave: (m: Model) => Promise<void>;
@@ -59,12 +59,12 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
           >{t.label}</button>
         ))}
       </div>
-      <main className="dm-page-content" role="tabpanel" id={`gy-panel-${tab}`} aria-labelledby={`gy-tab-${tab}`}>
-        {tab === 'ontology' ? (
-          ontology
-            ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} />
-            : <><LoadingLine /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>
-        ) : (
+      <div className="dm-page-content" role="tabpanel" id="gy-panel-ontology" aria-labelledby="gy-tab-ontology" hidden={tab !== 'ontology'}>
+        {ontology
+          ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} />
+          : <><LoadingLine /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
+      </div>
+      <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>
         <form className="dm-card gy-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
           <p className="dm-muted gy-form-note">These settings apply to everyone in the project.</p>
           <div className="gy-field">
@@ -99,8 +99,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
             <button type="button" className="gy-btn" onClick={onBack}>Cancel</button>
           </div>
         </form>
-        )}
-      </main>
+      </div>
     </div>
   );
 }
