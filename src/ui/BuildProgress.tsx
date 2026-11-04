@@ -35,7 +35,8 @@ export function BuildProgress({ steps }: { steps: BuildStep[] }) {
       <div className="gy-build">
         <section aria-label="Reading">
           <h2 className="gy-build-h">Reading</h2>
-          <p className="gy-sr" aria-live="polite">{current ? `Now: ${label(current)}` : ''}</p>
+          {/* announces the step, not every Data Mart tick */}
+          <p className="gy-sr" aria-live="polite">{current ? `Now: ${current.what === 'marts' ? 'Data Marts' : label(current)}` : ''}</p>
           <ul className="gy-build-list">
             {reads.map((r) => (
               <li key={r.what} data-done={r.finished}>
