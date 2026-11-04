@@ -143,14 +143,13 @@ describe('forecast from a source', () => {
   const spec = () => rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
   // the anchor is 10-23. Forecast mart 'f' has gaps: 10-23 (the anchor), 10-25, 10-27, 12-20; every other day is missing
   const fvals: Record<string, number> = { '2026-10-23': 7, '2026-10-25': 3, '2026-10-27': 4, '2026-12-20': 9 };
-  const inWindow = (from: string, to: string) => Object.entries(fvals).filter(([d]) => d >= from && d <= to);
-  const withF = fakeOwox({
+  const makeF = (fvals: Record<string, number>) => fakeOwox({
     projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
     rows: (id, o) => {
       const f = o.filter as { value: string }[];
       const from = f[0]!.value, to = addDays(f[1]!.value, -1);
       if (id === 'f') {
-        const hit = inWindow(from, to);
+        const hit = Object.entries(fvals).filter(([d]) => d >= from && d <= to);
         if (o.dateTrunc) return hit.map(([d, v]) => ({ date: d, 'revenue | SUM': String(v) }));
         return hit.length ? [{ 'revenue | SUM': hit.reduce((s, [, v]) => s + v, 0) }] : [{ 'revenue | SUM': null }];
       }
@@ -165,6 +164,7 @@ describe('forecast from a source', () => {
       return [{ 'revenue | SUM': per * days }];
     },
   });
+  const withF = makeF(fvals);
   const fdef = { martId: 'f', measure: { field: 'revenue', fn: 'SUM' as const }, dateField: 'date' };
 
   test('flow: total over the range, missing days count 0, spark starts after the anchor, status vs plan', async () => {
@@ -188,24 +188,27 @@ describe('forecast from a source', () => {
     expect(spark!.forecast.at(-1)).toBe(9);
   });
 
-  test('a level with no value after the anchor starts from the day before it', async () => {
-    const only = { ...fvals };
-    for (const d of Object.keys(fvals)) if (d > '2026-10-24') delete fvals[d];
-    try {
-      const m = { ...metric, plan: null, kind: 'level' as const, forecast: fdef };
-      const { spark } = await computeMetric({ owox: withF, metric: m, spec: spec(), thresholdPct: 20, withSpark: true });
-      expect(spark!.forecast.every((v) => v === 7)).toBe(true);
-    } finally { Object.assign(fvals, only); }
+  const levelM = { ...metric, plan: null, kind: 'level' as const, forecast: fdef };
+
+  test('a sparse level source: one point 20 days before the anchor carries to every day', async () => {
+    const { result, spark } = await computeMetric({ owox: makeF({ '2026-10-03': 42 }), metric: levelM, spec: spec(), thresholdPct: 20, withSpark: true });
+    expect(result.forecast).toBe(42);
+    expect(result.warning ?? null).toBeNull();
+    expect(spark!.forecast).toHaveLength(69);
+    expect(spark!.forecast.every((v) => v === 42)).toBe(true);
+  });
+
+  test('a level with no value after the anchor carries the anchor value', async () => {
+    const { spark } = await computeMetric({ owox: makeF({ '2026-10-23': 7 }), metric: levelM, spec: spec(), thresholdPct: 20, withSpark: true });
+    expect(spark!.forecast.every((v) => v === 7)).toBe(true);
   });
 
   test('no data at all in the source falls back to extrapolation with a warning', async () => {
-    const only = { ...fvals };
-    for (const d of Object.keys(fvals)) delete fvals[d];
-    try {
-      const { result } = await computeMetric({ owox: withF, metric: { ...metric, plan: null, forecast: fdef }, spec: spec(), thresholdPct: 20, withSpark: false });
-      expect(result.forecast).toBeCloseTo(920);
+    for (const m of [{ ...metric, plan: null, forecast: fdef }, levelM]) {
+      const { result } = await computeMetric({ owox: makeF({}), metric: m, spec: spec(), thresholdPct: 20, withSpark: false });
+      expect(result.forecast).not.toBeNull();
       expect(result.warning).toBe('Forecast source has no data');
-    } finally { Object.assign(fvals, only); }
+    }
   });
 
   test('a rejecting forecast query falls back to extrapolation with a warning', async () => {

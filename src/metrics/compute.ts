@@ -50,17 +50,22 @@ export async function computeMetric(args: {
       if (metric.forecast) {
         const fc = metric.forecast;
         try {
-          // the latest days are what matters, so the row cap must never cut them
-          const fcDaily = await queryDaily(owox, fc.martId, fc.measure, fc.dateField, { from: maxDay(range.from, addDays(anchor, -1)), to: range.to });
+          // the latest days are what matters, so the row cap must never cut them; a sparse level source
+          // (month-start snapshots) needs a long lookback to find the value it carries forward
+          const from = maxDay(range.from, addDays(anchor, kind === 'flow' ? -1 : -89));
+          const fcDaily = await queryDaily(owox, fc.martId, fc.measure, fc.dateField, { from, to: range.to });
           forecast = kind === 'flow' ? await queryTotal(owox, fc.martId, fc.measure, fc.dateField, range) : levelAt(fcDaily, range);
           if (forecast === null) throw new NoData();
-          // a level carries its last value over a missing day, a flow counts none
-          let prev = kind === 'flow' ? 0 : levelAt(fcDaily, { from: addDays(anchor, -1), to: anchor }) ?? 0;
-          future = eachDay({ from: addDays(anchor, 1), to: range.to }).map((d) => {
-            const v = fcDaily.get(d);
-            if (v !== undefined) prev = v;
-            return kind === 'flow' ? v ?? 0 : prev;
-          });
+          const days = eachDay({ from: addDays(anchor, 1), to: range.to });
+          if (kind === 'flow') {
+            future = days.map((d) => fcDaily.get(d) ?? 0);
+          } else {
+            // a level carries its last value over a missing day; days before its first point take that point
+            let prev = levelAt(fcDaily, { from, to: anchor });
+            const carried = days.map((d) => { prev = fcDaily.get(d) ?? prev; return prev; });
+            const first = carried.find((v) => v !== null) ?? forecast;
+            future = carried.map((v) => v ?? first);
+          }
           forecastMeasure = fc.measure;
           sourced = true;
         } catch (e) {
