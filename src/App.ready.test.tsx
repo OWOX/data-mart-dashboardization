@@ -69,10 +69,11 @@ test('a cache from another anchor triggers a refresh', async () => {
   await waitFor(() => expect(traversals()).toBeGreaterThan(0));
 });
 
-test('changed inputs show the out-of-date banner', async () => {
+test('changed inputs show the issues icon, and its layer the out-of-date group', async () => {
   const { deps } = await setup({ inputHash: 'old' });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  expect(await screen.findByText('The descriptions changed. Rebuild to see proposed changes')).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
+  expect(screen.getByText('The descriptions changed since this model was built.')).toBeInTheDocument();
 });
 
 test('Settings and Back set the route', async () => {
@@ -156,13 +157,12 @@ test('Rebuild is off while the draft has unsaved edits', async () => {
   expect(screen.getByText('Save or cancel your edits first')).toBeInTheDocument();
 });
 
-const NOTICE = 'The descriptions changed. Rebuild to see proposed changes';
-
 test('Closing a rebuild with no differences stores the new input hash, keeps editedAt and clears the notice', async () => {
   const { deps, store } = await setup({ inputHash: 'old' });
   const before = await loadOntology(store);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  fireEvent.click(await screen.findByRole('button', { name: NOTICE }));
+  fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   await screen.findByText('The model already matches the descriptions.');
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -172,21 +172,22 @@ test('Closing a rebuild with no differences stores the new input hash, keeps edi
   expect(saved).toEqual({ ...before, inputHash: saved?.inputHash });
   expect(saved?.editedAt).toBe(before?.editedAt);
   await new Promise((r) => setTimeout(r, 50));
-  expect(screen.queryByText(NOTICE)).toBeNull();
+  expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
 });
 
 test('Discard hides the out-of-date notice for this session without touching the doc', async () => {
   const { deps, store } = await setup({ inputHash: 'old' });
   const before = await loadOntology(store);
   render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => renamedAi }} />);
-  fireEvent.click(await screen.findByRole('button', { name: NOTICE }));
+  fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   await screen.findByRole('checkbox', { name: 'Revenue: name' });
   fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Back' }));
   await screen.findByRole('button', { name: 'Date range' });
   await new Promise((r) => setTimeout(r, 50));
-  expect(screen.queryByText(NOTICE)).toBeNull();
+  expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
   expect(await loadOntology(store)).toEqual(before);
 });
 
@@ -204,21 +205,23 @@ test('Discarding a proposal that adds a class hides the notice', async () => {
   const { deps, store } = await setup({ withCustomers: true });
   await dropCustomers(store);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  fireEvent.click(await screen.findByRole('button', { name: NOTICE }));
+  fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   await screen.findByRole('checkbox', { name: 'Add class Customers' });
   fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Back' }));
   await screen.findByRole('button', { name: 'Date range' });
   await new Promise((r) => setTimeout(r, 50));
-  expect(screen.queryByText(NOTICE)).toBeNull();
+  expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
 });
 
 test('a partial Apply that leaves a new class unchecked does not bring the notice back', async () => {
   const { deps, store } = await setup({ withCustomers: true });
   await dropCustomers(store);
   render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => renamedAi }} />);
-  fireEvent.click(await screen.findByRole('button', { name: NOTICE }));
+  fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Add class Customers' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
@@ -227,7 +230,7 @@ test('a partial Apply that leaves a new class unchecked does not bring the notic
   expect(saved?.classes.some((c) => c.martId === CID)).toBe(false);
   expect(saved?.inputHash).not.toBe('old');
   await new Promise((r) => setTimeout(r, 100));
-  expect(screen.queryByText(NOTICE)).toBeNull();
+  expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
 });
 
 test('saving a changed threshold refreshes; an unchanged one does not', async () => {
@@ -298,14 +301,14 @@ test('modifiedAt churn alone shows no banner; a class-mart formula change does',
   await screen.findByRole('button', { name: 'Date range' });
   await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
   await new Promise((r) => setTimeout(r, 50));
-  expect(screen.queryByText('The descriptions changed. Rebuild to see proposed changes')).toBeNull();
+  expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
 });
 
 test('a formula change in a class mart shows the banner', async () => {
   const { deps, d } = await setup();
   d.details[GID]!.fields.push({ name: 'x', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'SUM(1)', level: 'column' } });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  expect(await screen.findByText('The descriptions changed. Rebuild to see proposed changes')).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: '1 issue' })).toBeInTheDocument();
 });
 
 test('a refused contexts call skips the out-of-date check', async () => {
@@ -315,7 +318,7 @@ test('a refused contexts call skips the out-of-date check', async () => {
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await screen.findByRole('button', { name: 'Date range' });
   await new Promise((r) => setTimeout(r, 50));
-  expect(screen.queryByText('The descriptions changed. Rebuild to see proposed changes')).toBeNull();
+  expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
 });
 
 test('a class whose mart the member cannot see is not rendered or queried', async () => {
@@ -675,20 +678,21 @@ test('a failed access check shows no class rather than every class', async () =>
   expect(screen.getAllByText("You don't have access to this Data Mart").length).toBeGreaterThan(0);
 });
 
-test('a broken reference shows the banner with its count, and the link opens Settings', async () => {
+test('a broken reference shows the icon with its count, and the layer link opens Settings', async () => {
   const { deps, d } = await setup();
   d.details[GID]!.fields.splice(1, 1);
   const { ctx, setRoute } = ctxWith();
   render(<App ctx={ctx} deps={deps} />);
-  expect(await screen.findByText(/1 reference in the model is broken\./)).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
+  expect(screen.getByRole('dialog', { name: 'Issues' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Review in Ontology Model' }));
   expect(setRoute).toHaveBeenCalledWith('/settings/ontology');
   expect(screen.getByRole('tab', { name: 'Ontology Model' })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('no banner while the model matches its schemas', async () => {
+test('no issues icon while the model matches its schemas', async () => {
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await screen.findByRole('button', { name: 'Date range' });
-  expect(screen.queryByText(/broken/)).toBeNull();
+  expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
 });

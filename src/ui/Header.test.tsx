@@ -68,3 +68,65 @@ test('the loading step replaces the update time after the period', () => {
   rerender(<Header title="T" cache={cache} now={new Date('2026-10-24T10:00:00Z')} period={period} status={null} />);
   expect(sub.textContent).toMatch(/ · Updated 1 h ago$/);
 });
+
+describe('issues icon', () => {
+  const issue = { classTitle: 'Customers', metricName: 'ARR', text: 'The field "arr" no longer exists.' };
+  const withNotices = (over: Partial<NonNullable<Parameters<typeof Header>[0]['notices']>> = {}) => (
+    <Header title="Customers" cache={null} now={new Date()} notices={{ issues: [issue], outdated: false, onReview: () => {}, ...over }} />
+  );
+
+  test('no icon without notices', () => {
+    render(<Header title="Customers" cache={null} now={new Date()} notices={{ issues: [], outdated: false, onReview: () => {} }} />);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  test('the name carries the count', () => {
+    const { rerender } = render(withNotices());
+    expect(screen.getByRole('button', { name: '1 issue' })).toHaveAttribute('aria-haspopup', 'dialog');
+    rerender(withNotices({ issues: [issue, issue], outdated: true }));
+    expect(screen.getByRole('button', { name: '3 issues' })).toBeInTheDocument();
+  });
+
+  test('clicking opens the dialog with each issue', () => {
+    render(withNotices());
+    const icon = screen.getByRole('button', { name: '1 issue' });
+    expect(icon).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(icon);
+    const dialog = screen.getByRole('dialog', { name: 'Issues' });
+    expect(icon).toHaveAttribute('aria-expanded', 'true');
+    expect(dialog).toHaveTextContent('Broken references');
+    expect(dialog).toHaveTextContent('Customers · ARR');
+    expect(dialog).toHaveTextContent('The field "arr" no longer exists.');
+    expect(dialog).not.toHaveTextContent('Model out of date');
+  });
+
+  test('Escape closes it and focus returns to the icon; so does an outside pointerdown', () => {
+    render(withNotices());
+    const icon = screen.getByRole('button', { name: '1 issue' });
+    fireEvent.click(icon);
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Issues' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(icon).toHaveFocus();
+    fireEvent.click(icon);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('the out-of-date group shows only when the notice would', () => {
+    const { rerender } = render(withNotices({ outdated: true }));
+    fireEvent.click(screen.getByRole('button', { name: '2 issues' }));
+    expect(screen.getByText('The descriptions changed since this model was built.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Rebuild to see proposed changes' })).toBeInTheDocument();
+    rerender(withNotices({ outdated: false }));
+    expect(screen.queryByText('The descriptions changed since this model was built.')).toBeNull();
+  });
+
+  test('the footer link and the rebuild button open the Ontology tab', () => {
+    const onReview = vi.fn();
+    render(withNotices({ outdated: true, onReview }));
+    fireEvent.click(screen.getByRole('button', { name: '2 issues' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review in Ontology Model' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
+    expect(onReview).toHaveBeenCalledTimes(2);
+  });
+});

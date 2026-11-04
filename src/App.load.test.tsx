@@ -80,7 +80,7 @@ test('seeding drops classes the member cannot access and rehashes for the kept o
   expect(saved.edges.some((e) => e.to === 'ghost')).toBe(false);
   expect(saved.metrics.some((x) => x.martId === 'ghost')).toBe(false);
   expect(saved.inputHash).toBe(model.inputHash);
-  await waitFor(() => expect(screen.queryByText('The descriptions changed. Rebuild to see proposed changes')).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('button', { name: /issue/ })).toBeNull());
 });
 
 test('if the hash cannot be recomputed the project hash is kept', async () => {

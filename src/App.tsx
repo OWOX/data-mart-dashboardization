@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PluginContext } from '@owox/plugin-sdk';
-import { TriangleAlert } from 'lucide-react';
 import type { Blocked as BlockedInfo, CacheDoc, CardCache, CompareChoice, Model, RangeChoice, Settings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { compareLabel, resolveRange } from './lib/dates';
@@ -349,24 +348,22 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (!model) return null;
       const status = loading || refreshing ? (progress ? `Loading metrics ${progress.done} of ${progress.total}` : inputsReady ? 'Loading metrics…' : 'Reading Data Marts…') : null;
       const main = model.classes.find((c) => c.id === model.goal.classId) ?? model.classes[0];
+      const showOutdated = outdated !== null && outdated !== model.inputHash && outdated !== dismissedHash;
+      const notices = issuesNow.length > 0 || showOutdated ? {
+        issues: issuesNow.map((i) => ({
+          classTitle: model.classes.find((c) => c.id === i.classId)?.title ?? i.classId,
+          metricName: i.metricId ? (model.metrics.find((m) => m.id === i.metricId)?.alias ?? null) : null,
+          text: i.text,
+        })),
+        outdated: showOutdated,
+        onReview: () => openSettings('ontology'),
+      } : undefined;
       return (
         <main className="gy-main">
-          <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} status={status} />
+          <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} status={status} notices={notices} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
           {seedNote && <p className="gy-muted">{seedNote}</p>}
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
-          {issuesNow.length > 0 && (
-            <div className="gy-banner">
-              <TriangleAlert size={16} className="gy-warn" aria-label="Warning" />
-              <span>{issuesNow.length} {issuesNow.length === 1 ? 'reference in the model is' : 'references in the model are'} broken.</span>
-              <button type="button" className="gy-link" onClick={() => openSettings('ontology')}>Review in Ontology Model</button>
-            </div>
-          )}
-          {outdated !== null && outdated !== model.inputHash && outdated !== dismissedHash && (
-            <div className="gy-banner">
-              <button type="button" className="gy-link" onClick={() => openSettings('ontology')}>The descriptions changed. Rebuild to see proposed changes</button>
-            </div>
-          )}
           <Canvas
             tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}
             model={model} cache={cache} visibleIds={visible} missingIds={missingIds} marts={marts}
