@@ -5,6 +5,7 @@
   "credentials": ["ai"],
   "collections": [
     { "name": "model", "scope": "project" },
+    { "name": "ontology", "scope": "member" },
     { "name": "cache", "scope": "member" },
     { "name": "settings", "scope": "project" },
     { "name": "preferences", "scope": "member" }

@@ -33,6 +33,9 @@ export interface Measure { field: string; fn: AggFn | null }
 
 export interface PlanDef { martId: string; measure: Measure; dateField: string; shape: PlanShape }
 
+/** A forecast fed from another series than the metric's own fact series. */
+export interface ForecastDef { martId: string; measure: Measure; dateField: string }
+
 export interface MetricDef {
   id: string;                // `${martId}:${measure.field}:${fn ?? 'calc'}`
   martId: string;
@@ -44,6 +47,8 @@ export interface MetricDef {
   source: 'project' | string; // 'project' or a context id; 'schema' for unique count
   isUniqueCount: boolean;
   plan: PlanDef | null;
+  shown: boolean;            // appears on the card
+  forecast: ForecastDef | null; // null: extrapolate from the fact series
   /** The measure is a calculated field of the mart: only such a metric can colour a line. Absent on models built before it. */
   calculated?: boolean;
   description?: string | null; // the measure field's schema description; absent on models built before it
@@ -59,16 +64,18 @@ export interface ClassNode {
   depth: number;             // 0 = main class
   keyMetricId: string | null;
   metricIds: string[];       // key first, then badges in role order
+  shown: boolean;            // appears on the canvas; the goal class is always drawn
 }
 
 /** `fields` are the calculated fields of `from` whose formulas reference `to`; absent on models built before it. */
 export interface Edge { from: string; to: string; fields?: string[] }
 
 export interface Model {
-  version: 1;
+  version: 2;
   inputHash: string;
   builtAt: string;           // ISO timestamp
   builtBy: string;           // ctx.userId
+  editedAt: string | null;   // last manual edit; with builtAt it versions the cache
   goal: { classId: string; metricId: string | null; goalMartId: string; viaFallback: boolean };
   classes: ClassNode[];
   edges: Edge[];
@@ -114,6 +121,7 @@ export interface CardCache { metrics: Record<string, MetricResult>; spark: Serie
 export interface CacheDoc {
   modelHash: string;
   builtAt: string;           // model.builtAt the doc was computed for
+  editedAt: string | null;   // model.editedAt the doc was computed for
   thresholdPct: number;      // threshold the statuses were computed with
   anchor: Day;
   refreshedAt: string;

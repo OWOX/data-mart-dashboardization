@@ -114,7 +114,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     const seen = new Set<string>();
     const sorted = ranked.filter((m) => !seen.has(m.id) && !!seen.add(m.id));
     metrics.push(...sorted);
-    classes.push({ id: n.id, martId: n.id, title: n.title, contexts: n.contexts, depth, keyMetricId: sorted[0]?.id ?? null, metricIds: sorted.map((m) => m.id) });
+    classes.push({ id: n.id, martId: n.id, title: n.title, contexts: n.contexts, depth, keyMetricId: sorted[0]?.id ?? null, metricIds: sorted.map((m) => m.id), shown: true });
   }
   classes.sort((a, b) => a.depth - b.depth || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
   metrics.sort((a, b) => a.id.localeCompare(b.id));
@@ -122,10 +122,11 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   return {
     ok: true,
     model: {
-      version: 1,
+      version: 2,
       inputHash: inputHash(inputs, nodes.filter((n) => depths.has(n.id))),
       builtAt: now.toISOString(),
       builtBy: userId,
+      editedAt: null,
       goal: { classId: main.id, metricId: main.viaFallback ? null : v.goal.metricId, goalMartId: v.goal.martId, viaFallback: main.viaFallback },
       classes,
       edges: edges.filter((e) => depths.has(e.from) && depths.has(e.to)).map((e) => ({ from: e.from, to: e.to, fields: e.fields })),

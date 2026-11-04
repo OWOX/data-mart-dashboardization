@@ -4,7 +4,7 @@ import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
 import { cacheKey } from './metrics/refresh';
 import { rangeFor } from './lib/dates';
-import { loadModel, loadPreferences, memoryCollections, saveCache, saveModel, savePreferences, saveSettings, type CollectionsLike } from './store/collections';
+import { loadOntology, loadPreferences, memoryCollections, saveCache, saveOntology, savePreferences, saveSettings, type CollectionsLike } from './store/collections';
 import { DEFAULT_SETTINGS, type CacheDoc, type Model } from './types';
 
 const GID = '11111111-1111-1111-1111-111111111111';
@@ -38,11 +38,11 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
   const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW });
   if (!built.ok) throw new Error('fixture');
   const model: Model = { ...built.model, inputHash: opts.inputHash ?? built.model.inputHash };
-  await saveModel(store, model);
+  await saveOntology(store, model);
   const cache = opts.cache ?? 'fresh';
   if (cache !== 'none') {
     const doc: CacheDoc = {
-      modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct: 20,
+      modelHash: model.inputHash, builtAt: model.builtAt, editedAt: model.editedAt, thresholdPct: 20,
       anchor: cache === 'fresh' ? rangeFor('this_quarter', NOW).anchor : '2000-01-01',
       refreshedAt: '2026-10-24T09:00:00Z', key: 'this_quarter:previous_period', comparison: true, cards: {},
     };
@@ -257,8 +257,8 @@ test('the week start setting changes the cache key of a week preset', async () =
     await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'this_week', comparisonDefault: false, weekStart });
     // a fresh doc under the Monday key only
     const monday = cacheKey({ kind: 'preset', preset: 'this_week' }, { kind: 'off' });
-    const m = (await loadModel(store))!;
-    await saveCache(store, monday, { modelHash: m.inputHash, builtAt: m.builtAt, thresholdPct: 20, anchor: rangeFor('this_week', NOW).anchor, refreshedAt: '2026-10-24T09:00:00Z', key: monday, comparison: false, cards: {} });
+    const m = (await loadOntology(store))!;
+    await saveCache(store, monday, { modelHash: m.inputHash, builtAt: m.builtAt, editedAt: m.editedAt, thresholdPct: 20, anchor: rangeFor('this_week', NOW).anchor, refreshedAt: '2026-10-24T09:00:00Z', key: monday, comparison: false, cards: {} });
     render(<App ctx={ctxWith().ctx} deps={deps} />);
     return traversals;
   };

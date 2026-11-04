@@ -8,6 +8,7 @@ const metric: MetricDef = {
   id: 'm:revenue:SUM', martId: 'm', alias: 'Revenue', measure: { field: 'revenue', fn: 'SUM' }, kind: 'flow',
   dateField: 'date', role: 'critical', source: 'project', isUniqueCount: false,
   plan: { martId: 'p', measure: { field: 'revenue', fn: 'SUM' }, dateField: 'date', shape: 'daily' },
+  shown: true, forecast: null,
 };
 
 // 10/day of fact for every day queried; plan 12/day.

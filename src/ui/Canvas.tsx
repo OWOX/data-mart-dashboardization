@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Network, Target } from 'lucide-react';
 import type { CacheDoc, ClassNode, Model, Status } from '../types';
+import { shownModel } from '../model/shown';
 import { Card, type MartInfo } from './Card';
 import { LoadingLine, type LoadingProgress } from './LoadingLine';
 import { contextsOf, layoutFor, type Connector } from './layout';
@@ -78,7 +79,10 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
   const ref = useRef<HTMLDivElement>(null);
   // Classes the member can't see are dropped like filtered ones; the main card stays to say so.
   const model = useMemo(
-    () => (visibleIds ? { ...full, classes: full.classes.filter((c) => visibleIds.has(c.id) || c.id === full.goal.classId) } : full),
+    () => {
+      const m = shownModel(full);
+      return visibleIds ? { ...m, classes: m.classes.filter((c) => visibleIds.has(c.id) || c.id === m.goal.classId) } : m;
+    },
     [full, visibleIds],
   );
   const contexts = useMemo(() => contextsOf(model), [model]);

@@ -2,6 +2,7 @@ import type { CacheDoc, CardCache, MetricResult, Model, RangeChoice, RangeSpec, 
 import { runPool } from '../lib/pool';
 import type { OwoxLike } from '../owox/sources';
 import { rangeKey, compareKey } from '../lib/dates';
+import { shownModel } from '../model/shown';
 import { computeMetric } from './compute';
 
 const sig4 = (n: number): number => Number(n.toPrecision(4));
@@ -31,7 +32,8 @@ export async function refreshCanvas(args: {
   /** Called after each metric with the cards built so far. */
   onPartial?: (cards: Record<string, CardCache>) => void;
 }): Promise<CacheDoc> {
-  const { owox, model, spec, key, thresholdPct, visibleIds, onProgress, onPartial } = args;
+  const { owox, model: full, spec, key, thresholdPct, visibleIds, onProgress, onPartial } = args;
+  const model = shownModel(full);
   const classes = model.classes.filter((c) => !visibleIds || visibleIds.has(c.id));
   const byId = new Map(model.metrics.map((m) => [m.id, m]));
   const keyIds = new Set(classes.map((c) => c.keyMetricId).filter((id): id is string => !!id));
@@ -66,7 +68,7 @@ export async function refreshCanvas(args: {
 
   const cards = build(false);
   return trimToSize({
-    modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct, anchor: spec.anchor,
+    modelHash: full.inputHash, builtAt: full.builtAt, editedAt: full.editedAt, thresholdPct, anchor: spec.anchor,
     refreshedAt: new Date().toISOString(), key, comparison: spec.comparison !== null, cards,
   });
 }

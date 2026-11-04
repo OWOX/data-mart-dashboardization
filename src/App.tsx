@@ -4,12 +4,13 @@ import type { Blocked as BlockedInfo, CacheDoc, CardCache, CompareChoice, Model,
 import { DEFAULT_SETTINGS } from './types';
 import { compareLabel, resolveRange } from './lib/dates';
 import { describeError } from './lib/errors';
+import { seedFrom } from './model/seed';
 import { buildModel, currentInputHash } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
 import { fetchInputs, type Inputs, type OwoxLike } from './owox/sources';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
-  isStale, loadCache, loadModel, loadPreferences, loadSettings, saveCache, saveModel, savePreferences, saveSettings, type CollectionsLike,
+  isStale, loadCache, loadOntology, loadPreferences, loadProjectModel, loadSettings, saveCache, saveOntology, savePreferences, saveSettings, type CollectionsLike,
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { Canvas } from './ui/Canvas';
@@ -59,7 +60,7 @@ function mergePartial(base: CacheDoc | null, cards: Record<string, CardCache>, m
     merged[id] = { metrics: { ...old?.metrics, ...c.metrics }, spark: keyDone ? c.spark : old?.spark ?? null };
   }
   return {
-    modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct, anchor,
+    modelHash: model.inputHash, builtAt: model.builtAt, editedAt: model.editedAt, thresholdPct, anchor,
     refreshedAt: base?.refreshedAt ?? new Date().toISOString(), key, comparison, cards: merged,
   };
 }
@@ -94,7 +95,17 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const load = useCallback(async () => {
     setView({ name: 'loading' });
     try {
-      const [s, m, prefs] = await Promise.all([loadSettings(store), loadModel(store), loadPreferences(store).catch(() => null)]);
+      const [s, own, prefs] = await Promise.all([loadSettings(store), loadOntology(store), loadPreferences(store).catch(() => null)]);
+      let m = own;
+      if (!m) {
+        // first open: start from the project model cut to what this member can reach, with no AI call
+        const project = await loadProjectModel(store);
+        if (project) {
+          const marts = await owox.dataMarts.list();
+          m = seedFrom(project, new Set(marts.map((x) => x.id)));
+          await saveOntology(store, m);
+        }
+      }
       setSettings(s);
       setRange(prefs?.range ?? rangeOf(s));
       setCompare(prefs?.compare ?? compareOf(s));
@@ -103,7 +114,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     } catch (e) {
       setView({ name: 'error', message: describeError(e), retry: 'load' });
     }
-  }, [store]);
+  }, [store, owox]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -116,7 +127,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     try {
       const result = await buildModel({ owox, generate, userId, now: now() });
       if (!result.ok) { setView({ name: 'blocked', blocked: result.blocked }); return; }
-      await saveModel(store, result.model);
+      await saveOntology(store, result.model);
       setModel(result.model);
       setCache(null);
       setView({ name: 'ready' });
