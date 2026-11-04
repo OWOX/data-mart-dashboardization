@@ -246,7 +246,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     case 'building':
       return <main className="gy-main"><p>Reading descriptions and schemas…</p></main>;
     case 'blocked':
-      return <Blocked blocked={view.blocked} projectId={ctx.projectId} onRetry={() => void build()} onBack={backToCanvas} />;
+      return <Blocked blocked={view.blocked} projectId={ctx.projectId} onRetry={() => void build()} onBack={backToCanvas} onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined} />;
     case 'error':
       return (
         <main className="gy-main">
