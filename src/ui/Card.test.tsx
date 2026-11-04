@@ -184,7 +184,30 @@ test('a badge with a warning shows the icon with its text', () => {
 
 test('a class whose Data Mart is gone says so, like the no-access card', () => {
   render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} missing comparisonOn refreshing={false} onRetry={() => {}} />);
-  expect(screen.getByText('Data Mart not found')).toBeInTheDocument();
+  expect(screen.getByText('Data Mart not found or not accessible')).toBeInTheDocument();
   expect(screen.getByLabelText('Warning')).toBeInTheDocument();
   expect(screen.queryByText('1.24M')).toBeNull();
+});
+
+test('a failed key metric keeps the card: dash, error in the tooltip, badges, and a Retry button', () => {
+  const onRetry = vi.fn();
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ fact: null, error: 'TIMEOUT' })} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={onRetry} />);
+  expect(screen.getByText('—')).toBeInTheDocument();
+  expect(screen.getByRole('tooltip')).toHaveTextContent('TIMEOUT');
+  expect(container.querySelector('.gy-badge')!.textContent).toMatch(/^7\.15K Customers/);
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(onRetry).toHaveBeenCalledTimes(1);
+});
+
+test('a caught rejection (warning only) shows the same way', () => {
+  render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ fact: null, warning: 'Not found' })} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('—')).toBeInTheDocument();
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Not found');
+});
+
+test('missing wins over noAccess; a plain noAccess keeps its text', () => {
+  const { rerender } = render(<Card cls={cls} metrics={[arr]} cache={cache()} missing noAccess comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('Data Mart not found or not accessible')).toBeInTheDocument();
+  rerender(<Card cls={cls} metrics={[arr]} cache={cache()} noAccess comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText("You don't have access to this Data Mart")).toBeInTheDocument();
 });

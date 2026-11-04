@@ -1,4 +1,5 @@
-import { buildModel, type BuildStep } from './build';
+import { buildModel, currentInputHash, type BuildStep } from './build';
+import { fetchInputs } from '../owox/sources';
 import { fakeOwox } from '../owox/fake';
 
 const now = new Date('2026-10-24T10:00:00Z');
@@ -143,4 +144,20 @@ test('onStep reports reading, marts counting up to the total, and what was found
   expect(reads.find((s) => s.what === 'ai' && s.finished)).toBeDefined();
   expect(steps.filter((s) => s.kind === 'found')[0]).toEqual({ kind: 'found', goal: 'Revenue (Orders)', classes: [], metrics: 0 });
   expect(steps.at(-1)).toEqual({ kind: 'found', goal: 'Revenue (Orders)', classes: ['Orders', 'Customers'], metrics: 3 });
+});
+
+test('currentInputHash leaves a Data Mart that fails to fetch out, so the hash changes instead of throwing', async () => {
+  const owox = fakeOwox(data());
+  const inputs = await fetchInputs(owox);
+  const full = await currentInputHash(owox, inputs, [GID, 'c']);
+  const gone = data();
+  delete (gone.details as Record<string, unknown>).c;
+  const owoxGone = fakeOwox(gone);
+  const partial = await currentInputHash(owoxGone, inputs, [GID, 'c']);
+  expect(partial).not.toBe(full);
+  // schemas already read are reused, not fetched again
+  const calls = owox.calls.length;
+  const known = new Map([[GID, { id: GID, title: 'Orders', fields: data().details[GID]!.fields }], ['c', data().details.c!]]);
+  expect(await currentInputHash(owox, inputs, [GID, 'c'], known)).toBe(full);
+  expect(owox.calls.slice(calls).every((c) => c.path.endsWith('blendable-schema'))).toBe(true);
 });

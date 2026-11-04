@@ -35,12 +35,15 @@ export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'
   ]));
 }
 
-/** The hash as it would be computed now; rejects when any class mart can't be fetched. */
-export async function currentInputHash(owox: OwoxLike, inputs: Inputs, martIds: string[]): Promise<string> {
+/**
+ * The hash as it would be computed now. A Data Mart that can't be fetched (deleted) is left out, so the
+ * hash changes and the model reads as out of date. `known` are schemas already read, not fetched again.
+ */
+export async function currentInputHash(owox: OwoxLike, inputs: Inputs, martIds: string[], known?: ReadonlyMap<string, MartDetail>): Promise<string> {
   const got = await runPool(martIds.map((id) => async (): Promise<HashMart> => ({
-    id, detail: await fetchMartDetail(owox, id), blendable: await fetchBlendable(owox, id),
+    id, detail: known?.get(id) ?? await fetchMartDetail(owox, id), blendable: await fetchBlendable(owox, id),
   })), POOL);
-  const marts = got.map((r) => { if (r.status === 'rejected') throw r.reason; return r.value; });
+  const marts = got.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
   return inputHash(inputs, marts);
 }
 

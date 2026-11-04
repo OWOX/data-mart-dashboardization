@@ -65,14 +65,14 @@ export async function refreshCanvas(args: {
   };
 
   // a class whose Data Mart is gone stops every metric of that Data Mart; a metric's own issues come with its id
-  const goneMarts = new Set(issues.filter((i) => i.kind === 'mart_missing' && i.metricId === null).map((i) => i.classId));
+  const goneMarts = new Set(issues.filter((i) => i.kind === 'mart_missing' && i.metricId === null).map((i) => i.martId));
   const mine = (id: string) => issues.filter((i) => i.metricId === id);
 
   onProgress?.(0, ids.size);
   await runPool([...ids].map((id) => async () => {
     const metric = byId.get(id)!;
     const own = mine(id);
-    const block = own.find((i) => BLOCKING.has(i.kind)) ?? (goneMarts.has(metric.martId) ? { text: 'Data Mart not found' } : undefined);
+    const block = own.find((i) => BLOCKING.has(i.kind)) ?? (goneMarts.has(metric.martId) ? { text: 'Data Mart not found or not accessible' } : undefined);
     const soft = own.filter((i) => !BLOCKING.has(i.kind));
     try {
       if (block) {

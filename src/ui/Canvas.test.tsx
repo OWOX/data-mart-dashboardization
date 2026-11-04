@@ -65,7 +65,7 @@ test('loading line only while refreshing, determinate once the total is known', 
 
 test('retry on error card calls onRetry', () => {
   const onRetry = vi.fn();
-  const cache = { cards: { m: { metrics: { k: { error: 'boom' } }, spark: null } } } as never;
+  const cache = { cards: { m: { metrics: { k: { error: 'boom', fact: null, trend: 'flat', status: 'neutral' } }, spark: null } } } as never;
   render(<Canvas model={rich} cache={cache} comparisonOn refreshing={false} onRetry={onRetry} />);
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(onRetry).toHaveBeenCalledTimes(1);

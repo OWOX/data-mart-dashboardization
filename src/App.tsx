@@ -90,6 +90,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [inputs, setInputs] = useState<{ model: Model; data: Inputs | null } | null>(null);
   // the health check of the model against the Data Marts; the schemas it read are kept for the Ontology Model page
   const [health, setHealth] = useState<{ model: Model; issues: Issue[]; details: Map<string, MartDetail> } | null>(null);
+  const healthNow = useRef<typeof health>(null);
+  healthNow.current = health;
   const refreshId = useRef(0);
   const fetchedFor = useRef<Model | null>(null);
   const checkedFor = useRef<object | null>(null);
@@ -243,7 +245,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const data = inputs.data;
       if (!done || !data || !data.contextsOk || checkedFor.current === inputs) return;
       checkedFor.current = inputs;
-      const hash = await currentInputHash(owox, data, model.classes.map((c) => c.id)).catch(() => null);
+      const hash = await currentInputHash(owox, data, model.classes.map((c) => c.id), healthNow.current?.model === model ? healthNow.current.details : undefined).catch(() => null);
       if (hash !== null && modelNow.current === model) setOutdated(hash !== model.inputHash);
     });
   }, [inputsReady, inputs, model, owox, refresh]);

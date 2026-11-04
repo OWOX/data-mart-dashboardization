@@ -41,7 +41,7 @@ test('a calculated field of level metric is checked by path', async () => {
 
 test('a class whose Data Mart is not accessible reports it once, not per metric', async () => {
   const { issues } = await checkHealth(owox({ o: ['revenue', 'date'] }), model([metric('m')]), new Set());
-  expect(issues).toEqual([{ kind: 'mart_missing', classId: 'o', metricId: null, text: 'Data Mart not found' }]);
+  expect(issues).toEqual([{ kind: 'mart_missing', classId: 'o', martId: 'o', metricId: null, text: 'Data Mart not found or not accessible' }]);
 });
 
 test('plan mart and field, forecast mart and field', async () => {
@@ -60,6 +60,18 @@ test('plan mart and field, forecast mart and field', async () => {
 
 test('a details fetch that rejects counts as a missing Data Mart and never throws', async () => {
   const { issues, details } = await checkHealth(owox({}), model([metric('m')]), all);
-  expect(issues).toEqual([{ kind: 'mart_missing', classId: 'o', metricId: null, text: 'Data Mart not found' }]);
+  expect(issues).toEqual([{ kind: 'mart_missing', classId: 'o', martId: 'o', metricId: null, text: 'Data Mart not found or not accessible' }]);
   expect(details.size).toBe(0);
+});
+
+test('a hidden-for-reporting key still exists; a disconnected field is missing', async () => {
+  const o = fakeOwox({
+    projectDescription: null, contexts: [], marts: [], blendables: {},
+    details: { o: { id: 'o', title: 'Orders', fields: [
+      F('id', { isHiddenForReporting: true, isPrimaryKey: true }), F('date'), F('revenue', { status: 'DISCONNECTED' }),
+    ] } },
+  });
+  const uc = metric('u', { measure: { field: 'id', fn: 'COUNT_DISTINCT' }, isUniqueCount: true });
+  const { issues } = await checkHealth(o, model([uc, metric('m')]), all);
+  expect(issues.map((i) => [i.metricId, i.kind])).toEqual([['m', 'fact_field_missing']]);
 });

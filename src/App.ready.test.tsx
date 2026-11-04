@@ -207,7 +207,7 @@ test('an invisible main shows the no-access card', async () => {
   const { deps, d } = await setup({ cache: 'none', withCustomers: true });
   d.marts = d.marts.filter((m) => m.id !== GID);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  expect(await screen.findByText("You don't have access to this Data Mart")).toBeInTheDocument();
+  expect(await screen.findByText('Data Mart not found or not accessible')).toBeInTheDocument();
 });
 
 test('a failed cache save keeps the new values on screen and shows a note', async () => {

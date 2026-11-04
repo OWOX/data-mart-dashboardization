@@ -1,4 +1,4 @@
-import { fetchBlendable, fetchInputs, fetchMartDetail, flattenFields } from './sources';
+import { fetchBlendable, fetchInputs, fetchMartDetail, flattenFields, allFieldPaths } from './sources';
 import { fakeOwox } from './fake';
 
 const owox = fakeOwox({
@@ -46,4 +46,13 @@ test('fetchInputs survives a refused /api/contexts', async () => {
   const inputs = await fetchInputs(refused);
   expect(inputs.contexts).toEqual([]);
   expect(inputs.projectDescription).toBe('p');
+});
+
+test('allFieldPaths counts hidden fields but not disconnected ones', () => {
+  const paths = allFieldPaths([
+    { name: 'id', type: 'STRING', isPrimaryKey: true, isHiddenForReporting: true },
+    { name: 'old', type: 'STRING', isPrimaryKey: false, status: 'DISCONNECTED' },
+    { name: 'a', type: 'RECORD', isPrimaryKey: false, fields: [{ name: 'b', type: 'STRING', isPrimaryKey: false }] },
+  ]);
+  expect([...paths].sort()).toEqual(['a', 'a.b', 'id']);
 });

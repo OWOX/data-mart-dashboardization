@@ -1,5 +1,5 @@
 import type { MartDetail, OwoxLike } from '../owox/sources';
-import { fetchMartDetail, flattenFields } from '../owox/sources';
+import { allFieldPaths, fetchMartDetail } from '../owox/sources';
 import { runPool } from '../lib/pool';
 import type { Model } from '../types';
 
@@ -7,7 +7,8 @@ export type IssueKind =
   | 'mart_missing' | 'fact_field_missing' | 'date_field_missing'
   | 'plan_mart_missing' | 'plan_field_missing' | 'forecast_mart_missing' | 'forecast_field_missing';
 
-export interface Issue { kind: IssueKind; classId: string; metricId: string | null; text: string }
+/** `martId` is the Data Mart the issue is about: the class's own for a class issue, the metric's for a metric issue. */
+export interface Issue { kind: IssueKind; classId: string; martId: string; metricId: string | null; text: string }
 
 /** Issues that stop a metric from being queried at all; the others only drop its plan or forecast source. */
 export const BLOCKING: ReadonlySet<IssueKind> = new Set<IssueKind>(['mart_missing', 'fact_field_missing', 'date_field_missing']);
@@ -31,7 +32,7 @@ export async function checkHealth(
   const details = new Map<string, MartDetail>();
   await runPool(ids.map((id) => async () => { details.set(id, await fetchMartDetail(owox, id)); }), 6);
 
-  const paths = new Map([...details].map(([id, d]) => [id, new Set(flattenFields(d.fields).map((f) => f.path))]));
+  const paths = new Map([...details].map(([id, d]) => [id, allFieldPaths(d.fields)]));
   const issues: Issue[] = [];
   const classOf = new Map<string, string>();
   for (const c of model.classes) for (const id of c.metricIds) classOf.set(id, c.id);
@@ -41,15 +42,15 @@ export async function checkHealth(
   for (const c of model.classes) {
     if (details.has(c.martId)) continue;
     gone.add(c.martId);
-    issues.push({ kind: 'mart_missing', classId: c.id, metricId: null, text: 'Data Mart not found' });
+    issues.push({ kind: 'mart_missing', classId: c.id, martId: c.martId, metricId: null, text: 'Data Mart not found or not accessible' });
   }
 
   for (const m of model.metrics) {
     const classId = classOf.get(m.id) ?? m.martId;
     const name = model.classes.find((c) => c.id === classId)?.title ?? m.martId;
-    const add = (kind: IssueKind, text: string) => issues.push({ kind, classId, metricId: m.id, text });
+    const add = (kind: IssueKind, text: string) => issues.push({ kind, classId, martId: m.martId, metricId: m.id, text });
     // the class's own issue already says its Data Mart is gone
-    if (!details.has(m.martId)) { if (!gone.has(m.martId)) add('mart_missing', 'Data Mart not found'); }
+    if (!details.has(m.martId)) { if (!gone.has(m.martId)) add('mart_missing', 'Data Mart not found or not accessible'); }
     else {
       const set = paths.get(m.martId)!;
       const t = title(m.martId, name);

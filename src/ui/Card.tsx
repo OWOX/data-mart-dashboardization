@@ -144,6 +144,14 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   const res = key ? cache?.metrics[key.id] : undefined;
   const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} />;
 
+  if (missing) {
+    return (
+      <article className="gy-card" data-class-id={cls.id} data-status="empty">
+        {header}
+        <p className="gy-muted"><TriangleAlert size={14} aria-label="Warning" /> Data Mart not found or not accessible</p>
+      </article>
+    );
+  }
   if (noAccess) {
     return (
       <article className="gy-card" data-class-id={cls.id} data-status="empty">
@@ -152,28 +160,11 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       </article>
     );
   }
-  if (missing) {
-    return (
-      <article className="gy-card" data-class-id={cls.id} data-status="empty">
-        {header}
-        <p className="gy-muted"><TriangleAlert size={14} aria-label="Warning" /> Data Mart not found</p>
-      </article>
-    );
-  }
   if (!key) {
     return (
       <article className="gy-card" data-class-id={cls.id} data-status="empty">
         {header}
         <p className="gy-muted">No metric yet</p>
-      </article>
-    );
-  }
-  if (res?.error) {
-    return (
-      <article className="gy-card" data-class-id={cls.id} data-status="error">
-        {header}
-        <p className="gy-muted">Couldn't load</p>
-        <button type="button" className="gy-btn" onClick={onRetry}>Retry</button>
       </article>
     );
   }
@@ -186,14 +177,17 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
     );
   }
 
+  const failed = res.error !== null;
   // A comparison shorter than the range recounts the value over the same number of days.
   const fact = res.compareFact ?? res.fact;
   const comparison = res.comparison;
-  const canCompare = comparisonOn && !!compareLabel && res.fact !== null && key.dateField !== null;
+  const canCompare = !failed && comparisonOn && !!compareLabel && res.fact !== null && key.dateField !== null;
   const delta = canCompare && fact !== null && comparison !== null ? fact - comparison : null;
   // Against the comparison when there is one, else the series' own direction.
   const sign: Sign = delta !== null ? (delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat') : res.trend;
-  const big = fact !== null ? compact(fact) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${compact(res.forecast)}` : compact(null);
+  // a failed query shows no number; the error rides in the tooltip and the card offers a retry
+  const warning = res.warning ?? res.error;
+  const big = failed ? compact(null) : fact !== null ? compact(fact) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${compact(res.forecast)}` : compact(null);
   const badges = metrics.filter((m) => m.id !== key.id).map((m) => <Badge key={m.id} metric={m} result={cache?.metrics[m.id]} />);
   // Plan and forecast stay off the face of the card; the number names them on hover.
   const detail = [
@@ -202,15 +196,16 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   ].filter(Boolean).join(' · ');
 
   return (
-    <article className="gy-card" data-class-id={cls.id} data-status={res.status} aria-busy={refreshing}>
+    <article className="gy-card" data-class-id={cls.id} data-status={failed ? 'error' : res.status} aria-busy={refreshing}>
       {header}
       {/* The arrow sits under the icon, so the number lines up with the names above it. */}
       <div className="gy-card-body">
         <span className="gy-trend" data-sign={sign}><TrendArrow sign={sign} /></span>
         <span className="num gy-big" title={detail || undefined}>{big}</span>
-        {res.warning && <WarningHint text={res.warning} />}
+        {warning && <WarningHint text={warning} />}
         {badges.length > 0 && <Badges items={badges} />}
       </div>
+      {failed && <button type="button" className="gy-link" onClick={onRetry}>Retry</button>}
       {/* An all-time metric has no period to compare against. */}
       {canCompare && (
         <Compare

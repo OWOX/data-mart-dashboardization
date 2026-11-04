@@ -171,7 +171,7 @@ describe('broken references', () => {
   test('a metric with a broken fact field is not queried; the others are', async () => {
     const owox = ok();
     const m = model([metric('bad'), metric('good')]);
-    const doc = await refreshCanvas({ owox, model: m, spec, key: 'k', thresholdPct: 20, issues: [{ kind: 'fact_field_missing', classId: 'a', metricId: 'bad', text: 'Field id no longer exists in A' }] });
+    const doc = await refreshCanvas({ owox, model: m, spec, key: 'k', thresholdPct: 20, issues: [{ kind: 'fact_field_missing', classId: 'a', martId: 'a', metricId: 'bad', text: 'Field id no longer exists in A' }] });
     const r = doc.cards.a!.metrics;
     expect(r.bad).toMatchObject({ fact: null, status: 'neutral', warning: 'Field id no longer exists in A' });
     expect(r.good!.fact).toBe(5);
@@ -180,15 +180,15 @@ describe('broken references', () => {
 
   test('a class whose Data Mart is gone queries nothing', async () => {
     const owox = ok();
-    const doc = await refreshCanvas({ owox, model: model([metric('m')]), spec, key: 'k', thresholdPct: 20, issues: [{ kind: 'mart_missing', classId: 'a', metricId: null, text: 'Data Mart not found' }] });
-    expect(doc.cards.a!.metrics.m!.warning).toBe('Data Mart not found');
+    const doc = await refreshCanvas({ owox, model: model([metric('m')]), spec, key: 'k', thresholdPct: 20, issues: [{ kind: 'mart_missing', classId: 'a', martId: 'a', metricId: null, text: 'Data Mart not found or not accessible' }] });
+    expect(doc.cards.a!.metrics.m!.warning).toBe('Data Mart not found or not accessible');
     expect(owox.calls).toHaveLength(0);
   });
 
   test('a plan issue drops the plan and warns; the fact stays', async () => {
     const plan = { martId: 'p', measure: { field: 'x', fn: 'SUM' as const }, dateField: 'd', shape: 'daily' as const };
     const owox = ok();
-    const doc = await refreshCanvas({ owox, model: model([metric('m', { plan })]), spec, key: 'k', thresholdPct: 20, issues: [{ kind: 'plan_field_missing', classId: 'a', metricId: 'm', text: 'The plan field x no longer exists in p' }] });
+    const doc = await refreshCanvas({ owox, model: model([metric('m', { plan })]), spec, key: 'k', thresholdPct: 20, issues: [{ kind: 'plan_field_missing', classId: 'a', martId: 'a', metricId: 'm', text: 'The plan field x no longer exists in p' }] });
     expect(doc.cards.a!.metrics.m).toMatchObject({ fact: 5, plan: null, warning: 'The plan field x no longer exists in p' });
     expect(owox.calls.some((c) => c.path === 'traverse:p')).toBe(false);
   });
