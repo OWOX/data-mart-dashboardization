@@ -102,7 +102,7 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
   };
 
   return (
-    <div ref={panelRef} className="gy-drp-panel" data-compare={compareOn} tabIndex={-1} role="dialog" aria-label="Date range"
+    <div ref={panelRef} className="gy-drp-panel" tabIndex={-1} role="dialog" aria-label="Date range"
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       {/* The columns' wrappers don't box their children: each list shares a grid row with its calendar, so it is as tall as the calendar. */}
       <div className="gy-drp-left">
@@ -137,11 +137,11 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
           </div>
         )}
       </div>
-      {compareOn && <div className="gy-drp-sep" role="separator" />}
       <div className="gy-drp-right">
         <div className="gy-drp-cal">
           <Calendar month={rangeMonth} selected={drawn} weekStart={weekStart} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
         </div>
+        {compareOn && <div className="gy-drp-sep" role="separator" />}
         {compareOn && (
           <div className="gy-drp-cmpcal">
             <Calendar month={compareMonth} selected={comparison} weekStart={weekStart} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />

@@ -259,21 +259,17 @@ h2 { margin: 0; }
 .gy-drp-trigger:hover { border-color: var(--muted-foreground); }
 .gy-drp-panel {
   position: absolute; top: calc(100% + 0.25rem); right: 0; z-index: 50; display: grid; grid-template-columns: auto auto;
-  /* the comparison calendar spans rows 3–4; row 4 takes its extra height so the checkbox row stays tight */
-  grid-template-rows: auto auto auto 1fr auto;
   max-width: calc(100vw - 2rem); padding: 0.75rem;
   background: var(--card); border: 1px solid var(--border); border-radius: 0.625rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); font-size: 0.8125rem;
 }
-/* Rows: 1 range (list | calendar), 2 separator (Compare on), 3 Compare checkbox | comparison calendar, 4 comparison list, 5 footer.
+/* Rows: 1 range (list | calendar), 2 Compare checkbox | line (Compare on), 3 comparison (list | calendar), 4 footer.
    No row gap, so the column divider runs unbroken; the cells carry their own spacing. */
 .gy-drp-left, .gy-drp-right { display: contents; }
 .gy-drp-left > * { grid-column: 1; min-width: 10.5rem; padding-right: 0.75rem; border-right: 1px solid var(--border); }
 .gy-drp-right > * { grid-column: 2; padding-left: 0.75rem; }
 .gy-drp-presets, .gy-drp-cal { grid-row: 1; }
-.gy-drp-sep { grid-column: 1 / -1; grid-row: 2; height: 1px; margin: 0.75rem 0; background: var(--border); }
-.gy-drp-cmplist { grid-row: 4; }
-.gy-drp-cmplist .gy-drp-list { top: 0.75rem; }
-.gy-drp-cmpcal { grid-row: 3 / 5; }
+.gy-drp-sep { grid-row: 2; align-self: center; height: 1px; background: var(--border); background-clip: content-box; } /* as wide as the calendar */
+.gy-drp-cmplist, .gy-drp-cmpcal { grid-row: 3; }
 /* The list adds no height of its own: the calendar sets the row and the list scrolls inside it. */
 .gy-drp-presets { position: relative; min-height: 0; }
 .gy-drp-list { position: absolute; inset: 0 0.75rem 0 0; display: flex; flex-direction: column; gap: 0.125rem; overflow-y: auto; }
@@ -285,11 +281,9 @@ h2 { margin: 0; }
 .gy-drp-preset:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .gy-drp-custom { cursor: default; color: var(--muted-foreground); }
 .gy-drp-custom[aria-current='true'] { background: var(--muted); font-weight: 500; }
-.gy-drp-compare { grid-row: 3; align-self: start; display: flex; padding-top: 0.75rem; padding-left: 0.625rem; }
-/* Below the line, the comparison calendar's month heading sets the top; the checkbox sits level with it. */
-.gy-drp-panel[data-compare='true'] .gy-drp-compare { padding-top: 0.125rem; }
+.gy-drp-compare { grid-row: 2; display: flex; padding: 0.75rem 0.75rem 0.75rem 0.625rem; }
 .gy-drp-compare input { flex: none; }
-.gy-drp-foot { grid-column: 1 / -1; grid-row: 5; margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.gy-drp-foot { grid-column: 1 / -1; grid-row: 4; margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
 .gy-drp-windows { flex: 1; color: var(--muted-foreground); }
 .gy-cal { width: 17.5rem; }
 .gy-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
@@ -311,8 +305,8 @@ h2 { margin: 0; }
 @media (max-width: 640px) {
   .gy-drp-panel { display: flex; flex-direction: column; }
   .gy-drp-left > *, .gy-drp-right > * { padding: 0; border-right: 0; }
-  .gy-drp-presets { order: 1; } .gy-drp-cal { order: 2; } .gy-drp-compare { order: 3; padding-top: 0.75rem; }
-  .gy-drp-sep { order: 4; } .gy-drp-cmplist { order: 5; } .gy-drp-cmpcal { order: 6; } .gy-drp-foot { order: 7; }
+  .gy-drp-presets { order: 1; } .gy-drp-cal { order: 2; } .gy-drp-compare { order: 3; padding: 0.75rem 0; }
+  .gy-drp-sep { display: none; } .gy-drp-cmplist { order: 5; } .gy-drp-cmpcal { order: 6; } .gy-drp-foot { order: 7; }
   .gy-drp-presets { position: static; }
   .gy-drp-list { position: static; overflow: visible; }
   .gy-drp-presets { padding-bottom: 0.5rem; }
