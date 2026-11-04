@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { App, type AppDeps } from './App';
+import { App, depsFrom, type AppDeps } from './App';
 import { fakeOwox } from './owox/fake';
 import { memoryCollections } from './store/collections';
 
@@ -36,4 +36,12 @@ test('a failed build shows an error with Retry, not the blocked screen', async (
   fail = false;
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByRole('heading', { name: "Goal can't be tracked" })).toBeInTheDocument();
+});
+
+test('the build uses the Reasoning model, or Fast on installs that declare only fast', () => {
+  const generate = (ai: object) => depsFrom({ credentials: { ai }, owox: {}, userId: 'u1' } as never).generate;
+  expect(generate({ fast: {}, reasoning: {} })).not.toBeNull();
+  expect(generate({ fast: {} })).not.toBeNull();
+  expect(generate({})).toBeNull();
+  expect(depsFrom({ owox: {}, userId: 'u1' } as never).generate).toBeNull();
 });
