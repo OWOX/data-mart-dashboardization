@@ -2,7 +2,7 @@
   "name": "Gyroscope",
   "description": "Shows the CEO whether the company is on track for its goal, class by class, against plan.",
   "delivery": { "type": "remote", "url": "https://owox.github.io/gyroscope/v3/" },
-  "credentials": ["ai"],
+  "credentials": [{ "id": "ai", "models": ["reasoning"] }],
   "collections": [
     { "name": "model", "scope": "project" },
     { "name": "ontology", "scope": "member" },
