@@ -116,7 +116,13 @@ test('allowsAggregation: explicit list wins, else the OWOX default of the type',
   expect(allowsAggregation(f('BOOLEAN'), 'COUNT')).toBe(true);
   expect(allowsAggregation(f('DATE'), 'MAX')).toBe(true);
   expect(allowsAggregation(f('DATE'), 'SUM')).toBe(false);
-  expect(allowsAggregation(f('NUMERIC(10,2)'), 'AVG')).toBe(true);
+  expect(allowsAggregation(f('numeric'), 'AVG')).toBe(true);
+  expect(allowsAggregation(f('BPCHAR'), 'COUNT_DISTINCT')).toBe(true);
+  expect(allowsAggregation(f('TIMESTAMP WITH TIME ZONE'), 'MIN')).toBe(true);
+  expect(allowsAggregation(f('TIMESTAMPTZ'), 'MAX')).toBe(true);
+  expect(allowsAggregation(f('TIMETZ'), 'MIN')).toBe(true);
+  expect(allowsAggregation(f('JSON'), 'COUNT')).toBe(true);
+  expect(allowsAggregation(f('JSON'), 'SUM')).toBe(false);
   expect(allowsAggregation({ ...f('FLOAT'), calculated: { formula: 'a/b', level: 'metric' } }, null)).toBe(true);
   expect(allowsAggregation(f('FLOAT'), null)).toBe(false);
 });

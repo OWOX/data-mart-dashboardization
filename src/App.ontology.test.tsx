@@ -118,3 +118,20 @@ test('a failed access check shows the note and flags nothing', async () => {
   expect(await screen.findByText(/references aren't verified/)).toBeInTheDocument();
   expect(document.querySelectorAll('.gy-bad')).toHaveLength(0);
 });
+
+test('a saved unique count on an INTEGER key shows no card metric and sends no COUNT_DISTINCT query for it', async () => {
+  const { deps, model } = await setup();
+  const sent: { id: string; o: Record<string, unknown> }[] = [];
+  const d = data();
+  d.details[CID]!.fields = [{ name: 'id', type: 'INTEGER', isPrimaryKey: true }, { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false }];
+  d.rows = (id, o) => { sent.push({ id, o }); return []; };
+  const owox = fakeOwox(d);
+  const unique = model.metrics.find((m) => m.martId === CID && m.measure.fn === 'COUNT_DISTINCT');
+  expect(unique).toBeTruthy();
+  render(<App ctx={ctxWith().ctx} deps={{ ...deps, owox }} />);
+  await screen.findByRole('button', { name: 'Date range' });
+  await waitFor(() => expect(owox.calls.some((c) => c.path === `traverse:${GID}`)).toBe(true));
+  await waitFor(() => expect(screen.queryByText(unique!.alias, { selector: '.gy-metric-name, .gy-card-metric' })).toBeNull());
+  expect(sent.some((x) => x.id === GID)).toBe(true);
+  expect(sent.filter((x) => x.id === CID && JSON.stringify(x.o.aggregation ?? []).includes('"COUNT_DISTINCT"'))).toEqual([]);
+});

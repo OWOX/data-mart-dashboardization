@@ -2,18 +2,20 @@ import type { MetricDef } from '../types';
 import { DATE_TYPES } from '../owox/sources';
 import type { MartDetail, SchemaField } from '../owox/sources';
 
-// OWOX governance defaults per type family (owox-data-marts field-aggregation-governance.ts)
-const NUMBER = /^(U?(TINY|SMALL|MEDIUM|BIG)?INT(EGER)?\d*|FLOAT\d*|DOUBLE.*|REAL|NUMERIC|BIGNUMERIC|DECIMAL|BIGDECIMAL|DEC|NUMBER)$/;
-const STRING = /^(STRING|VARCHAR\d*|CHAR\d*|TEXT|NVARCHAR\d*)$/;
-const DEFAULTS = { number: ['SUM', 'AVG', 'MIN', 'MAX'], string: ['COUNT', 'COUNT_DISTINCT'], boolean: ['COUNT', 'COUNT_DISTINCT'], date: ['MIN', 'MAX'] };
+// OWOX type categories and default aggregations (owox-data-marts field-type-category.ts, field-aggregation-governance.ts)
+const NUMBER = new Set(['INTEGER', 'INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'FLOAT', 'REAL', 'DOUBLE', 'DOUBLE PRECISION', 'NUMERIC', 'BIGNUMERIC', 'DECIMAL']);
+const STRING = new Set(['STRING', 'VARCHAR', 'CHAR', 'TEXT', 'BPCHAR']);
+const DATE = new Set([...DATE_TYPES, 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMPTZ']);
+const TIME = new Set(['TIME', 'TIME WITH TIME ZONE', 'TIMETZ']);
+const BOOL = new Set(['BOOLEAN', 'BOOL']);
 
 function defaultsFor(type: string): string[] {
-  const t = type.toUpperCase().replace(/\(.*\)/, '').trim();
-  if (NUMBER.test(t)) return DEFAULTS.number;
-  if (STRING.test(t)) return DEFAULTS.string;
-  if (t === 'BOOLEAN' || t === 'BOOL') return DEFAULTS.boolean;
-  if (DATE_TYPES.has(t) || t === 'TIME') return DEFAULTS.date;
-  return [];
+  const t = type.trim().toUpperCase();
+  if (NUMBER.has(t)) return ['SUM', 'AVG', 'MIN', 'MAX'];
+  if (STRING.has(t)) return ['COUNT', 'COUNT_DISTINCT', 'STRING_AGG', 'ANY_VALUE'];
+  if (DATE.has(t) || TIME.has(t)) return ['MIN', 'MAX'];
+  if (BOOL.has(t)) return ['COUNT', 'COUNT_DISTINCT'];
+  return ['COUNT'];
 }
 
 /** Whether OWOX can aggregate `field` with `fn`; a metric-level calculated field takes `fn: null` only. */
