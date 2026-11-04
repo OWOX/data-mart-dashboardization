@@ -1,12 +1,39 @@
-import { useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { PRESET_GROUPS, PRESET_LABELS, type Preset, type Settings, type WeekStart } from '../types';
+import { PRESET_GROUPS, PRESET_LABELS, type Model, type Preset, type Settings, type WeekStart } from '../types';
+import type { MartDetail, OwoxLike } from '../owox/sources';
+import { LoadingLine } from './LoadingLine';
+import { OntologyTab } from './OntologyTab';
 
-export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, error }: {
+export type SettingsTab = 'general' | 'ontology';
+const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'ontology', label: 'Ontology Model' }];
+
+/** What the Ontology Model tab edits; null while the Data Marts are still being read. */
+export interface OntologyProps {
+  model: Model;
+  details: ReadonlyMap<string, MartDetail>;
+  marts: { id: string; title: string }[];
+  owox: OwoxLike;
+  now: () => Date;
+  onSave: (m: Model) => Promise<void>;
+}
+
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, error, tab: initialTab = 'general', onTabChange, ontology }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
-  /** Reads the descriptions and schemas again and replaces the model for everyone. */
+  /** Reads the descriptions and schemas again and replaces the member's model. */
   onRebuild?: () => void; canRebuild?: boolean; error?: string | null;
+  tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
 }) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const go = (t: SettingsTab) => { setTab(t); onTabChange?.(t); };
+  const onTabKey = (e: KeyboardEvent, i: number) => {
+    const to = e.key === 'ArrowRight' ? (i + 1) % TABS.length : e.key === 'ArrowLeft' ? (i + TABS.length - 1) % TABS.length : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    go(TABS[to]!.id);
+    tabRefs.current[TABS[to]!.id]?.focus();
+  };
   const [threshold, setThreshold] = useState(String(settings.thresholdPct));
   const [preset, setPreset] = useState<Preset>(settings.defaultPreset);
   const [weekStart, setWeekStart] = useState<WeekStart>(settings.weekStart);
@@ -24,7 +51,20 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
         <button type="button" className="gy-icon-btn" aria-label="Back" title="Back" onClick={onBack}><ArrowLeft size={16} /></button>
         <h1 className="dm-page-header-title">Settings</h1>
       </header>
-      <main className="dm-page-content">
+      <div className="gy-tabs" role="tablist" aria-label="Settings">
+        {TABS.map((t, i) => (
+          <button
+            key={t.id} type="button" role="tab" id={`gy-tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`gy-panel-${t.id}`} tabIndex={tab === t.id ? 0 : -1}
+            ref={(el) => { tabRefs.current[t.id] = el; }} className="gy-tab" onClick={() => go(t.id)} onKeyDown={(e) => onTabKey(e, i)}
+          >{t.label}</button>
+        ))}
+      </div>
+      <main className="dm-page-content" role="tabpanel" id={`gy-panel-${tab}`} aria-labelledby={`gy-tab-${tab}`}>
+        {tab === 'ontology' ? (
+          ontology
+            ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} />
+            : <><LoadingLine /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>
+        ) : (
         <form className="dm-card gy-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
           <p className="dm-muted gy-form-note">These settings apply to everyone in the project.</p>
           <div className="gy-field">
@@ -59,18 +99,6 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
             <button type="button" className="gy-btn" onClick={onBack}>Cancel</button>
           </div>
         </form>
-        {onRebuild && (
-          <section className="dm-card gy-form" aria-labelledby="gy-model-title">
-            <h2 id="gy-model-title" className="gy-form-title">Model</h2>
-            <p className="dm-muted gy-form-note">
-              Reads the project description and the Data Mart schemas again and redraws the canvas for everyone.
-              Use it after changing the metrics table, links or calculated fields.
-            </p>
-            <div className="gy-form-actions">
-              <button type="button" className="gy-btn" onClick={onRebuild} disabled={!canRebuild}>Rebuild model</button>
-            </div>
-            {!canRebuild && <p className="dm-muted gy-form-note">Ask a project admin to map an AI model</p>}
-          </section>
         )}
       </main>
     </div>

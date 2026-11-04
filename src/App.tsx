@@ -20,7 +20,7 @@ import { BuildProgress } from './ui/BuildProgress';
 import { Canvas } from './ui/Canvas';
 import { LoadingLine } from './ui/LoadingLine';
 import { Header, RangeControls } from './ui/Header';
-import { SettingsPage } from './ui/SettingsPage';
+import { SettingsPage, type SettingsTab } from './ui/SettingsPage';
 
 export interface AppDeps {
   owox: OwoxLike;
@@ -36,7 +36,7 @@ type View =
   | { name: 'blocked'; blocked: BlockedInfo }
   | { name: 'error'; message: string; retry: 'load' | 'build' }
   | { name: 'ready' }
-  | { name: 'settings' };
+  | { name: 'settings'; tab: SettingsTab };
 
 function depsFrom(ctx: PluginContext): AppDeps {
   const ai = ctx.credentials?.ai;
@@ -48,6 +48,13 @@ function depsFrom(ctx: PluginContext): AppDeps {
     now: () => new Date(),
   };
 }
+
+const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology' };
+/** The settings tab a route opens; anything else opens the canvas. */
+const tabOf = (route: string | undefined): SettingsTab | null => {
+  const path = route?.replace(/\/+$/, '');
+  return path === ROUTES.ontology ? 'ontology' : path === ROUTES.general ? 'general' : null;
+};
 
 const rangeOf = (s: Settings): RangeChoice => ({ kind: 'preset', preset: s.defaultPreset });
 const compareOf = (s: Settings): CompareChoice => (s.comparisonDefault ? { kind: 'preset', preset: 'previous_period' } : { kind: 'off' });
@@ -73,6 +80,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const { owox, store, generate, userId, now } = deps;
 
   const [view, setView] = useState<View>({ name: 'loading' });
+  // a reload lands on the settings tab the route names; read once, the first load only
+  const startTab = useRef(tabOf(ctx.route));
   const [model, setModel] = useState<Model | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [range, setRange] = useState<RangeChoice>(() => rangeOf(DEFAULT_SETTINGS));
@@ -124,7 +133,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setRange(prefs?.range ?? rangeOf(s));
       setCompare(prefs?.compare ?? compareOf(s));
       setModel(m);
-      if (m) setView({ name: 'ready' });
+      const tab = startTab.current;
+      startTab.current = null;
+      if (m) setView(tab ? { name: 'settings', tab } : { name: 'ready' });
       else void buildRef.current();
     } catch (e) {
       setView({ name: 'error', message: describeError(e), retry: 'load' });
@@ -220,8 +231,10 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   }, [model, range, compare, owox, store, now, settings.thresholdPct, settings.weekStart, visible, issuesNow]);
 
   const inReady = view.name === 'ready';
+  // the Ontology Model page needs the Data Mart list and schemas too, and a reload can land on it
+  const inSettings = view.name === 'settings';
   useEffect(() => {
-    if (!inReady || !model || fetchedFor.current === model) return;
+    if ((!inReady && !inSettings) || !model || fetchedFor.current === model) return;
     fetchedFor.current = model;
     // without a cached doc the line shows from the first screen, not empty cards
     const probe = refreshId.current;
@@ -235,7 +248,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (checked) setHealth({ model, ...checked });
       setInputs({ model, data });
     });
-  }, [inReady, model, owox]);
+  }, [inReady, inSettings, model, owox]);
 
   const inputsReady = inReady && !!inputs && inputs.model === model;
   useEffect(() => {
@@ -250,11 +263,24 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     });
   }, [inputsReady, inputs, model, owox, refresh]);
 
-  const openSettings = () => { ctx.ui?.setRoute?.('/settings'); setSettingsError(null); setView({ name: 'settings' }); };
+  const openSettings = (tab: SettingsTab = 'general') => { ctx.ui?.setRoute?.(ROUTES[tab]); setSettingsError(null); setView({ name: 'settings', tab }); };
   const leaveSettings = () => { ctx.ui?.setRoute?.('/'); setView({ name: 'ready' }); };
   const backToCanvas = model ? () => setView({ name: 'ready' }) : undefined;
   // Fire and forget: losing the remembered choice must not disturb the canvas.
   const remember = (r: RangeChoice, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
+  const saveOntologyAndLeave = async (m: Model) => {
+    await saveOntology(store, m);
+    // a new model object re-runs the refresh; the cache is judged by editedAt
+    setModel(m);
+    leaveSettings();
+  };
+  const ontologyProps = model && inputs && inputs.model === model
+    ? {
+      model, owox, now, onSave: saveOntologyAndLeave,
+      details: health && health.model === model ? health.details : new Map<string, MartDetail>(),
+      marts: (inputs.data?.marts ?? []).map((x) => ({ id: x.id, title: x.title })),
+    }
+    : null;
   const saveSettingsAndLeave = async (s: Settings) => {
     try {
       await saveSettings(store, s);
@@ -289,6 +315,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       return (
         <SettingsPage
           settings={settings}
+          tab={view.tab}
+          onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
+          ontology={ontologyProps}
           onBack={leaveSettings}
           onRebuild={() => { ctx.ui?.setRoute?.('/'); void build(); }}
           canRebuild={!!generate}
@@ -309,7 +338,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             <div className="gy-banner">
               <TriangleAlert size={16} className="gy-warn" aria-label="Warning" />
               <span>{issuesNow.length} {issuesNow.length === 1 ? 'reference in the model is' : 'references in the model are'} broken.</span>
-              <button type="button" className="gy-link" onClick={openSettings}>Review in Ontology Model</button>
+              <button type="button" className="gy-link" onClick={() => openSettings('ontology')}>Review in Ontology Model</button>
             </div>
           )}
           {outdated && (
@@ -319,7 +348,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             </div>
           )}
           <Canvas
-            tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={openSettings} />}
+            tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}
             model={model} cache={cache} visibleIds={visible} missingIds={missingIds} marts={marts}
             compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
             progress={progress}

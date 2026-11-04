@@ -1,0 +1,99 @@
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { App, type AppDeps } from './App';
+import { buildModel } from './model/build';
+import { fakeOwox, type FakeOwoxData } from './owox/fake';
+import { loadOntology, memoryCollections, saveOntology } from './store/collections';
+import { type Model } from './types';
+
+const GID = '11111111-1111-1111-1111-111111111111';
+const CID = 'c';
+const NOW = new Date('2026-10-24T10:00:00Z');
+const goalAi = {
+  goal: { status: 'ok', metricRef: 'm1', note: '' },
+  metrics: [{ ref: 'm1', role: 'critical', source: 'project', alias: 'Revenue', factLink: 0, planLink: null, kind: 'flow', planShape: null, factDateField: null, planDateField: null, aggregation: null }],
+};
+const mart = (id: string, title: string) => ({ id, title, status: 'PUBLISHED', description: null, contexts: [], modifiedAt: 't' });
+const data = (): FakeOwoxData => ({
+  projectDescription: `| Critical number | Revenue | [Revenue](https://app.owox.com/ui/p/data-marts/${GID}/data-setup?field=revenue) |`,
+  contexts: [],
+  marts: [mart(GID, 'Orders'), mart(CID, 'Customers')],
+  details: {
+    [GID]: { id: GID, title: 'Orders', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'revenue', type: 'FLOAT', isPrimaryKey: false }, { name: 'ltv', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'AVG({{ref path="customers" field="x"}})', level: 'metric' } }] },
+    [CID]: { id: CID, title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }] },
+  },
+  blendables: {
+    [GID]: { availableSources: [{ aliasPath: 'customers', dataMartId: CID, title: 'Customers', isAccessibleForReporting: true }], mainUniqueCountKeyFields: ['id'] },
+    [CID]: { availableSources: [], mainUniqueCountKeyFields: ['id'] },
+  },
+});
+
+async function setup() {
+  const owox = fakeOwox(data());
+  const store = memoryCollections();
+  const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW });
+  if (!built.ok) throw new Error('fixture');
+  await saveOntology(store, built.model);
+  const puts: Model[] = [];
+  const spy = { collections: <T,>(name: string) => { const c = store.collections<T>(name); return { ...c, put: async (id: string, doc: T) => { if (name === 'ontology') puts.push(doc as Model); return c.put(id, doc); } }; } };
+  const deps: AppDeps = { owox, store: spy, generate: async () => goalAi, userId: 'u1', now: () => NOW };
+  return { deps, store, puts, model: built.model };
+}
+const ctxWith = (route?: string) => { const setRoute = vi.fn(); return { ctx: { projectId: 'p', route, ui: { setRoute } } as never, setRoute }; };
+const customersCard = () => screen.queryByText('Customers', { selector: '.gy-card-title' });
+
+afterEach(cleanup);
+
+test('a reload at /settings/ontology opens the tab; /settings opens General; others open the canvas', async () => {
+  const { deps } = await setup();
+  const a = render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
+  expect(await screen.findByRole('tab', { name: 'Ontology Model', selected: true })).toBeInTheDocument();
+  // the tab waits for the Data Mart list, then shows the editor
+  expect(await screen.findByText('Your model. Changes here only affect what you see.')).toBeInTheDocument();
+  a.unmount();
+  const b = render(<App ctx={ctxWith('/settings').ctx} deps={deps} />);
+  expect(await screen.findByRole('tab', { name: 'General', selected: true })).toBeInTheDocument();
+  b.unmount();
+  render(<App ctx={ctxWith('/').ctx} deps={deps} />);
+  expect(await screen.findByRole('button', { name: 'Date range' })).toBeInTheDocument();
+});
+
+test('switching tabs sets the route', async () => {
+  const { deps } = await setup();
+  const { ctx, setRoute } = ctxWith('/settings');
+  render(<App ctx={ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Ontology Model' }));
+  expect(setRoute).toHaveBeenLastCalledWith('/settings/ontology');
+  fireEvent.click(screen.getByRole('tab', { name: 'General' }));
+  expect(setRoute).toHaveBeenLastCalledWith('/settings');
+});
+
+test('unchecking a class and saving hides it on the canvas and stamps editedAt', async () => {
+  const { deps, store, puts } = await setup();
+  const { ctx, setRoute } = ctxWith();
+  render(<App ctx={ctx} deps={deps} />);
+  await waitFor(() => expect(customersCard()).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  const box = await screen.findByRole('checkbox', { name: 'Customers' });
+  fireEvent.click(box);
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await screen.findByRole('button', { name: 'Date range' });
+  expect(setRoute).toHaveBeenLastCalledWith('/');
+  expect(customersCard()).toBeNull();
+  expect(puts).toHaveLength(1);
+  const saved = (await loadOntology(store))!;
+  expect(saved.editedAt).toBe(NOW.toISOString());
+  expect(saved.classes.find((c) => c.id === CID)!.shown).toBe(false);
+});
+
+test('Cancel on the Ontology tab writes nothing and returns to the canvas', async () => {
+  const { deps, puts } = await setup();
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await screen.findByRole('button', { name: 'Date range' });
+  expect(puts).toHaveLength(0);
+  expect(within(document.body).queryByRole('tablist')).toBeNull();
+});

@@ -90,7 +90,8 @@ test('Rebuild with unchanged inputs still refreshes the canvas', async () => {
   const { deps, traversals, tick } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  const rebuild = screen.getByRole('button', { name: 'Rebuild model' });
+  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  const rebuild = await screen.findByRole('button', { name: 'Rebuild model' });
   tick();
   fireEvent.click(rebuild);
   await waitFor(() => expect(traversals()).toBeGreaterThan(0));
@@ -102,7 +103,8 @@ test('Rebuild from Settings shows the build progress', async () => {
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => { await gate; return goalAi; } }} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Rebuild model' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   expect(await screen.findByText('AI reading descriptions…')).toBeInTheDocument();
   expect(screen.getByRole('progressbar')).toHaveAttribute('data-determinate', 'false');
   release();
@@ -161,7 +163,8 @@ test('a blocked rebuild can go back to the existing canvas', async () => {
   const { deps } = await setup({ generate: async () => missingAi });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Rebuild model' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   expect(await screen.findByRole('heading', { name: "Goal can't be tracked" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to canvas' }));
   expect(await screen.findByRole('button', { name: 'Date range' })).toBeInTheDocument();
@@ -558,7 +561,8 @@ test('a broken reference shows the banner with its count, and the link opens Set
   render(<App ctx={ctx} deps={deps} />);
   expect(await screen.findByText(/1 reference in the model is broken\./)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Review in Ontology Model' }));
-  expect(setRoute).toHaveBeenCalledWith('/settings');
+  expect(setRoute).toHaveBeenCalledWith('/settings/ontology');
+  expect(screen.getByRole('tab', { name: 'Ontology Model' })).toHaveAttribute('aria-selected', 'true');
 });
 
 test('no banner while the model matches its schemas', async () => {
