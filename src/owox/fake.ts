@@ -7,6 +7,8 @@ export interface FakeOwoxData {
   details: Record<string, MartDetail>;
   blendables: Record<string, Blendable>;
   /** Returns rows for a traverseData call; tests inspect the options. */
+  /** Answers the data-quality summaries POST; omit and the fake has no postJson. Throw to simulate a refusal. */
+  quality?: (ids: string[]) => unknown;
   rows?: (id: string, options: Record<string, unknown>) => Record<string, unknown>[];
 }
 
@@ -24,6 +26,13 @@ export function fakeOwox(data: FakeOwoxData): OwoxLike & { calls: { path: string
       if (one) { const d = data.details[one[1]!]; if (!d) throw miss(path); return { id: d.id, title: d.title, schema: { fields: d.fields } } as T; }
       throw miss(path);
     },
+    ...(data.quality ? {
+      async postJson<T>(path: string, body: unknown): Promise<T> {
+        calls.push({ path });
+        if (path === '/api/data-marts/data-quality/summaries') return data.quality!((body as { dataMartIds: string[] }).dataMartIds) as T;
+        throw miss(path);
+      },
+    } : {}),
     project: { getSettings: async () => ({ description: data.projectDescription }) },
     dataMarts: {
       list: async () => data.marts,

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Card } from './Card';
+import type { QualitySummary } from '../owox/quality';
 import type { CardCache, ClassNode, MetricDef, MetricResult } from '../types';
 
 const cls: ClassNode = { id: 'c', martId: 'c', title: 'Customers', contexts: [], depth: 0, keyMetricId: 'arr', metricIds: ['arr', 'uc'], shown: true };
@@ -283,4 +284,38 @@ test('Escape closing the panel does not reach other listeners', () => {
   fireEvent.keyDown(document.body, { key: 'Escape' });
   window.removeEventListener('keydown', other);
   expect(other).not.toHaveBeenCalled();
+});
+
+describe('data quality icon', () => {
+  const q = (over: Partial<QualitySummary>): QualitySummary => ({ state: 'PASSED', enabledChecks: 5, passedChecks: 5, failedChecks: 0, errorChecks: 0, warningFindings: 0, errorFindings: 0, highestSeverity: null, lastRunAt: null, ...over });
+  const show = (quality?: QualitySummary, onOpen = vi.fn()) => {
+    render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} projectId="p1" quality={quality} onOpen={onOpen} onRetry={() => {}} />);
+    return onOpen;
+  };
+
+  test.each([
+    [q({}), 'Data quality: all 5 checks passed', 'ok'],
+    [q({ state: 'ISSUES', warningFindings: 2, errorFindings: 1, highestSeverity: 'error' }), 'Data quality: 3 issues', 'bad'],
+    [q({ state: 'ISSUES', warningFindings: 2, highestSeverity: 'warning' }), 'Data quality: 2 issues', 'warn'],
+    [q({ state: 'EXECUTION_FAILED' }), 'Data quality checks failed to run', 'bad'],
+  ])('%#: name and colour', (summary, name, tone) => {
+    show(summary);
+    expect(screen.getByRole('button', { name }).getAttribute('data-tone')).toBe(tone);
+  });
+
+  test.each(['NEVER_RUN', 'QUEUED', 'RUNNING', 'RESTRICTED', 'CANCELLED', 'ALL_DISABLED'])('%s shows no icon', (state) => {
+    show(q({ state }));
+    expect(screen.queryByRole('button', { name: /Data quality/ })).toBeNull();
+  });
+
+  test('no summary, no icon', () => {
+    show(undefined);
+    expect(screen.queryByRole('button', { name: /Data quality/ })).toBeNull();
+  });
+
+  test('the click opens the quality page', () => {
+    const onOpen = show(q({}));
+    fireEvent.click(screen.getByRole('button', { name: /Data quality/ }));
+    expect(onOpen).toHaveBeenCalledWith('/ui/p1/data-marts/c/quality');
+  });
 });

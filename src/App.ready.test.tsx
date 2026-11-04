@@ -697,3 +697,29 @@ test('no issues icon while the model matches its schemas', async () => {
   await screen.findByRole('button', { name: 'Date range' });
   expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
 });
+
+describe('data quality icons', () => {
+  const summary = { state: 'PASSED', enabledChecks: 4, passedChecks: 4, failedChecks: 0, errorChecks: 0, warningFindings: 0, errorFindings: 0, highestSeverity: null, lastRunAt: null };
+
+  test('one POST for the canvas shows the icon, and a click opens the quality page', async () => {
+    const { deps, d } = await setup();
+    d.quality = (ids) => ({ items: ids.map((dataMartId) => ({ dataMartId, summary })) });
+    const live = fakeOwox(d);
+    const navigate = vi.fn();
+    render(<App ctx={{ projectId: 'p', ui: { setRoute: vi.fn(), navigate } } as never} deps={{ ...deps, owox: live }} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Data quality: all 4 checks passed' }));
+    expect(navigate).toHaveBeenCalledWith(`/ui/p/data-marts/${GID}/quality`);
+    expect(live.calls.filter((c) => c.path.endsWith('/data-quality/summaries'))).toHaveLength(1);
+  });
+
+  test('a refused call shows no icon and no error', async () => {
+    const { deps, d } = await setup();
+    d.quality = () => { throw Object.assign(new Error('403'), { status: 403 }); };
+    const live = fakeOwox(d);
+    render(<App ctx={{ projectId: 'p', ui: { setRoute: vi.fn(), navigate: vi.fn() } } as never} deps={{ ...deps, owox: live }} />);
+    await screen.findByText(/Updated 1 h ago/);
+    await waitFor(() => expect(live.calls.some((c) => c.path.endsWith('/summaries'))).toBe(true));
+    expect(screen.queryByRole('button', { name: /Data quality/ })).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});

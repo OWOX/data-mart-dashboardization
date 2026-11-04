@@ -9,6 +9,7 @@ import { shownModel } from './model/shown';
 import { checkHealth, type Issue } from './model/health';
 import { buildModel, currentInputHash, type BuildStep } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
+import { fetchQuality, type QualitySummary } from './owox/quality';
 import { fetchInputs, type Inputs, type MartDetail, type OwoxLike } from './owox/sources';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
@@ -108,6 +109,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   healthNow.current = health;
   const refreshId = useRef(0);
   const fetchedFor = useRef<Model | null>(null);
+  const [quality, setQuality] = useState<{ model: Model; data: Map<string, QualitySummary> | null } | null>(null);
+  const qualityFor = useRef<Model | null>(null);
   const checkedFor = useRef<object | null>(null);
   const modelNow = useRef<Model | null>(null);
   modelNow.current = model;
@@ -261,6 +264,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     });
   }, [inReady, inSettings, model, owox]);
 
+  // data-quality icons: one call per canvas load, never cached; a failure leaves the cards without them
+  useEffect(() => {
+    if (!inReady || !model || qualityFor.current === model) return;
+    qualityFor.current = model;
+    void fetchQuality(owox, [...new Set(model.classes.map((c) => c.martId))]).then((data) => setQuality({ model, data }));
+  }, [inReady, model, owox]);
+
   const inputsReady = inReady && !!inputs && inputs.model === model;
   useEffect(() => {
     if (!inputsReady || !inputs || !model) return;
@@ -370,6 +380,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             model={model} cache={cache} visibleIds={visible} details={detailsNow} missingIds={missingIds} marts={marts}
             compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
             progress={progress}
+            quality={quality?.model === model ? quality.data : null}
             projectId={ctx.projectId}
             onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}
             comparisonOn={compare.kind !== 'off'} refreshing={refreshing || loading} onRetry={() => void refresh(true)}

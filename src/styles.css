@@ -416,3 +416,7 @@ button.gy-badge:hover { color: var(--foreground); }
 @media (max-width: 640px) {
   .gy-issues { right: 0; width: auto; }
 }
+.gy-quality { opacity: 1; }
+.gy-quality[data-tone='ok'] { color: var(--green); }
+.gy-quality[data-tone='warn'] { color: var(--orange); }
+.gy-quality[data-tone='bad'] { color: var(--red); }

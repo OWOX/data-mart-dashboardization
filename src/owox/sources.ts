@@ -17,6 +17,8 @@ export interface Inputs { projectDescription: string | null; contexts: ContextIn
 /** The subset of ctx.owox Gyroscope uses. ctx.owox satisfies it. */
 export interface OwoxLike {
   getJson<T>(path: string, query?: Record<string, unknown>): Promise<T>;
+  /** Optional so older callers compile; without it no data-quality icons show. */
+  postJson?<T>(path: string, body: unknown): Promise<T>;
   project: { getSettings(): Promise<{ description: string | null }> };
   dataMarts: {
     list(): Promise<MartSummary[]>;

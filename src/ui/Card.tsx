@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { ExternalLink, Info, TriangleAlert } from 'lucide-react';
+import { ExternalLink, Info, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert } from 'lucide-react';
+import { qualityBadge, type QualitySummary } from '../owox/quality';
 import type { CardCache, ClassNode, MetricDef } from '../types';
 import { diffPct } from '../lib/stats';
 import { formatDeltaFor, formatPct, formatValue } from '../lib/format';
@@ -25,6 +26,8 @@ interface Props {
   /** The diff chip shows an absolute difference instead of a relative one. */
   absolute?: boolean;
   onToggleDiff?: () => void;
+  /** OWOX's data-quality summary of the class's Data Mart; the shield icon shows only for the states that earn one. */
+  quality?: QualitySummary;
   projectId?: string;
   /** Opens an OWOX page by path; without it the card has no link to its Data Mart. */
   onOpen?: (path: string) => void;
@@ -67,6 +70,20 @@ function Badges({ items, cache, onPick }: { items: MetricDef[]; cache: CardCache
 /** The corner's icons, shown while the card is pointed at or holds focus; more can be passed as children, first in the row. */
 export function CardTools({ children }: { children?: ReactNode }) {
   return <span className="gy-card-tools">{children}</span>;
+}
+
+const SHIELD = { passed: ShieldCheck, issues: ShieldAlert, failed: ShieldX };
+
+/** The data-quality shield: green when every check passed, orange or red for issues, red when the run failed. */
+function QualityTool({ quality, path, onOpen }: { quality?: QualitySummary; path: string; onOpen: (path: string) => void }) {
+  const badge = quality && qualityBadge(quality);
+  if (!badge) return null;
+  const Icon = SHIELD[badge.kind];
+  return (
+    <button type="button" className="gy-tool gy-quality" data-tone={badge.tone} aria-label={badge.label} title={badge.label} onClick={() => onOpen(path)}>
+      <Icon size={14} />
+    </button>
+  );
 }
 
 /** The mart's icon, then two lines: the class in grey and the metric under it. */
@@ -160,7 +177,7 @@ function TrendArrow({ sign }: { sign: Sign }) {
   );
 }
 
-export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', onOpen, onRetry }: Props) {
+export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', quality, onOpen, onRetry }: Props) {
   // The metric the reader swapped in for this session, with the secondary order it leaves behind.
   const [swap, setSwap] = useState<{ main: string; rest: string[] } | null>(null);
   const home = metrics.find((m) => m.id === cls.keyMetricId);
@@ -174,7 +191,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   useEffect(() => setSwap(null), [cls.keyMetricId]);
   const pick = (id: string) => { if (key) setSwap({ main: id, rest: secondary.map((m) => (m.id === id ? key.id : m.id)) }); };
   const res = key ? cache?.metrics[key.id] : undefined;
-  const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} />;
+  const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} tools={onOpen && !noAccess && !missing ? <QualityTool quality={quality} path={`/ui/${projectId}/data-marts/${cls.martId}/quality`} onOpen={onOpen} /> : undefined} />;
 
   if (missing) {
     return (
