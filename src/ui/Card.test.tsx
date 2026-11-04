@@ -167,3 +167,24 @@ test('expanding pins the collapsed height and collapsing releases it', () => {
     else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
   }
 });
+
+test('a warning on the key number shows the icon, with the text in the tooltip', () => {
+  render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ fact: null, warning: 'Field arr no longer exists in Customers' })} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByLabelText('Warning')).toBeInTheDocument();
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Field arr no longer exists in Customers');
+});
+
+test('a badge with a warning shows the icon with its text', () => {
+  const c = cache();
+  c.metrics.uc = { ...c.metrics.uc!, warning: 'Field id no longer exists' };
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={c} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-badge [aria-label="Warning"]')).not.toBeNull();
+  expect(container.querySelector('.gy-badge .gy-warn')).toHaveAttribute('title', 'Field id no longer exists');
+});
+
+test('a class whose Data Mart is gone says so, like the no-access card', () => {
+  render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} missing comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('Data Mart not found')).toBeInTheDocument();
+  expect(screen.getByLabelText('Warning')).toBeInTheDocument();
+  expect(screen.queryByText('1.24M')).toBeNull();
+});

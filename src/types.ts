@@ -114,6 +114,8 @@ export interface MetricResult {
   trend: Trend;
   note: 'short_history' | 'no_date_field' | null;
   error: string | null;
+  /** A broken reference or a failed query: shown with a warning icon, and the text in the tooltip. */
+  warning?: string | null;
 }
 
 export interface CardCache { metrics: Record<string, MetricResult>; spark: SeriesPack | null }

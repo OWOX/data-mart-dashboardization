@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PluginContext } from '@owox/plugin-sdk';
+import { TriangleAlert } from 'lucide-react';
 import type { Blocked as BlockedInfo, CacheDoc, CardCache, CompareChoice, Model, RangeChoice, Settings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { compareLabel, resolveRange } from './lib/dates';
 import { describeError } from './lib/errors';
 import { seedFrom } from './model/seed';
 import { shownModel } from './model/shown';
+import { checkHealth, type Issue } from './model/health';
 import { buildModel, currentInputHash, type BuildStep } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
-import { fetchInputs, type Inputs, type OwoxLike } from './owox/sources';
+import { fetchInputs, type Inputs, type MartDetail, type OwoxLike } from './owox/sources';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
   isStale, loadCache, loadOntology, loadPreferences, loadProjectModel, loadSettings, saveCache, saveOntology, savePreferences, saveSettings, type CollectionsLike,
@@ -86,6 +88,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [saveNote, setSaveNote] = useState<string | null>(null);
   // what this member can see, fetched once per model; data is null when the fetch failed
   const [inputs, setInputs] = useState<{ model: Model; data: Inputs | null } | null>(null);
+  // the health check of the model against the Data Marts; the schemas it read are kept for the Ontology Model page
+  const [health, setHealth] = useState<{ model: Model; issues: Issue[]; details: Map<string, MartDetail> } | null>(null);
   const refreshId = useRef(0);
   const fetchedFor = useRef<Model | null>(null);
   const checkedFor = useRef<object | null>(null);
@@ -167,6 +171,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     [inputs],
   );
 
+  const issuesNow = useMemo<Issue[]>(() => (health && health.model === model ? health.issues : []), [health, model]);
+  const missingIds = useMemo(() => new Set(issuesNow.filter((i) => i.kind === 'mart_missing' && i.metricId === null).map((i) => i.classId)), [issuesNow]);
+
   const refresh = useCallback(async (force: boolean): Promise<boolean> => {
     if (!model) return false;
     const id = ++refreshId.current;
@@ -188,7 +195,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setProgress(null);
       setRefreshing(true);
       const doc = await refreshCanvas({
-        owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible,
+        owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible, issues: issuesNow,
         onProgress: (done, total) => { if (current()) setProgress({ done, total }); },
         onPartial: (cards) => { if (current()) setCache(mergePartial(shown, cards, shownModel(model), spec.anchor, settings.thresholdPct, key, spec.comparison !== null)); },
       });
@@ -208,7 +215,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (current()) { setRefreshing(false); setLoading(false); setProgress(null); }
     }
     return current();
-  }, [model, range, compare, owox, store, now, settings.thresholdPct, settings.weekStart, visible]);
+  }, [model, range, compare, owox, store, now, settings.thresholdPct, settings.weekStart, visible, issuesNow]);
 
   const inReady = view.name === 'ready';
   useEffect(() => {
@@ -220,7 +227,12 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     void (persistable(range, compare) ? loadCache(store, probeKey).catch(() => null) : Promise.resolve(null)).then((saved) => {
       if (!saved && refreshId.current === probe) setLoading(true);
     });
-    fetchInputs(owox).catch(() => null).then((data) => setInputs({ model, data }));
+    fetchInputs(owox).catch(() => null).then(async (data) => {
+      // the check lands before the inputs, so the first refresh already knows what is broken
+      const checked = data ? await checkHealth(owox, model, new Set(data.marts.map((m) => m.id))).catch(() => null) : null;
+      if (checked) setHealth({ model, ...checked });
+      setInputs({ model, data });
+    });
   }, [inReady, model, owox]);
 
   const inputsReady = inReady && !!inputs && inputs.model === model;
@@ -291,6 +303,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} status={status} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
+          {issuesNow.length > 0 && (
+            <div className="gy-banner">
+              <TriangleAlert size={16} className="gy-warn" aria-label="Warning" />
+              <span>{issuesNow.length} {issuesNow.length === 1 ? 'reference in the model is' : 'references in the model are'} broken.</span>
+              <button type="button" className="gy-link" onClick={openSettings}>Review in Ontology Model</button>
+            </div>
+          )}
           {outdated && (
             <div className="gy-banner">
               <span>Descriptions or schemas changed since this model was built.</span>
@@ -299,7 +318,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           )}
           <Canvas
             tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={openSettings} />}
-            model={model} cache={cache} visibleIds={visible} marts={marts}
+            model={model} cache={cache} visibleIds={visible} missingIds={missingIds} marts={marts}
             compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
             progress={progress}
             comparisonOn={compare.kind !== 'off'} refreshing={refreshing || loading} onRetry={() => void refresh(true)}

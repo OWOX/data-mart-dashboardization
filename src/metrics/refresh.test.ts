@@ -156,3 +156,53 @@ test('a hidden class and a hidden metric are not queried', async () => {
   expect(traversed.length).toBeGreaterThan(0);
   expect(traversed.every((c) => c.path === 'traverse:a')).toBe(true);
 });
+
+describe('broken references', () => {
+  const metric = (id: string, over = {}) => ({ id, martId: 'a', alias: id, measure: { field: 'id', fn: 'COUNT_DISTINCT' as const }, kind: 'flow' as const, dateField: null, role: 'unique' as const, source: 'schema', isUniqueCount: true, plan: null, shown: true, forecast: null, ...over });
+  const model = (metrics: ReturnType<typeof metric>[]): Model => ({
+    version: 2, inputHash: 'h1', builtAt: '', builtBy: 'u', editedAt: null,
+    goal: { classId: 'a', metricId: null, goalMartId: 'a', viaFallback: false },
+    classes: [{ id: 'a', martId: 'a', title: 'A', contexts: [], depth: 0, keyMetricId: metrics[0]!.id, metricIds: metrics.map((m) => m.id), shown: true }],
+    edges: [], metrics,
+  });
+  const spec = rangeFor('last_7d', new Date('2026-10-24T10:00:00Z'));
+  const ok = () => fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'id | COUNTUNIQUE': 5 }] });
+
+  test('a metric with a broken fact field is not queried; the others are', async () => {
+    const owox = ok();
+    const m = model([metric('bad'), metric('good')]);
+    const doc = await refreshCanvas({ owox, model: m, spec, key: 'k', thresholdPct: 20, issues: [{ kind: 'fact_field_missing', classId: 'a', metricId: 'bad', text: 'Field id no longer exists in A' }] });
+    const r = doc.cards.a!.metrics;
+    expect(r.bad).toMatchObject({ fact: null, status: 'neutral', warning: 'Field id no longer exists in A' });
+    expect(r.good!.fact).toBe(5);
+    expect(owox.calls.filter((c) => c.path === 'traverse:a')).toHaveLength(1);
+  });
+
+  test('a class whose Data Mart is gone queries nothing', async () => {
+    const owox = ok();
+    const doc = await refreshCanvas({ owox, model: model([metric('m')]), spec, key: 'k', thresholdPct: 20, issues: [{ kind: 'mart_missing', classId: 'a', metricId: null, text: 'Data Mart not found' }] });
+    expect(doc.cards.a!.metrics.m!.warning).toBe('Data Mart not found');
+    expect(owox.calls).toHaveLength(0);
+  });
+
+  test('a plan issue drops the plan and warns; the fact stays', async () => {
+    const plan = { martId: 'p', measure: { field: 'x', fn: 'SUM' as const }, dateField: 'd', shape: 'daily' as const };
+    const owox = ok();
+    const doc = await refreshCanvas({ owox, model: model([metric('m', { plan })]), spec, key: 'k', thresholdPct: 20, issues: [{ kind: 'plan_field_missing', classId: 'a', metricId: 'm', text: 'The plan field x no longer exists in p' }] });
+    expect(doc.cards.a!.metrics.m).toMatchObject({ fact: 5, plan: null, warning: 'The plan field x no longer exists in p' });
+    expect(owox.calls.some((c) => c.path === 'traverse:p')).toBe(false);
+  });
+
+  test('a traverse that throws Not found mid-refresh gives a warning, and the run carries on', async () => {
+    const owox = ok();
+    const base = owox.dataMarts.traverseData;
+    owox.dataMarts.traverseData = async (id, o) => {
+      if (id === 'gone') throw new Error('Not found');
+      return base(id, o);
+    };
+    const m = model([metric('bad', { martId: 'gone' }), metric('good')]);
+    const doc = await refreshCanvas({ owox, model: m, spec, key: 'k', thresholdPct: 20 });
+    expect(doc.cards.a!.metrics.bad).toMatchObject({ fact: null, warning: 'Not found' });
+    expect(doc.cards.a!.metrics.good!.fact).toBe(5);
+  });
+});

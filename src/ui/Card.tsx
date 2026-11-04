@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { Info } from 'lucide-react';
+import { Info, TriangleAlert } from 'lucide-react';
 import type { CardCache, ClassNode, MetricDef } from '../types';
 import { diffPct } from '../lib/stats';
 import { compact, formatDelta, formatPct } from '../lib/format';
@@ -18,6 +18,8 @@ interface Props {
   comparisonOn: boolean;
   refreshing: boolean;
   noAccess?: boolean;
+  /** The class's Data Mart no longer exists. */
+  missing?: boolean;
   /** 'vs Last Month' and the like; the comparison row shows only when it is given and comparison is on. */
   compareLabel?: string;
   /** The diff chip shows an absolute difference instead of a relative one. */
@@ -105,6 +107,16 @@ function Compare({ delta, pct, sign, label, absolute, onToggle }: {
   );
 }
 
+/** A warning icon whose tooltip says what is wrong, in the style of the info hint. */
+export function WarningHint({ text }: { text: string }) {
+  return (
+    <span className="gy-hint gy-warn" tabIndex={0} aria-label="Warning">
+      <TriangleAlert size={14} />
+      <span className="gy-hint-body" role="tooltip">{text}</span>
+    </span>
+  );
+}
+
 type Sign = 'up' | 'down' | 'flat';
 
 /**
@@ -127,16 +139,24 @@ function TrendArrow({ sign }: { sign: Sign }) {
   );
 }
 
-export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, compareLabel, absolute = false, onToggleDiff, onRetry }: Props) {
+export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, onRetry }: Props) {
   const key = metrics.find((m) => m.id === cls.keyMetricId);
   const res = key ? cache?.metrics[key.id] : undefined;
-  const header = <CardHead title={cls.title} metric={noAccess || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess ? [] : metrics} />;
+  const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} />;
 
   if (noAccess) {
     return (
       <article className="gy-card" data-class-id={cls.id} data-status="empty">
         {header}
         <p className="gy-muted">You don't have access to this Data Mart</p>
+      </article>
+    );
+  }
+  if (missing) {
+    return (
+      <article className="gy-card" data-class-id={cls.id} data-status="empty">
+        {header}
+        <p className="gy-muted"><TriangleAlert size={14} aria-label="Warning" /> Data Mart not found</p>
       </article>
     );
   }
@@ -188,6 +208,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       <div className="gy-card-body">
         <span className="gy-trend" data-sign={sign}><TrendArrow sign={sign} /></span>
         <span className="num gy-big" title={detail || undefined}>{big}</span>
+        {res.warning && <WarningHint text={res.warning} />}
         {badges.length > 0 && <Badges items={badges} />}
       </div>
       {/* An all-time metric has no period to compare against. */}

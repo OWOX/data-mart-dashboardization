@@ -550,3 +550,20 @@ test('a failed access check shows no class rather than every class', async () =>
   expect(screen.queryByText('Customers', { selector: '.gy-card-title' })).toBeNull();
   expect(screen.getAllByText("You don't have access to this Data Mart").length).toBeGreaterThan(0);
 });
+
+test('a broken reference shows the banner with its count, and the link opens Settings', async () => {
+  const { deps, d } = await setup();
+  delete d.details[GID]!.fields.splice(1, 1)[0];
+  const { ctx, setRoute } = ctxWith();
+  render(<App ctx={ctx} deps={deps} />);
+  expect(await screen.findByText(/1 reference in the model is broken\./)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Review in Ontology Model' }));
+  expect(setRoute).toHaveBeenCalledWith('/settings');
+});
+
+test('no banner while the model matches its schemas', async () => {
+  const { deps } = await setup();
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await screen.findByRole('button', { name: 'Date range' });
+  expect(screen.queryByText(/broken/)).toBeNull();
+});

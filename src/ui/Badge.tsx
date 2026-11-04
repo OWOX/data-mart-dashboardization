@@ -1,4 +1,4 @@
-import { MoveRight, TrendingDown, TrendingUp } from 'lucide-react';
+import { MoveRight, TrendingDown, TrendingUp, TriangleAlert } from 'lucide-react';
 import type { MetricDef, MetricResult } from '../types';
 import { compact } from '../lib/format';
 
@@ -13,6 +13,7 @@ export function Badge({ metric, result }: { metric: MetricDef; result: MetricRes
       <Icon size={12} aria-label={`trend ${trend}`} />
       <span className="num gy-badge-value">{failed ? '—' : compact(result.fact ?? result.forecast)}</span>{' '}
       <span className="gy-badge-name" title={metric.alias}>{metric.alias}</span>
+      {result?.warning && <span className="gy-warn" title={result.warning}><TriangleAlert size={12} aria-label="Warning" /></span>}
     </span>
   );
 }

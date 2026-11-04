@@ -268,6 +268,7 @@ h2 { margin: 0; }
 .gy-form-error { margin: 0; color: var(--red); }
 .gy-form-actions { display: flex; gap: 0.5rem; padding-top: 0.25rem; }
 .gy-form-actions .gy-btn { height: 2rem; padding: 0 0.875rem; }
+.gy-warn { color: var(--orange); opacity: 1; }
 .gy-banner { border: 1px solid var(--orange); border-radius: 0.625rem; padding: 0.75rem 1rem; margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; }
 .gy-blocked { max-width: 45rem; margin: 3rem auto; padding: 1.5rem 2rem; background: var(--card); border: 1px solid var(--red); border-radius: 0.625rem; }
 .gy-blocked ol { padding-left: 1.25rem; }
