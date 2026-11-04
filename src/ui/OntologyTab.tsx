@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { describeError } from '../lib/errors';
 import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources';
-import type { ClassNode, ForecastDef, MetricDef, MetricRole, Model, Measure, PlanDef, PlanShape } from '../types';
+import { applyChanges, diffModels, type Change } from '../model/diff';
+import type { BuildStep } from '../model/build';
+import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricRole, Model, Measure, PlanDef, PlanShape } from '../types';
+import { Blocked } from './Blocked';
+import { BuildProgress } from './BuildProgress';
+import { RebuildProposal } from './RebuildProposal';
 import { AGGS, FieldPicker, dateFields, martFields, type Option } from './FieldPicker';
 
 const ROLES: MetricRole[] = ['critical', 'leading', 'lagging', 'unique'];
@@ -9,6 +14,14 @@ const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
 const CALCULATED = 'CALC';
 type DetailStatus = 'ok' | 'loading' | 'unreadable' | 'gone';
 const NO_MART: Option = { value: '', label: 'None' };
+
+/** The rebuild flow on the tab: nothing is saved until a proposal is applied. */
+type Rebuild =
+  | { phase: 'idle' }
+  | { phase: 'building'; steps: BuildStep[] }
+  | { phase: 'proposal'; candidate: Model; changes: Change[] }
+  | { phase: 'blocked'; blocked: BlockedInfo }
+  | { phase: 'error'; message: string };
 
 /** Goal first, then closest to the goal: the canvas order. */
 function canvasOrder(model: Model): ClassNode[] {
@@ -60,7 +73,7 @@ function Source({ label, detail, status, measure, dateField, noDate, onMeasure, 
   );
 }
 
-export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true }: {
+export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen }: {
   model: Model;
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
@@ -70,11 +83,16 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   now: () => Date;
   onSave: (m: Model) => Promise<void>;
   onCancel: () => void;
-  onRebuild?: () => void; canRebuild?: boolean;
+  /** Builds a candidate model from the descriptions; saves nothing. */
+  onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean;
+  projectId?: string; onOpen?: (path: string) => void;
 }) {
   const [draft, setDraft] = useState<Model>(model);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [rebuild, setRebuild] = useState<Rebuild>({ phase: 'idle' });
+  // a proposal is judged against the saved model, so unsaved edits can't be kept alongside it
+  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(model), [draft, model]);
   // schemas fetched here; null: the fetch failed
   const [extra, setExtra] = useState<ReadonlyMap<string, MartDetail | null>>(new Map());
   const requested = useRef(new Set<string>());
@@ -128,6 +146,29 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     }
   };
 
+  const startRebuild = async () => {
+    if (!onRebuild) return;
+    setError(null);
+    setRebuild({ phase: 'building', steps: [] });
+    try {
+      const result = await onRebuild((step) => setRebuild((r) => (r.phase === 'building' ? { phase: 'building', steps: [...r.steps, step] } : r)));
+      setRebuild(result.ok ? { phase: 'proposal', candidate: result.model, changes: diffModels(model, result.model) } : { phase: 'blocked', blocked: result.blocked });
+    } catch (e) {
+      setRebuild({ phase: 'error', message: describeError(e) });
+    }
+  };
+  const applyProposal = async (candidate: Model, picked: Change[]) => {
+    setError(null);
+    setSaving(true);
+    try {
+      await onSave(applyChanges(model, candidate, picked, now().toISOString()));
+    } catch (e) {
+      setError(`Couldn't save the model: ${describeError(e)}`);
+      setSaving(false);
+    }
+  };
+  const closeRebuild = () => { setError(null); setRebuild({ phase: 'idle' }); };
+
   // without an access list only the Data Marts already referenced can be offered
   const martOptions: Option[] = marts
     ? marts.map((m) => ({ value: m.id, label: m.title }))
@@ -144,18 +185,39 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         {onRebuild && (
           <>
             <p className="dm-muted gy-form-note">
-              Reads the project description and the Data Mart schemas again and redraws the canvas.
+              Reads the project description and the Data Mart schemas again and proposes changes to your model.
               Use it after changing the metrics table, links or calculated fields.
             </p>
             <div className="gy-form-actions">
-              <button type="button" className="gy-btn" onClick={onRebuild} disabled={!canRebuild}>Rebuild model</button>
+              <button type="button" className="gy-btn" onClick={() => void startRebuild()} disabled={!canRebuild || dirty || rebuild.phase !== 'idle'}>Rebuild model</button>
             </div>
             {!canRebuild && <p className="dm-muted gy-form-note">Ask a project admin to map an AI model</p>}
+            {canRebuild && dirty && <p className="dm-muted gy-form-note">Save or cancel your edits first</p>}
           </>
         )}
       </section>
 
-      {canvasOrder(draft).map((c) => {
+      {rebuild.phase === 'building' && <BuildProgress steps={rebuild.steps} embedded />}
+      {rebuild.phase === 'blocked' && <Blocked blocked={rebuild.blocked} projectId={projectId} onRetry={() => void startRebuild()} onBack={closeRebuild} backLabel="Back to the model" onOpen={onOpen} />}
+      {rebuild.phase === 'error' && (
+        <section className="dm-card gy-onto-intro" aria-label="Rebuild proposal">
+          <p role="alert" className="gy-form-error">{rebuild.message}</p>
+          <div className="gy-form-actions">
+            <button type="button" className="gy-btn gy-btn-primary" onClick={() => void startRebuild()}>Retry</button>
+            <button type="button" className="gy-btn" onClick={closeRebuild}>Back to the model</button>
+          </div>
+        </section>
+      )}
+      {rebuild.phase === 'proposal' && (
+        <RebuildProposal
+          changes={rebuild.changes} busy={saving} error={error}
+          titleOf={(id) => model.classes.find((c) => c.id === id)?.title ?? rebuild.candidate.classes.find((c) => c.id === id)?.title ?? id}
+          nameOf={(id) => model.metrics.find((m) => m.id === id)?.alias ?? id}
+          onApply={(picked) => void applyProposal(rebuild.candidate, picked)} onDiscard={closeRebuild}
+        />
+      )}
+
+      {rebuild.phase === 'idle' && canvasOrder(draft).map((c) => {
         const goal = c.id === draft.goal.classId;
         const classMart = detailOf(c.martId);
         const classNote = classMart.status === 'gone' ? 'Data Mart not found or not accessible' : classMart.status === 'unreadable' ? "Couldn't read the schema" : null;
@@ -247,11 +309,15 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         );
       })}
 
-      {error && <p role="alert" className="gy-form-error">{error}</p>}
-      <div className="gy-form-actions">
-        <button type="button" className="gy-btn gy-btn-primary" onClick={() => void save()} disabled={saving}>Save</button>
-        <button type="button" className="gy-btn" onClick={onCancel}>Cancel</button>
-      </div>
+      {rebuild.phase === 'idle' && (
+        <>
+          {error && <p role="alert" className="gy-form-error">{error}</p>}
+          <div className="gy-form-actions">
+            <button type="button" className="gy-btn gy-btn-primary" onClick={() => void save()} disabled={saving}>Save</button>
+            <button type="button" className="gy-btn" onClick={onCancel}>Cancel</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

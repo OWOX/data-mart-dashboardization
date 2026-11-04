@@ -1,7 +1,8 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { PRESET_GROUPS, PRESET_LABELS, type Model, type Preset, type Settings, type WeekStart } from '../types';
+import { PRESET_GROUPS, PRESET_LABELS, type BuildResult, type Model, type Preset, type Settings, type WeekStart } from '../types';
 import type { MartDetail, OwoxLike } from '../owox/sources';
+import type { BuildStep } from '../model/build';
 import { LoadingLine } from './LoadingLine';
 import { OntologyTab } from './OntologyTab';
 
@@ -18,10 +19,10 @@ export interface OntologyProps {
   onSave: (m: Model) => Promise<void>;
 }
 
-export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, error, tab: initialTab = 'general', onTabChange, ontology }: {
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, error, tab: initialTab = 'general', onTabChange, ontology }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
-  /** Reads the descriptions and schemas again and replaces the member's model. */
-  onRebuild?: () => void; canRebuild?: boolean; error?: string | null;
+  /** Reads the descriptions and schemas again into a candidate model; the Ontology tab shows it as a proposal. */
+  onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void; error?: string | null;
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
@@ -62,7 +63,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
       <main>
       <div className="dm-page-content" role="tabpanel" id="gy-panel-ontology" aria-labelledby="gy-tab-ontology" hidden={tab !== 'ontology'}>
         {ontology
-          ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} />
+          ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} />
           : <><LoadingLine /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
       </div>
       <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>

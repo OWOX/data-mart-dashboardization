@@ -64,8 +64,8 @@ function stepContent(step: string, projectId: string, onOpen?: (path: string) =>
   });
 }
 
-export function Blocked({ blocked, projectId, onRetry, onBack, onOpen }: {
-  blocked: BlockedInfo; projectId: string; onRetry: () => void; onBack?: () => void;
+export function Blocked({ blocked, projectId, onRetry, onBack, backLabel = 'Back to canvas', onOpen }: {
+  blocked: BlockedInfo; projectId: string; onRetry: () => void; onBack?: () => void; backLabel?: string;
   /** Goes to an OWOX page; without it the page names show as plain text. */
   onOpen?: (path: string) => void;
 }) {
@@ -87,7 +87,7 @@ export function Blocked({ blocked, projectId, onRetry, onBack, onOpen }: {
         </div>
       )}
       <p><button type="button" className="gy-btn gy-btn-primary" onClick={onRetry}>Retry</button>
-        {onBack && <>{' '}<button type="button" className="gy-btn" onClick={onBack}>Back to canvas</button></>}
+        {onBack && <>{' '}<button type="button" className="gy-btn" onClick={onBack}>{backLabel}</button></>}
       </p>
     </div>
   );

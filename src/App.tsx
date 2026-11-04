@@ -318,7 +318,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
           ontology={ontologyProps}
           onBack={leaveSettings}
-          onRebuild={() => { ctx.ui?.setRoute?.('/'); void build(); }}
+          onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), onStep })}
+          projectId={ctx.projectId}
+          onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}
           canRebuild={!!generate}
           error={settingsError}
           onSave={(s) => void saveSettingsAndLeave(s)}
@@ -342,8 +344,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           )}
           {outdated && (
             <div className="gy-banner">
-              <span>Descriptions or schemas changed since this model was built.</span>
-              <button type="button" className="gy-btn" onClick={() => void build()}>Rebuild model</button>
+              <button type="button" className="gy-link" onClick={() => openSettings('ontology')}>The descriptions changed. Rebuild to see proposed changes</button>
             </div>
           )}
           <Canvas

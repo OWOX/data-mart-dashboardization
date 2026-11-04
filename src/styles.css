@@ -358,3 +358,5 @@ h2 { margin: 0; }
 @media (max-width: 640px) { .gy-onto-label { width: 100%; } .gy-onto-name { width: 100%; } .gy-onto-pick { flex: 1 1 8rem; } }
 .dm-page-content[hidden] { display: none; }
 .gy-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.gy-proposal { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.gy-proposal-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }

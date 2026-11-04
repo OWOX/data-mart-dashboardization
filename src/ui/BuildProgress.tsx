@@ -16,7 +16,8 @@ function label(r: Read): string {
 }
 
 /** The build page: the line on top, what is being read on the left, what was found on the right. */
-export function BuildProgress({ steps }: { steps: BuildStep[] }) {
+/** `embedded` draws it inside a page that already has its main landmark. */
+export function BuildProgress({ steps, embedded = false }: { steps: BuildStep[]; embedded?: boolean }) {
   const latest = new Map<Read['what'], Read>();
   let found: Found | null = null;
   for (const s of steps) {
@@ -29,8 +30,9 @@ export function BuildProgress({ steps }: { steps: BuildStep[] }) {
   const progress = marts && marts.total && !aiRunning ? { done: marts.done, total: marts.total } : null;
   const reads = ORDER.flatMap((w) => { const r = latest.get(w); return r ? [r] : []; });
   const current = [...reads].reverse().find((r) => !r.finished && !r.failed) ?? reads.at(-1);
+  const Tag = embedded ? 'div' : 'main';
   return (
-    <main className="gy-main">
+    <Tag className="gy-main">
       <LoadingLine progress={progress} />
       <div className="gy-build">
         <section aria-label="Reading">
@@ -58,6 +60,6 @@ export function BuildProgress({ steps }: { steps: BuildStep[] }) {
           )}
         </section>
       </div>
-    </main>
+    </Tag>
   );
 }
