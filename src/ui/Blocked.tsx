@@ -5,8 +5,9 @@ import type { Blocked as BlockedInfo, BlockCode } from '../types';
 const PAGES = {
   settings: { label: 'Project settings', path: (projectId: string) => `/ui/${projectId}/project-settings` },
   plugins: { label: 'Plugins', path: (projectId: string) => `/ui/${projectId}/plugins` },
-};
+} as const;
 type Page = keyof typeof PAGES;
+const PAGE_TOKEN = new RegExp(`\\[(${Object.keys(PAGES).join('|')})\\]`);
 
 const STEPS: Record<BlockCode, string[]> = {
   NO_GOAL: [
@@ -54,7 +55,7 @@ const snippet = (projectId: string): string => `## Metrics
 | Critical number | ARR | <owner> | [Plan · ARR](https://app.owox.com/ui/${projectId}/data-marts/<plan-data-mart-id>/data-setup?field=<plan_field>) | [ARR](https://app.owox.com/ui/${projectId}/data-marts/<fact-data-mart-id>/data-setup?field=<fact_field>) |`;
 
 function stepContent(step: string, projectId: string, onOpen?: (path: string) => void): ReactNode[] {
-  return step.split(/\[(settings|plugins)\]/).map((part, i) => {
+  return step.split(PAGE_TOKEN).map((part, i) => {
     if (i % 2 === 0) return part;
     const page = PAGES[part as Page];
     return onOpen
