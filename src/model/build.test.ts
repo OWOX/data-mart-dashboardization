@@ -1,4 +1,4 @@
-import { buildModel } from './build';
+import { buildModel, type BuildStep } from './build';
 import { fakeOwox } from '../owox/fake';
 
 const now = new Date('2026-10-24T10:00:00Z');
@@ -125,4 +125,20 @@ test('inputHash ignores modifiedAt churn but changes with a class-mart formula',
   if (!base.ok || !same.ok || !changed.ok) throw new Error('fixture');
   expect(same.model.inputHash).toBe(base.model.inputHash);
   expect(changed.model.inputHash).not.toBe(base.model.inputHash);
+});
+
+test('onStep reports reading, marts counting up to the total, and what was found', async () => {
+  const steps: BuildStep[] = [];
+  const r = await buildModel({ owox: fakeOwox(data()), generate: async () => goalAi, userId: 'u1', now, onStep: (s) => steps.push(s) });
+  expect(r.ok).toBe(true);
+  const reads = steps.filter((s) => s.kind === 'read');
+  expect(reads.map((s) => s.what).filter((w, i, a) => a.indexOf(w) === i)).toEqual(['project', 'contexts', 'marts', 'ai']);
+  expect(reads.find((s) => s.what === 'project' && s.finished)).toBeDefined();
+  const marts = reads.filter((s) => s.what === 'marts');
+  expect(marts[0]).toMatchObject({ done: 0, total: 2, finished: false });
+  expect(marts.map((s) => s.done)).toEqual([...marts.map((s) => s.done)].sort((a, b) => a - b));
+  expect(marts.at(-1)).toMatchObject({ done: 2, total: 2, finished: true });
+  expect(reads.at(-1)).toMatchObject({ what: 'marts', finished: true });
+  expect(reads.find((s) => s.what === 'ai' && s.finished)).toBeDefined();
+  expect(steps.at(-1)).toEqual({ kind: 'found', goal: 'Revenue (Orders)', classes: ['Orders', 'Customers'], metrics: 3 });
 });

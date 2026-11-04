@@ -54,10 +54,15 @@ test('with no ontology the project model seeds it, without an AI call', async ()
   expect((await store.collections<Model>('model').get('current'))!.document.version).toBe(1);
 });
 
-test('with neither, the intro shows', async () => {
+test('with neither, the build starts on open and shows its progress', async () => {
   const { deps } = await setup();
-  render(<App ctx={ctx} deps={deps} />);
-  expect(await screen.findByRole('button', { name: 'Build model' })).toBeInTheDocument();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  render(<App ctx={ctx} deps={{ ...deps, generate: async () => { await gate; return goalAi; } }} />);
+  expect(await screen.findByText('AI reading descriptions…')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Build model' })).toBeNull();
+  release();
+  expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
 });
 
 test('seeding drops classes the member cannot access and rehashes for the kept ones', async () => {

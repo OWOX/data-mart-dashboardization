@@ -48,11 +48,20 @@ const POOL = 6;
 const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'GOAL_NOT_CONNECTED', detail: string, mismatches: string[] = []): BuildResult =>
   ({ ok: false, blocked: { code, detail, mismatches } });
 
-export async function buildModel(args: { owox: OwoxLike; generate: Generate | null; userId: string; now: Date }): Promise<BuildResult> {
+/** What the build is doing, for the progress page. Mart counts run over both detail-loading phases against all visible marts. */
+export type BuildStep =
+  | { kind: 'read'; what: 'project' | 'contexts' | 'marts' | 'ai'; done: number; total: number | null; finished: boolean }
+  | { kind: 'found'; goal: string | null; classes: string[]; metrics: number };
+
+export async function buildModel(args: { owox: OwoxLike; generate: Generate | null; userId: string; now: Date; onStep?: (s: BuildStep) => void }): Promise<BuildResult> {
   const { owox, generate, userId, now } = args;
+  const step = args.onStep ?? (() => undefined);
   if (!generate) return fail('AI_NOT_CONFIGURED', 'Ask a project admin to map an AI model to this plugin.');
 
+  step({ kind: 'read', what: 'project', done: 0, total: null, finished: false });
   const inputs = await fetchInputs(owox);
+  step({ kind: 'read', what: 'project', done: 1, total: 1, finished: true });
+  step({ kind: 'read', what: 'contexts', done: inputs.contexts.length, total: inputs.contexts.length, finished: true });
   const visible = new Set(inputs.marts.map((m) => m.id));
 
   const links: MartLink[] = extractLinks(inputs.projectDescription, 'project', 0);
@@ -60,7 +69,16 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
 
   const details = new Map<string, MartDetail>();
   const linked = [...new Set(links.flatMap((l) => (l.martId && visible.has(l.martId) ? [l.martId] : [])))];
-  const got = await runPool(linked.map((id) => () => fetchMartDetail(owox, id)), POOL);
+  const martTotal = inputs.marts.length;
+  const counted = new Set<string>();
+  const tick = (id: string) => {
+    counted.add(id);
+    step({ kind: 'read', what: 'marts', done: counted.size, total: martTotal, finished: false });
+  };
+  step({ kind: 'read', what: 'marts', done: 0, total: martTotal, finished: false });
+  const got = await runPool(linked.map((id) => async () => {
+    try { return await fetchMartDetail(owox, id); } finally { tick(id); }
+  }), POOL);
   const failures = new Map<string, unknown>();
   got.forEach((r, i) => { if (r.status === 'fulfilled') details.set(r.value.id, r.value); else failures.set(linked[i]!, r.reason); });
   const titleOf = (id: string) => inputs.marts.find((m) => m.id === id)?.title ?? id;
@@ -69,6 +87,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   for (const [id, d] of details) dateFields[id] = flattenFields(d.fields).filter((x) => DATE_TYPES.has(x.field.type.toUpperCase())).map((x) => x.path);
 
   let ai;
+  step({ kind: 'read', what: 'ai', done: 0, total: null, finished: false });
   try {
     ai = await interpret(generate, { projectDescription: inputs.projectDescription, contexts: inputs.contexts, links, dateFields });
   } catch (e) {
@@ -82,12 +101,18 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
 
   const v = validate({ ai, links, details, visible });
   if (!v.ok) return v;
+  step({ kind: 'read', what: 'ai', done: 1, total: 1, finished: true });
 
   const loaded = await runPool(inputs.marts.map((m) => async (): Promise<MartNode> => {
-    const detail = details.get(m.id) ?? await fetchMartDetail(owox, m.id);
-    const blendable: Blendable = await fetchBlendable(owox, m.id);
-    return { id: m.id, title: m.title, contexts: m.contexts, detail, blendable };
+    try {
+      const detail = details.get(m.id) ?? await fetchMartDetail(owox, m.id);
+      const blendable: Blendable = await fetchBlendable(owox, m.id);
+      return { id: m.id, title: m.title, contexts: m.contexts, detail, blendable };
+    } finally {
+      if (!counted.has(m.id)) tick(m.id);
+    }
   }), POOL);
+  step({ kind: 'read', what: 'marts', done: martTotal, total: martTotal, finished: true });
   const nodes = loaded.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
   loaded.forEach((r, i) => { if (r.status === 'rejected') failures.set(inputs.marts[i]!.id, r.reason); });
 
@@ -118,6 +143,15 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   }
   classes.sort((a, b) => a.depth - b.depth || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
   metrics.sort((a, b) => a.id.localeCompare(b.id));
+
+  const goalClass = classes.find((c) => c.id === main.id);
+  const goalDef = metrics.find((m) => m.id === v.goal.metricId);
+  step({
+    kind: 'found',
+    goal: goalClass ? `${goalDef?.alias ?? goalClass.title} (${goalClass.title})` : null,
+    classes: classes.map((c) => c.title),
+    metrics: metrics.length,
+  });
 
   return {
     ok: true,

@@ -6,7 +6,7 @@ import { compareLabel, resolveRange } from './lib/dates';
 import { describeError } from './lib/errors';
 import { seedFrom } from './model/seed';
 import { shownModel } from './model/shown';
-import { buildModel, currentInputHash } from './model/build';
+import { buildModel, currentInputHash, type BuildStep } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
 import { fetchInputs, type Inputs, type OwoxLike } from './owox/sources';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
@@ -14,6 +14,7 @@ import {
   isStale, loadCache, loadOntology, loadPreferences, loadProjectModel, loadSettings, saveCache, saveOntology, savePreferences, saveSettings, type CollectionsLike,
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
+import { BuildProgress } from './ui/BuildProgress';
 import { Canvas } from './ui/Canvas';
 import { LoadingLine } from './ui/LoadingLine';
 import { Header, RangeControls } from './ui/Header';
@@ -29,7 +30,6 @@ export interface AppDeps {
 
 type View =
   | { name: 'loading' }
-  | { name: 'intro' }
   | { name: 'building' }
   | { name: 'blocked'; blocked: BlockedInfo }
   | { name: 'error'; message: string; retry: 'load' | 'build' }
@@ -80,6 +80,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   // loading: the line and step text show, from the first screen until the refresh ends; progress: metrics done of total, once known
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [steps, setSteps] = useState<BuildStep[]>([]);
   const [outdated, setOutdated] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
@@ -117,22 +118,25 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setRange(prefs?.range ?? rangeOf(s));
       setCompare(prefs?.compare ?? compareOf(s));
       setModel(m);
-      setView(m ? { name: 'ready' } : { name: 'intro' });
+      if (m) setView({ name: 'ready' });
+      else void buildRef.current();
     } catch (e) {
       setView({ name: 'error', message: describeError(e), retry: 'load' });
     }
   }, [store, owox]);
 
+  const buildRef = useRef<() => Promise<void>>(async () => undefined);
   useEffect(() => { void load(); }, [load]);
 
   const build = useCallback(async () => {
     refreshId.current++;
+    setSteps([]);
     setRefreshing(false);
     setLoading(false);
     setView({ name: 'building' });
     setOutdated(false);
     try {
-      const result = await buildModel({ owox, generate, userId, now: now() });
+      const result = await buildModel({ owox, generate, userId, now: now(), onStep: (s) => setSteps((p) => [...p, s]) });
       if (!result.ok) { setView({ name: 'blocked', blocked: result.blocked }); return; }
       await saveOntology(store, result.model);
       setModel(result.model);
@@ -142,6 +146,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setView({ name: 'error', message: describeError(e), retry: 'build' });
     }
   }, [owox, generate, userId, now, store]);
+
+  buildRef.current = build;
 
   const visible = useMemo<ReadonlySet<string> | null>(
     // a failed access check shows nothing rather than everything
@@ -252,17 +258,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   switch (view.name) {
     case 'loading':
       return <main className="gy-main"><LoadingLine /><p className="gy-muted gy-loadnote">Loading settings and model…</p></main>;
-    case 'intro':
-      return (
-        <main className="gy-main">
-          <h1>Gyroscope</h1>
-          <p>Gyroscope reads your project description, finds the goal and draws the classes that drive it.</p>
-          <button type="button" className="gy-btn gy-btn-primary" disabled={!generate} onClick={() => void build()}>Build model</button>
-          {!generate && <p className="gy-muted">Ask a project admin to map an AI model</p>}
-        </main>
-      );
     case 'building':
-      return <main className="gy-main"><p>Reading descriptions and schemas…</p></main>;
+      return <BuildProgress steps={steps} />;
     case 'blocked':
       return <Blocked blocked={view.blocked} projectId={ctx.projectId} onRetry={() => void build()} onBack={backToCanvas} onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined} />;
     case 'error':
