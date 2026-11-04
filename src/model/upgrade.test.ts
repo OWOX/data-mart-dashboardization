@@ -1,5 +1,5 @@
 import { upgradeModel } from './upgrade';
-import { model as v2 } from '../store/collections.test';
+import { model as v2 } from '../test/fixtures';
 
 const v1 = {
   version: 1, inputHash: 'h', builtAt: 'b', builtBy: 'u',
@@ -24,7 +24,11 @@ test('a valid v2 passes through', () => {
 });
 
 test('junk is rejected', () => {
-  for (const junk of [null, undefined, 3, 'x', [], {}, { version: 3 }, { ...v1, version: 0 }, { ...v1, classes: 'no' }, { ...v1, goal: null }, { ...v1, metrics: [{}] }, { ...v2, editedAt: 5 }, { ...v2, classes: [{ ...v2.classes[0], shown: 'yes' }] }]) {
+  for (const junk of [null, undefined, 3, 'x', [], {}, { version: 3 }, { ...v1, version: 0 }, { ...v1, classes: 'no' }, { ...v1, goal: null }, { ...v1, metrics: [{}] }, { ...v2, editedAt: 5 },
+    { ...v1, classes: [{ ...v1.classes[0], contexts: [{ id: 1 }] }] }, { ...v1, classes: [{ ...v1.classes[0], contexts: 'x' }] },
+    { ...v1, classes: [{ ...v1.classes[0], depth: '0' }] }, { ...v1, classes: [{ ...v1.classes[0], keyMetricId: 5 }] },
+    { ...v1, metrics: [{ ...v1.metrics[0], kind: 'weird' }] }, { ...v1, metrics: [{ ...v1.metrics[0], dateField: 3 }] },
+    { ...v1, metrics: [{ ...v1.metrics[0], plan: 'x' }] }, { ...v1, metrics: [{ ...v1.metrics[0], plan: { martId: 'p' } }] }, { ...v2, classes: [{ ...v2.classes[0], shown: 'yes' }] }]) {
     expect(upgradeModel(junk)).toBeNull();
   }
 });

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
@@ -58,4 +58,40 @@ test('with neither, the intro shows', async () => {
   const { deps } = await setup();
   render(<App ctx={ctx} deps={deps} />);
   expect(await screen.findByRole('button', { name: 'Build model' })).toBeInTheDocument();
+});
+
+test('seeding drops classes the member cannot access and rehashes for the kept ones', async () => {
+  const { deps, store, model } = await setup();
+  const ghost = { ...model.classes[0]!, id: 'ghost', martId: 'ghost', title: 'Ghost', depth: 1 };
+  await store.collections<unknown>('model').put('current', {
+    ...model, inputHash: 'project-hash', classes: [...model.classes, ghost],
+    edges: [...model.edges, { from: model.goal.classId, to: 'ghost' }],
+    metrics: [...model.metrics, { ...model.metrics[0]!, id: 'ghost:k', martId: 'ghost' }],
+  });
+  render(<App ctx={ctx} deps={deps} />);
+  expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+  const saved = (await loadOntology(store))!;
+  expect(saved.classes.map((c) => c.id)).toEqual(model.classes.map((c) => c.id));
+  expect(saved.edges.some((e) => e.to === 'ghost')).toBe(false);
+  expect(saved.metrics.some((x) => x.martId === 'ghost')).toBe(false);
+  expect(saved.inputHash).toBe(model.inputHash);
+  await waitFor(() => expect(screen.queryByText('Descriptions or schemas changed since this model was built.')).toBeNull());
+});
+
+test('if the hash cannot be recomputed the project hash is kept', async () => {
+  const { deps, store, model } = await setup();
+  await store.collections<unknown>('model').put('current', { ...model, inputHash: 'project-hash' });
+  const owox = { ...deps.owox, getJson: async () => { throw new Error('nope'); } } as AppDeps['owox'];
+  render(<App ctx={ctx} deps={{ ...deps, owox }} />);
+  expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+  expect((await loadOntology(store))!.inputHash).toBe('project-hash');
+});
+
+test('dataMarts.list rejecting while seeding shows the error view', async () => {
+  const { deps, store, model } = await setup();
+  await store.collections<unknown>('model').put('current', model);
+  const owox = { ...deps.owox, dataMarts: { ...deps.owox.dataMarts, list: async () => { throw new Error('LIST_FAILED'); } } } as AppDeps['owox'];
+  render(<App ctx={ctx} deps={{ ...deps, owox }} />);
+  expect(await screen.findByText(/LIST_FAILED/)).toBeInTheDocument();
+  expect(await loadOntology(store)).toBeNull();
 });

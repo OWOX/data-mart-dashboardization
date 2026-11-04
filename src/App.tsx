@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS } from './types';
 import { compareLabel, resolveRange } from './lib/dates';
 import { describeError } from './lib/errors';
 import { seedFrom } from './model/seed';
+import { shownModel } from './model/shown';
 import { buildModel, currentInputHash } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
 import { fetchInputs, type Inputs, type OwoxLike } from './owox/sources';
@@ -103,6 +104,11 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         if (project) {
           const marts = await owox.dataMarts.list();
           m = seedFrom(project, new Set(marts.map((x) => x.id)));
+          // the kept classes hash differently from the project's; without this the first open would read as out of date
+          try {
+            const inputs = await fetchInputs(owox);
+            m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id)) };
+          } catch { /* keep the project hash */ }
           await saveOntology(store, m);
         }
       }
@@ -177,7 +183,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const doc = await refreshCanvas({
         owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible,
         onProgress: (done, total) => { if (current()) setProgress({ done, total }); },
-        onPartial: (cards) => { if (current()) setCache(mergePartial(shown, cards, model, spec.anchor, settings.thresholdPct, key, spec.comparison !== null)); },
+        onPartial: (cards) => { if (current()) setCache(mergePartial(shown, cards, shownModel(model), spec.anchor, settings.thresholdPct, key, spec.comparison !== null)); },
       });
       if (!current()) return false;
       setCache(doc);

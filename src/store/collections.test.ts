@@ -1,12 +1,7 @@
 import { isStale, loadCache, loadOntology, loadPreferences, loadProjectModel, loadSettings, memoryCollections, saveCache, saveOntology, savePreferences, saveSettings } from './collections';
+import { model } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type CacheDoc, type Model } from '../types';
 
-export const model: Model = {
-  version: 2, inputHash: 'h', builtAt: 'b1', builtBy: 'u', editedAt: null,
-  goal: { classId: 'a', metricId: null, goalMartId: 'a', viaFallback: false },
-  classes: [{ id: 'a', martId: 'a', title: 'A', contexts: [], depth: 0, keyMetricId: null, metricIds: [], shown: true }],
-  edges: [], metrics: [],
-};
 const doc = { modelHash: 'h', anchor: '2026-10-23', builtAt: 'b1', thresholdPct: 20 } as CacheDoc;
 
 test('round trips and defaults', async () => {

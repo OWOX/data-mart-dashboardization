@@ -8,8 +8,12 @@ function shaped(m: Record<string, unknown>): boolean {
   const goal = m.goal;
   if (!isObj(goal) || !isStr(goal.classId) || !isStr(goal.goalMartId)) return false;
   if (!Array.isArray(m.classes) || !Array.isArray(m.edges) || !Array.isArray(m.metrics)) return false;
-  return m.classes.every((c) => isObj(c) && isStr(c.id) && isStr(c.martId) && isStr(c.title) && Array.isArray(c.metricIds))
-    && m.metrics.every((x) => isObj(x) && isStr(x.id) && isStr(x.martId) && isObj(x.measure))
+  return m.classes.every((c) => isObj(c) && isStr(c.id) && isStr(c.martId) && isStr(c.title) && Array.isArray(c.metricIds)
+      && typeof c.depth === 'number' && (c.keyMetricId === null || isStr(c.keyMetricId))
+      && Array.isArray(c.contexts) && c.contexts.every((x) => isObj(x) && isStr(x.id) && isStr(x.name)))
+    && m.metrics.every((x) => isObj(x) && isStr(x.id) && isStr(x.martId) && isObj(x.measure)
+      && (x.kind === 'flow' || x.kind === 'level') && (x.dateField === null || isStr(x.dateField))
+      && (x.plan === null || (isObj(x.plan) && isStr(x.plan.martId) && isObj(x.plan.measure) && isStr(x.plan.dateField) && isStr(x.plan.shape))))
     && m.edges.every((e) => isObj(e) && isStr(e.from) && isStr(e.to));
 }
 
