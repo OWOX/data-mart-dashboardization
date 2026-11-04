@@ -376,3 +376,38 @@ test('the refresh icon shows the overlay', async () => {
   g.open();
   await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
 });
+
+test('the bands are inert while the overlay shows', async () => {
+  const s = await setup({ cache: 'none' });
+  const g = gated(s.deps);
+  const { container } = render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  await screen.findByText('Reading Data Marts…');
+  expect(container.querySelector('.gy-bands')).toHaveAttribute('inert');
+  g.openList();
+  g.open();
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+  expect(container.querySelector('.gy-bands')).not.toHaveAttribute('inert');
+});
+
+test('a custom range already on screen gets no overlay after Settings and Back', async () => {
+  const { deps, traversals } = await setup({ cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
+  const cal = within(screen.getByRole('group', { name: 'Range calendar' }));
+  fireEvent.click(cal.getByRole('button', { name: 'Monday, October 5, 2026' }));
+  fireEvent.click(cal.getByRole('button', { name: 'Monday, October 12, 2026' }));
+  const before = traversals();
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(traversals()).toBeGreaterThan(before));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  // a new threshold re-runs the refresh for the range on screen
+  fireEvent.change(await screen.findByLabelText('Red when below plan by more than (%)'), { target: { value: '30' } });
+  const again = traversals();
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await screen.findByRole('button', { name: 'Date range' });
+  expect(screen.queryByRole('status')).toBeNull();
+  await waitFor(() => expect(traversals()).toBeGreaterThan(again));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(screen.queryByRole('status')).toBeNull();
+});

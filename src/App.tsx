@@ -72,6 +72,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const checkedFor = useRef<object | null>(null);
   const modelNow = useRef<Model | null>(null);
   modelNow.current = model;
+  const cacheNow = useRef<CacheDoc | null>(null);
+  cacheNow.current = cache;
 
   const load = useCallback(async () => {
     setView({ name: 'loading' });
@@ -140,7 +142,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       else setCache((c) => (c?.key === key ? c : null));
       if (!force && keep && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); setOverlay(false); return true; }
       // overlay for the refresh icon or when there is nothing cached to show; a stale cache gets the thin bar
-      setOverlay(force || !saved);
+      // a custom range has no saved doc, so judge by the doc on screen
+      const shown = keep ? saved : cacheNow.current?.key === key ? cacheNow.current : null;
+      setOverlay(force || !shown);
       setProgress(null);
       setRefreshing(true);
       const doc = await refreshCanvas({

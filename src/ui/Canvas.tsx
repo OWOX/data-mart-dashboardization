@@ -177,22 +177,24 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
             />
           ))}
         </svg>
-        <section className="gy-band">
-          <header className="gy-band-head">
-            <span className="gy-band-icon"><Target size={16} /></span>
-            <h2 className="gy-band-title">Goal</h2>
-          </header>
-          <div className="gy-band-main">{layout.main && card(layout.main)}</div>
-        </section>
-        <section className="gy-band">
-          <header className="gy-band-head">
-            <span className="gy-band-icon"><Network size={16} /></span>
-            <h2 className="gy-band-title">Drivers</h2>
-          </header>
-          {layout.drivers.length > 0
-            ? <div className="gy-band-grid">{layout.drivers.map(card)}</div>
-            : <p className="gy-muted gy-empty">No class feeds the goal in this filter.</p>}
-        </section>
+        <div className="gy-bands" inert={!!preloader}>
+          <section className="gy-band">
+            <header className="gy-band-head">
+              <span className="gy-band-icon"><Target size={16} /></span>
+              <h2 className="gy-band-title">Goal</h2>
+            </header>
+            <div className="gy-band-main">{layout.main && card(layout.main)}</div>
+          </section>
+          <section className="gy-band">
+            <header className="gy-band-head">
+              <span className="gy-band-icon"><Network size={16} /></span>
+              <h2 className="gy-band-title">Drivers</h2>
+            </header>
+            {layout.drivers.length > 0
+              ? <div className="gy-band-grid">{layout.drivers.map(card)}</div>
+              : <p className="gy-muted gy-empty">No class feeds the goal in this filter.</p>}
+          </section>
+        </div>
         {preloader && <div className="gy-overlay"><Preloader {...preloader} /></div>}
       </div>
     </div>
