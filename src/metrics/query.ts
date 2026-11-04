@@ -40,15 +40,38 @@ export async function readRows(owox: OwoxLike, martId: string, options: Record<s
   return rows;
 }
 
+// ODM refuses COUNT_DISTINCT on number fields, and its data endpoint has no Unique Count yet
+// (OWOX/owox-data-marts#1829). Such a key is counted with COUNT, which is the same number while the key is unique per row.
+const noDistinct = new Set<string>();
+const isNotAllowed = (e: unknown): boolean => {
+  const { code, message } = (e ?? {}) as { code?: unknown; message?: unknown };
+  return code === 'aggregation_not_allowed' || (typeof message === 'string' && /aggregation_not_allowed|aggregation not permitted/i.test(message));
+};
+
+/** Reads with `m`, or with COUNT in its place when the mart refuses COUNT_DISTINCT on that field; returns the measure that answered. */
+async function readMeasure(owox: OwoxLike, martId: string, m: Measure, options: (m: Measure) => Record<string, unknown>): Promise<{ rows: Record<string, unknown>[]; used: Measure }> {
+  const key = `${martId}:${m.field}`;
+  const count: Measure = { field: m.field, fn: 'COUNT' };
+  if (m.fn === 'COUNT_DISTINCT' && noDistinct.has(key)) return { rows: await readRows(owox, martId, options(count)), used: count };
+  try {
+    return { rows: await readRows(owox, martId, options(m)), used: m };
+  } catch (e) {
+    if (m.fn !== 'COUNT_DISTINCT' || !isNotAllowed(e)) throw e;
+    noDistinct.add(key);
+    return { rows: await readRows(owox, martId, options(count)), used: count };
+  }
+}
+
 export async function queryTotal(owox: OwoxLike, martId: string, m: Measure, dateField: string | null, w: DateWindow | null): Promise<number | null> {
-  const rows = await readRows(owox, martId, totalOptions(m, dateField, w));
-  return toNumber(rows[0]?.[valueKey(m)]);
+  const { rows, used } = await readMeasure(owox, martId, m, (x) => totalOptions(x, dateField, w));
+  return toNumber(rows[0]?.[valueKey(used)]);
 }
 
 export async function queryDaily(owox: OwoxLike, martId: string, m: Measure, dateField: string, w: DateWindow): Promise<Map<Day, number>> {
   const out = new Map<Day, number>();
-  for (const row of await readRows(owox, martId, dailyOptions(m, dateField, w))) {
-    const v = toNumber(row[valueKey(m)]);
+  const { rows, used } = await readMeasure(owox, martId, m, (x) => dailyOptions(x, dateField, w));
+  for (const row of rows) {
+    const v = toNumber(row[valueKey(used)]);
     const d = row[dateField];
     if (v !== null && d != null) out.set(String(d).slice(0, 10), v);
   }
