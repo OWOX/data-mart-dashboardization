@@ -107,7 +107,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           // the kept classes hash differently from the project's; without this the first open would read as out of date
           try {
             const inputs = await fetchInputs(owox);
-            m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id)) };
+            // a hash taken without the contexts would read as out of date once they load
+            if (inputs.contextsOk) m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id)) };
           } catch { /* keep the project hash */ }
           await saveOntology(store, m);
         }
