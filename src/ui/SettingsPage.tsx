@@ -59,6 +59,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
           >{t.label}</button>
         ))}
       </div>
+      <main>
       <div className="dm-page-content" role="tabpanel" id="gy-panel-ontology" aria-labelledby="gy-tab-ontology" hidden={tab !== 'ontology'}>
         {ontology
           ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} />
@@ -100,6 +101,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
           </div>
         </form>
       </div>
+      </main>
     </div>
   );
 }
