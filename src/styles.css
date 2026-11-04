@@ -269,7 +269,6 @@ h2 { margin: 0; }
 .gy-form-actions { display: flex; gap: 0.5rem; padding-top: 0.25rem; }
 .gy-form-actions .gy-btn { height: 2rem; padding: 0 0.875rem; }
 .gy-warn { color: var(--orange); opacity: 1; }
-.gy-banner { border: 1px solid var(--orange); border-radius: 0.625rem; padding: 0.75rem 1rem; margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; }
 .gy-blocked { max-width: 45rem; margin: 3rem auto; padding: 1.5rem 2rem; background: var(--card); border: 1px solid var(--red); border-radius: 0.625rem; }
 .gy-blocked ol { padding-left: 1.25rem; }
 .gy-link { padding: 0; border: 0; background: none; font: inherit; color: var(--primary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
@@ -370,11 +369,12 @@ h2 { margin: 0; }
 .gy-proposal-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
 
 /* --- issues icon and layer --- */
-.gy-issues-anchor { position: relative; align-self: center; display: inline-flex; }
+.gy-header { position: relative; }
+.gy-issues-anchor { align-self: center; display: inline-flex; }
 .gy-issues-btn { color: var(--orange); }
 .gy-issues-btn:hover { color: var(--orange); }
 .gy-issues {
-  position: absolute; top: calc(100% + 0.25rem); left: 0; z-index: 50; width: 26rem; max-width: calc(100vw - 2.5rem); padding: 0.75rem 1rem;
+  position: absolute; top: calc(100% + 0.25rem); left: 0; z-index: 50; width: 26rem; max-width: 100%; padding: 0.75rem 1rem;
   background: var(--card); border: 1px solid var(--border); border-radius: 0.625rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); font-size: 0.8125rem;
 }
 .gy-issues:focus { outline: none; }
@@ -386,7 +386,5 @@ h2 { margin: 0; }
 .gy-issues-text { margin: 0 0 0.5rem; color: var(--muted-foreground); }
 .gy-issues-foot { margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
 @media (max-width: 640px) {
-  .gy-header { position: relative; }
-  .gy-issues-anchor { position: static; }
-  .gy-issues { left: 0; right: 0; width: auto; max-width: none; }
+  .gy-issues { right: 0; width: auto; }
 }

@@ -15,15 +15,16 @@ export function IssuesLayer({ notices, layerRef, triggerRef, onClose }: {
       const t = e.target as Node;
       if (!layerRef.current?.contains(t) && !triggerRef.current?.contains(t)) onClose();
     };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => { layerRef.current?.focus(); }, [layerRef]);
 
   return (
-    <div ref={layerRef} className="gy-issues" tabIndex={-1} role="dialog" aria-label="Issues"
-      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+    <div ref={layerRef} className="gy-issues" tabIndex={-1} role="dialog" aria-label="Issues">
       {notices.issues.length > 0 && (
         <section className="gy-issues-group" aria-labelledby="gy-issues-refs">
           <h2 id="gy-issues-refs" className="gy-issues-heading">Broken references</h2>

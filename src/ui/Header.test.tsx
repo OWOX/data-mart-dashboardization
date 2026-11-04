@@ -93,6 +93,7 @@ describe('issues icon', () => {
     expect(icon).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(icon);
     const dialog = screen.getByRole('dialog', { name: 'Issues' });
+    expect(dialog).toHaveFocus();
     expect(icon).toHaveAttribute('aria-expanded', 'true');
     expect(dialog).toHaveTextContent('Broken references');
     expect(dialog).toHaveTextContent('Customers · ARR');
@@ -104,12 +105,14 @@ describe('issues icon', () => {
     render(withNotices());
     const icon = screen.getByRole('button', { name: '1 issue' });
     fireEvent.click(icon);
-    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Issues' }), { key: 'Escape' });
+    screen.getByRole('button', { name: 'Review in Ontology Model' }).focus();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(icon).toHaveFocus();
     fireEvent.click(icon);
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(icon).toHaveFocus();
   });
 
   test('the out-of-date group shows only when the notice would', () => {
