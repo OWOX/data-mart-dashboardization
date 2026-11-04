@@ -177,7 +177,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
     );
   }
 
-  const failed = res.error !== null;
+  const failed = res.error != null;
   // A comparison shorter than the range recounts the value over the same number of days.
   const fact = res.compareFact ?? res.fact;
   const comparison = res.comparison;
