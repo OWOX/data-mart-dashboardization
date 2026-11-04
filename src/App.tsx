@@ -53,7 +53,10 @@ function mergePartial(base: CacheDoc | null, cards: Record<string, CardCache>, m
   const merged: Record<string, CardCache> = { ...base?.cards };
   for (const [id, c] of Object.entries(cards)) {
     const old = base?.cards[id];
-    merged[id] = { metrics: { ...old?.metrics, ...c.metrics }, spark: c.spark ?? old?.spark ?? null };
+    // the old spark stays until the key metric's new result lands
+    const key = model.classes.find((x) => x.id === id)?.keyMetricId;
+    const keyDone = !!key && key in c.metrics;
+    merged[id] = { metrics: { ...old?.metrics, ...c.metrics }, spark: keyDone ? c.spark : old?.spark ?? null };
   }
   return {
     modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct, anchor,
@@ -186,7 +189,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   useEffect(() => {
     if (!inReady || !model || fetchedFor.current === model) return;
     fetchedFor.current = model;
-    // without a cached doc the first screen is the preloader, not empty cards
+    // without a cached doc the line shows from the first screen, not empty cards
     const probe = refreshId.current;
     const probeKey = cacheKey(range, compare, settings.weekStart);
     void (persistable(range, compare) ? loadCache(store, probeKey).catch(() => null) : Promise.resolve(null)).then((saved) => {
@@ -265,7 +268,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       );
     case 'ready': {
       if (!model) return null;
-      const status = loading || refreshing ? (progress ? `Loading metrics ${progress.done} of ${progress.total}` : 'Reading Data Marts…') : null;
+      const status = loading || refreshing ? (progress ? `Loading metrics ${progress.done} of ${progress.total}` : inputsReady ? 'Loading metrics…' : 'Reading Data Marts…') : null;
       const main = model.classes.find((c) => c.id === model.goal.classId) ?? model.classes[0];
       return (
         <main className="gy-main">

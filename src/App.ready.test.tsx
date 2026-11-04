@@ -350,12 +350,11 @@ test('the initial page is the line with the label under it', async () => {
 test('without a cache the line and step text walk through the steps and go away', async () => {
   const s = await setup({ cache: 'none' });
   const g = gated(s.deps);
-  const { container } = render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  render(<App ctx={ctxWith().ctx} deps={g.deps} />);
   expect(await screen.findByText(/Reading Data Marts…/)).toBeInTheDocument();
   expect(line()).not.toHaveAttribute('aria-valuenow');
   g.openList();
   expect(await screen.findByText(/Loading metrics 0 of \d+/)).toBeInTheDocument();
-  expect(container.querySelector('.gy-overlay')).toBeNull();
   g.open();
   await waitFor(() => expect(line()).toBeNull());
   expect(screen.getByText(/Updated just now/)).toBeInTheDocument();
@@ -392,37 +391,68 @@ test('the refresh icon shows the line', async () => {
   await waitFor(() => expect(line()).toBeNull());
 });
 
-// traversals of a held mart wait until it is released; the value each mart returns can be changed
+test('Refresh never says Reading Data Marts', async () => {
+  const s = await setup();
+  const g = gated(s.deps);
+  g.openList();
+  render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  await screen.findByText(/Updated 1 h ago/);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  expect(await screen.findByText(/Loading metrics/)).toBeInTheDocument();
+  expect(screen.queryByText(/Reading Data Marts/)).toBeNull();
+  g.open();
+  await waitFor(() => expect(line()).toBeNull());
+});
+
+test('a stale cache starts with Loading metrics, not Reading Data Marts', async () => {
+  const s = await setup({ cache: 'stale' });
+  const g = gated(s.deps);
+  render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  await screen.findByRole('button', { name: 'Date range' });
+  expect(screen.queryByText(/Reading Data Marts/)).toBeNull();
+  g.openList();
+  expect(await screen.findByText(/Loading metrics/)).toBeInTheDocument();
+  expect(screen.queryByText(/Reading Data Marts/)).toBeNull();
+  g.open();
+  await waitFor(() => expect(line()).toBeNull());
+});
+
+// traversals of a held mart wait until the returned opener is called; each call keeps the gate and value it started with
 function perMart(deps: AppDeps, initial: Record<string, number>) {
   const gates = new Map<string, Promise<void>>();
-  const opens = new Map<string, () => void>();
   const values = { ...initial };
+  const started = { count: 0 };
   const o = deps.owox;
   const owox = {
     ...o,
     dataMarts: {
       list: o.dataMarts.list,
       traverseData: async (...a: Parameters<typeof o.dataMarts.traverseData>) => {
-        await gates.get(a[0]);
+        started.count++;
+        const gate = gates.get(a[0]);
         const v = values[a[0]] ?? 1;
+        await gate;
         return { async *rowChunks() { yield [{ 'revenue | SUM': v, 'id | COUNTUNIQUE': v, date: '2026-10-20' }]; } };
       },
     },
   } as AppDeps['owox'];
-  const hold = (id: string) => { gates.set(id, new Promise<void>((r) => opens.set(id, r))); };
-  const release = (id: string) => { opens.get(id)?.(); gates.delete(id); };
-  return { deps: { ...deps, owox }, hold, release, values };
+  const hold = (id: string) => {
+    let open!: () => void;
+    gates.set(id, new Promise<void>((r) => { open = r; }));
+    return () => { gates.delete(id); open(); };
+  };
+  return { deps: { ...deps, owox }, hold, values, started };
 }
 
 test('a card shows its number before the refresh finishes', async () => {
   const s = await setup({ cache: 'none', withCustomers: true });
   const p = perMart(s.deps, { [GID]: 4242, [CID]: 7 });
-  p.hold(CID);
+  const openC = p.hold(CID);
   const { container } = render(<App ctx={ctxWith().ctx} deps={p.deps} />);
   await waitFor(() => expect(container.querySelector(`[data-class-id="${GID}"]`)).toHaveTextContent('4.24K'));
   expect(line()).not.toBeNull();
   expect(container.querySelector(`[data-class-id="${CID}"]`)).toHaveTextContent('—');
-  p.release(CID);
+  openC();
   await waitFor(() => expect(line()).toBeNull());
 });
 
@@ -434,34 +464,42 @@ test('old numbers stay until a new one replaces them', async () => {
   const card = () => container.querySelector(`[data-class-id="${GID}"]`)!;
   expect(card()).toHaveTextContent('4.24K');
   p.values[GID] = 9999;
-  p.hold(GID);
+  const openG = p.hold(GID);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await waitFor(() => expect(line()).not.toBeNull());
   await new Promise((r) => setTimeout(r, 30));
   expect(card()).toHaveTextContent('4.24K');
-  p.release(GID);
+  openG();
   await waitFor(() => expect(line()).toBeNull());
   expect(card()).toHaveTextContent('10K');
 });
 
-test('a superseded refresh does not apply its partials', async () => {
+test('a superseded refresh does not apply its partials or its final doc', async () => {
   const s = await setup({ cache: 'none' });
   const p = perMart(s.deps, { [GID]: 1111 });
-  p.hold(GID);
+  const openOld = p.hold(GID);
   const { container } = render(<App ctx={ctxWith().ctx} deps={p.deps} />);
-  await waitFor(() => expect(line()).not.toBeNull());
+  await waitFor(() => expect(p.started.count).toBeGreaterThan(0));
+  const first = p.started.count;
+  // a second refresh starts with its own value and stays held
+  p.values[GID] = 2222;
+  const openNew = p.hold(GID);
   fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
   fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  p.values[GID] = 2222;
-  p.release(GID);
+  await waitFor(() => expect(p.started.count).toBeGreaterThan(first));
+  openOld();
+  await new Promise((r) => setTimeout(r, 30));
+  const card = () => container.querySelector(`[data-class-id="${GID}"]`)!;
+  expect(card()).not.toHaveTextContent('1.11K');
+  expect(card()).toHaveTextContent('—');
+  expect(line()).not.toBeNull();
+  openNew();
   await waitFor(() => expect(line()).toBeNull());
-  const card = container.querySelector(`[data-class-id="${GID}"]`)!;
-  expect(card).toHaveTextContent('2.22K');
-  expect(card).not.toHaveTextContent('1.11K');
+  expect(card()).toHaveTextContent('2.22K');
 });
 
-test('a custom range already on screen gets no overlay after Settings and Back', async () => {
+test('a custom range already on screen is not blanked by Settings and Back', async () => {
   const { deps, traversals } = await setup({ cache: 'none' });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
