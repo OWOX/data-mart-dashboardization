@@ -1,7 +1,7 @@
 import { contextsOf, layoutFor } from './layout';
 import type { ClassNode, Model } from '../types';
 
-const c = (id: string, depth: number, ctx: string[] = []): ClassNode => ({ id, martId: id, title: id.toUpperCase(), depth, keyMetricId: null, metricIds: [], contexts: ctx.map((x) => ({ id: x, name: x })) });
+const c = (id: string, depth: number, ctx: string[] = []): ClassNode => ({ id, martId: id, title: id.toUpperCase(), depth, keyMetricId: null, metricIds: [], shown: true, contexts: ctx.map((x) => ({ id: x, name: x })) });
 const model = {
   goal: { classId: 'm' },
   classes: [c('m', 0), c('a', 1, ['growth']), c('b', 2, ['sales']), c('z', 1, ['sales'])],

@@ -1,3 +1,4 @@
+import { upgradeModel } from '../model/upgrade';
 import { toDay } from '../lib/dates';
 import { DEFAULT_SETTINGS, PRESET_LABELS, type CacheDoc, type CompareChoice, type ComparePreset, type DateWindow, type Day, type RangeChoice, type Model, type Preset, type Settings } from '../types';
 
@@ -8,11 +9,14 @@ export interface CollectionsLike {
   };
 }
 
-export async function loadModel(ctx: CollectionsLike): Promise<Model | null> {
-  const r = await ctx.collections<Model>('model').get('current');
-  return r?.document?.version === 1 ? r.document : null;
+export async function loadOntology(ctx: CollectionsLike): Promise<Model | null> {
+  return upgradeModel((await ctx.collections<unknown>('ontology').get('current'))?.document);
 }
-export const saveModel = async (ctx: CollectionsLike, m: Model): Promise<void> => { await ctx.collections<Model>('model').put('current', m); };
+export const saveOntology = async (ctx: CollectionsLike, m: Model): Promise<void> => { await ctx.collections<Model>('ontology').put('current', m); };
+/** The old project-wide model: read-only, only a source for a member's first ontology. */
+export async function loadProjectModel(ctx: CollectionsLike): Promise<Model | null> {
+  return upgradeModel((await ctx.collections<unknown>('model').get('current'))?.document);
+}
 
 export async function loadSettings(ctx: CollectionsLike): Promise<Settings> {
   const raw = ((await ctx.collections<Partial<Settings>>('settings').get('project'))?.document ?? {}) as Record<string, unknown>;
@@ -63,8 +67,9 @@ export async function loadCache(ctx: CollectionsLike, key: string): Promise<Cach
 }
 export const saveCache = async (ctx: CollectionsLike, key: string, doc: CacheDoc): Promise<void> => { await ctx.collections<CacheDoc>('cache').put(key, doc); };
 
+/** The model version is builtAt + editedAt: every content change sets one of them; inputHash can move alone and doesn't touch the numbers. */
 export const isStale = (doc: CacheDoc | null, model: Model, anchor: Day, thresholdPct: number): boolean =>
-  !doc || doc.anchor !== anchor || doc.modelHash !== model.inputHash || doc.builtAt !== model.builtAt || doc.thresholdPct !== thresholdPct;
+  !doc || doc.anchor !== anchor || doc.builtAt !== model.builtAt || (doc.editedAt ?? null) !== model.editedAt || doc.thresholdPct !== thresholdPct;
 
 export function memoryCollections(): CollectionsLike {
   const store = new Map<string, Map<string, unknown>>();

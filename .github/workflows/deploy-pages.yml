@@ -25,10 +25,14 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      # The Pages site is the gh-pages branch. `keep_files` leaves /odm-plugin/ (Data Mart Dashboards) in place;
-      # Gyroscope owns the root, which plugin.json names as its delivery URL.
+      # Each compatibility line (0.x) gets its own folder, so installs of an older line keep loading their own build.
+      - id: line
+        run: echo "dir=v$(node -p "require('./package.json').version.split('.')[1]")" >> "$GITHUB_OUTPUT"
+      # The Pages site is the gh-pages branch. `keep_files` leaves the root (0.2), /odm-plugin/ and older lines in place;
+      # plugin.json names the same folder as its delivery URL.
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          destination_dir: ${{ steps.line.outputs.dir }}
           keep_files: true

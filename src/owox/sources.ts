@@ -61,3 +61,18 @@ export function flattenFields(fields: SchemaField[], prefix = ''): { path: strin
     return [{ path, field: f }, ...(f.mode === 'REPEATED' ? [] : flattenFields(f.fields ?? [], path))];
   });
 }
+
+/**
+ * Every path in a schema that still exists, for checking references. Unlike `flattenFields`, hidden-for-reporting
+ * fields count (a unique-count key is often hidden); DISCONNECTED ones never do, they can't be queried.
+ */
+export function allFieldPaths(fields: SchemaField[], prefix = ''): Set<string> {
+  const out = new Set<string>();
+  for (const f of fields) {
+    if (f.status === 'DISCONNECTED') continue;
+    const path = prefix ? `${prefix}.${f.name}` : f.name;
+    out.add(path);
+    if (f.mode !== 'REPEATED') for (const p of allFieldPaths(f.fields ?? [], path)) out.add(p);
+  }
+  return out;
+}

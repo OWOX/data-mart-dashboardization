@@ -2,9 +2,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { Card } from './Card';
 import type { CardCache, ClassNode, MetricDef, MetricResult } from '../types';
 
-const cls: ClassNode = { id: 'c', martId: 'c', title: 'Customers', contexts: [], depth: 0, keyMetricId: 'arr', metricIds: ['arr', 'uc'] };
-const arr: MetricDef = { id: 'arr', martId: 'c', alias: 'ARR', measure: { field: 'arr', fn: 'SUM' }, kind: 'level', dateField: 'date', role: 'critical', source: 'project', isUniqueCount: false, plan: null };
-const uc: MetricDef = { id: 'uc', martId: 'c', alias: 'Customers', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, plan: null };
+const cls: ClassNode = { id: 'c', martId: 'c', title: 'Customers', contexts: [], depth: 0, keyMetricId: 'arr', metricIds: ['arr', 'uc'], shown: true };
+const arr: MetricDef = { id: 'arr', martId: 'c', alias: 'ARR', measure: { field: 'arr', fn: 'SUM' }, kind: 'level', dateField: 'date', role: 'critical', source: 'project', isUniqueCount: false, plan: null, shown: true, forecast: null };
+const uc: MetricDef = { id: 'uc', martId: 'c', alias: 'Customers', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, plan: null, shown: true, forecast: null };
 const res = (over: Partial<MetricResult>): MetricResult => ({ fact: 1_240_000, compareFact: null, comparison: 1_000_000, diffPct: 24, plan: 1_300_000, forecast: null, forecastApprox: false, status: 'near', trend: 'up', note: null, error: null, ...over });
 const cache = (over: Partial<MetricResult> = {}): CardCache => ({
   metrics: { arr: res(over), uc: res({ fact: 7148, status: 'above', trend: 'down', plan: null }) },
@@ -123,4 +123,91 @@ test('plan and forecast stay off the card face; the number names them on hover',
 test('a failed recount (comparison null) shows a dash, never a mismatched diff', () => {
   const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ compareFact: null, comparison: null, diffPct: null })} comparisonOn compareLabel="Previous 10 Days" onToggleDiff={() => {}} refreshing={false} onRetry={() => {}} />);
   expect(container.querySelector('.gy-delta')!.textContent).toBe('—');
+});
+
+const extra = (n: number): MetricDef[] => Array.from({ length: n }, (_, i) => ({ ...uc, id: `m${i}`, alias: `Extra ${i}` }));
+const many = (n: number) => {
+  const ms = extra(n);
+  const c: CardCache = { ...cache(), metrics: { ...cache().metrics, ...Object.fromEntries(ms.map((m) => [m.id, res({ fact: 5, plan: null })])) } };
+  return render(<Card cls={{ ...cls, metricIds: ['arr', ...ms.map((m) => m.id)] }} metrics={[arr, ...ms]} cache={c} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+};
+
+test('more than three secondary metrics collapse behind Show +N more', () => {
+  const { container } = many(5);
+  expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
+  const btn = screen.getByRole('button', { name: 'Show +2 more' });
+  expect(btn.getAttribute('aria-expanded')).toBe('false');
+  expect(btn.getAttribute('aria-controls')).toBe(container.querySelector('.gy-badges')!.id);
+  fireEvent.click(btn);
+  expect(container.querySelectorAll('.gy-badge')).toHaveLength(5);
+  const less = screen.getByRole('button', { name: 'Show less' });
+  expect(less.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.click(less);
+  expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
+});
+
+test('three secondary metrics need no button', () => {
+  const { container } = many(3);
+  expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
+  expect(screen.queryByRole('button', { name: /Show/ })).toBeNull();
+});
+
+test('expanding pins the collapsed height and collapsing releases it', () => {
+  const orig = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 80 });
+  try {
+    const { container } = many(5);
+    const list = container.querySelector('.gy-badges') as HTMLElement;
+    fireEvent.click(screen.getByRole('button', { name: 'Show +2 more' }));
+    expect(list.style.height).toBe('80px');
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(list.style.height).toBe('');
+  } finally {
+    if (orig) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', orig);
+    else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
+  }
+});
+
+test('a warning on the key number shows the icon, with the text in the tooltip', () => {
+  render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ fact: null, warning: 'Field arr no longer exists in Customers' })} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByLabelText('Warning')).toBeInTheDocument();
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Field arr no longer exists in Customers');
+});
+
+test('a badge with a warning shows the icon with its text', () => {
+  const c = cache();
+  c.metrics.uc = { ...c.metrics.uc!, warning: 'Field id no longer exists' };
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={c} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-badge [aria-label="Warning"]')).not.toBeNull();
+  expect(container.querySelector('.gy-badge .gy-warn')).toHaveAttribute('title', 'Field id no longer exists');
+});
+
+test('a class whose Data Mart is gone says so, like the no-access card', () => {
+  render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} missing comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('Data Mart not found or not accessible')).toBeInTheDocument();
+  expect(screen.getByLabelText('Warning')).toBeInTheDocument();
+  expect(screen.queryByText('1.24M')).toBeNull();
+});
+
+test('a failed key metric keeps the card: dash, error in the tooltip, badges, and a Retry button', () => {
+  const onRetry = vi.fn();
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ fact: null, error: 'TIMEOUT' })} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={onRetry} />);
+  expect(screen.getByText('—')).toBeInTheDocument();
+  expect(screen.getByRole('tooltip')).toHaveTextContent('TIMEOUT');
+  expect(container.querySelector('.gy-badge')!.textContent).toMatch(/^7\.15K Customers/);
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(onRetry).toHaveBeenCalledTimes(1);
+});
+
+test('a caught rejection (warning only) shows the same way', () => {
+  render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ fact: null, warning: 'Not found' })} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('—')).toBeInTheDocument();
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Not found');
+});
+
+test('missing wins over noAccess; a plain noAccess keeps its text', () => {
+  const { rerender } = render(<Card cls={cls} metrics={[arr]} cache={cache()} missing noAccess comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('Data Mart not found or not accessible')).toBeInTheDocument();
+  rerender(<Card cls={cls} metrics={[arr]} cache={cache()} noAccess comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText("You don't have access to this Data Mart")).toBeInTheDocument();
 });

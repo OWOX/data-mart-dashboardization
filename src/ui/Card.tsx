@@ -1,4 +1,5 @@
-import { Info } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Info, TriangleAlert } from 'lucide-react';
 import type { CardCache, ClassNode, MetricDef } from '../types';
 import { diffPct } from '../lib/stats';
 import { compact, formatDelta, formatPct } from '../lib/format';
@@ -17,12 +18,47 @@ interface Props {
   comparisonOn: boolean;
   refreshing: boolean;
   noAccess?: boolean;
+  /** The class's Data Mart no longer exists. */
+  missing?: boolean;
   /** 'vs Last Month' and the like; the comparison row shows only when it is given and comparison is on. */
   compareLabel?: string;
   /** The diff chip shows an absolute difference instead of a relative one. */
   absolute?: boolean;
   onToggleDiff?: () => void;
   onRetry: () => void;
+}
+
+const SHOWN = 3;
+
+/** The first three secondary metrics; the rest open in place, scrolling inside the height the card already had. */
+function Badges({ items }: { items: ReactNode[] }) {
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState<number | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const more = items.length - SHOWN;
+  const toggle = () => {
+    const h = ref.current?.offsetHeight ?? 0;
+    setPinned(!open && h > 0 ? h : null);
+    setOpen(!open);
+  };
+  // opening scrolls to the first badge that was hidden, so the click visibly shows something new
+  useEffect(() => {
+    const list = ref.current;
+    const first = list?.querySelectorAll<HTMLElement>('.gy-badge')[SHOWN];
+    if (open && list && first) list.scrollTop = first.offsetTop - list.offsetTop;
+    else if (list) list.scrollTop = 0;
+  }, [open]);
+  return (
+    <div className="gy-badges" id={id} ref={ref} data-open={open || undefined} style={open && pinned ? { height: pinned } : undefined}>
+      {open || more <= 0 ? items : items.slice(0, SHOWN)}
+      {more > 0 && (
+        <button type="button" className="gy-more" aria-expanded={open} aria-controls={id} onClick={(e) => { e.stopPropagation(); toggle(); }}>
+          {open ? 'Show less' : `Show +${more} more`}
+        </button>
+      )}
+    </div>
+  );
 }
 
 /** The mart's icon, then two lines: the class in grey and the metric under it. */
@@ -71,6 +107,16 @@ function Compare({ delta, pct, sign, label, absolute, onToggle }: {
   );
 }
 
+/** A warning icon whose tooltip says what is wrong, in the style of the info hint. */
+export function WarningHint({ text }: { text: string }) {
+  return (
+    <span className="gy-hint gy-warn" tabIndex={0} aria-label="Warning">
+      <TriangleAlert size={14} />
+      <span className="gy-hint-body" role="tooltip">{text}</span>
+    </span>
+  );
+}
+
 type Sign = 'up' | 'down' | 'flat';
 
 /**
@@ -93,11 +139,19 @@ function TrendArrow({ sign }: { sign: Sign }) {
   );
 }
 
-export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, compareLabel, absolute = false, onToggleDiff, onRetry }: Props) {
+export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, onRetry }: Props) {
   const key = metrics.find((m) => m.id === cls.keyMetricId);
   const res = key ? cache?.metrics[key.id] : undefined;
-  const header = <CardHead title={cls.title} metric={noAccess || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess ? [] : metrics} />;
+  const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} />;
 
+  if (missing) {
+    return (
+      <article className="gy-card" data-class-id={cls.id} data-status="empty">
+        {header}
+        <p className="gy-muted"><TriangleAlert size={14} aria-label="Warning" /> Data Mart not found or not accessible</p>
+      </article>
+    );
+  }
   if (noAccess) {
     return (
       <article className="gy-card" data-class-id={cls.id} data-status="empty">
@@ -114,15 +168,6 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       </article>
     );
   }
-  if (res?.error) {
-    return (
-      <article className="gy-card" data-class-id={cls.id} data-status="error">
-        {header}
-        <p className="gy-muted">Couldn't load</p>
-        <button type="button" className="gy-btn" onClick={onRetry}>Retry</button>
-      </article>
-    );
-  }
   if (!res) {
     return (
       <article className="gy-card" data-class-id={cls.id} data-status="empty" aria-busy={refreshing}>
@@ -132,14 +177,17 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
     );
   }
 
+  const failed = res.error != null;
   // A comparison shorter than the range recounts the value over the same number of days.
   const fact = res.compareFact ?? res.fact;
   const comparison = res.comparison;
-  const canCompare = comparisonOn && !!compareLabel && res.fact !== null && key.dateField !== null;
+  const canCompare = !failed && comparisonOn && !!compareLabel && res.fact !== null && key.dateField !== null;
   const delta = canCompare && fact !== null && comparison !== null ? fact - comparison : null;
   // Against the comparison when there is one, else the series' own direction.
   const sign: Sign = delta !== null ? (delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat') : res.trend;
-  const big = fact !== null ? compact(fact) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${compact(res.forecast)}` : compact(null);
+  // a failed query shows no number; the error rides in the tooltip and the card offers a retry
+  const warning = res.warning ?? res.error;
+  const big = failed ? compact(null) : fact !== null ? compact(fact) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${compact(res.forecast)}` : compact(null);
   const badges = metrics.filter((m) => m.id !== key.id).map((m) => <Badge key={m.id} metric={m} result={cache?.metrics[m.id]} />);
   // Plan and forecast stay off the face of the card; the number names them on hover.
   const detail = [
@@ -148,14 +196,16 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   ].filter(Boolean).join(' · ');
 
   return (
-    <article className="gy-card" data-class-id={cls.id} data-status={res.status} aria-busy={refreshing}>
+    <article className="gy-card" data-class-id={cls.id} data-status={failed ? 'error' : res.status} aria-busy={refreshing}>
       {header}
       {/* The arrow sits under the icon, so the number lines up with the names above it. */}
       <div className="gy-card-body">
         <span className="gy-trend" data-sign={sign}><TrendArrow sign={sign} /></span>
         <span className="num gy-big" title={detail || undefined}>{big}</span>
-        {badges.length > 0 && <div className="gy-badges">{badges}</div>}
+        {warning && <WarningHint text={warning} />}
+        {badges.length > 0 && <Badges items={badges} />}
       </div>
+      {failed && <button type="button" className="gy-link" onClick={onRetry}>Retry</button>}
       {/* An all-time metric has no period to compare against. */}
       {canCompare && (
         <Compare

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Network, Target } from 'lucide-react';
 import type { CacheDoc, ClassNode, Model, Status } from '../types';
+import { shownModel } from '../model/shown';
 import { Card, type MartInfo } from './Card';
 import { LoadingLine, type LoadingProgress } from './LoadingLine';
 import { contextsOf, layoutFor, type Connector } from './layout';
@@ -12,6 +13,8 @@ interface Props {
   refreshing: boolean;
   /** Marts the member can see; null means no restriction. */
   visibleIds?: ReadonlySet<string> | null;
+  /** Classes whose Data Mart no longer exists. */
+  missingIds?: ReadonlySet<string>;
   /** Live description and definition type per mart id, from the mart list. */
   marts?: ReadonlyMap<string, MartInfo>;
   /** 'vs Last Month' and the like, for the comparison row under each number. */
@@ -69,7 +72,7 @@ export function curve(a: Box, b: Box): string {
   return `M${x1} ${y1} C${right ? x1 + pull : x1 - pull} ${y1} ${right ? x2 - pull : x2 + pull} ${y2} ${x2} ${y2}`;
 }
 
-export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, marts, compareLabel, tools, progress = null, onRetry }: Props) {
+export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, missingIds, marts, compareLabel, tools, progress = null, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const [hover, setHover] = useState<string | null>(null);
@@ -78,7 +81,10 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
   const ref = useRef<HTMLDivElement>(null);
   // Classes the member can't see are dropped like filtered ones; the main card stays to say so.
   const model = useMemo(
-    () => (visibleIds ? { ...full, classes: full.classes.filter((c) => visibleIds.has(c.id) || c.id === full.goal.classId) } : full),
+    () => {
+      const m = shownModel(full);
+      return visibleIds ? { ...m, classes: m.classes.filter((c) => visibleIds.has(c.id) || c.id === m.goal.classId) } : m;
+    },
     [full, visibleIds],
   );
   const contexts = useMemo(() => contextsOf(model), [model]);
@@ -135,6 +141,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         comparisonOn={comparisonOn}
         refreshing={refreshing}
         noAccess={!!visibleIds && !visibleIds.has(cls.id)}
+        missing={!!missingIds?.has(cls.id)}
         compareLabel={compareLabel}
         absolute={absolute}
         onToggleDiff={() => setAbsolute((a) => !a)}

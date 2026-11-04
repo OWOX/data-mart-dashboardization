@@ -64,8 +64,10 @@ function stepContent(step: string, projectId: string, onOpen?: (path: string) =>
   });
 }
 
-export function Blocked({ blocked, projectId, onRetry, onBack, onOpen }: {
-  blocked: BlockedInfo; projectId: string; onRetry: () => void; onBack?: () => void;
+export function Blocked({ blocked, projectId, onRetry, onBack, backLabel = 'Back to canvas', embedded = false, onOpen }: {
+  blocked: BlockedInfo; projectId: string; onRetry: () => void; onBack?: () => void; backLabel?: string;
+  /** Inside a page that has its own h1: the heading drops to h2. */
+  embedded?: boolean;
   /** Goes to an OWOX page; without it the page names show as plain text. */
   onOpen?: (path: string) => void;
 }) {
@@ -73,7 +75,7 @@ export function Blocked({ blocked, projectId, onRetry, onBack, onOpen }: {
   const text = snippet(projectId);
   return (
     <div className="gy-blocked">
-      <h1>{heading(blocked.code)}</h1>
+      {embedded ? <h2>{heading(blocked.code)}</h2> : <h1>{heading(blocked.code)}</h1>}
       <p>{blocked.detail}</p>
       {blocked.mismatches.length > 0 && (
         <ol>{blocked.mismatches.map((m, i) => <li key={i}>{m}</li>)}</ol>
@@ -87,7 +89,7 @@ export function Blocked({ blocked, projectId, onRetry, onBack, onOpen }: {
         </div>
       )}
       <p><button type="button" className="gy-btn gy-btn-primary" onClick={onRetry}>Retry</button>
-        {onBack && <>{' '}<button type="button" className="gy-btn" onClick={onBack}>Back to canvas</button></>}
+        {onBack && <>{' '}<button type="button" className="gy-btn" onClick={onBack}>{backLabel}</button></>}
       </p>
     </div>
   );

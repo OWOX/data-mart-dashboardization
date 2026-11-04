@@ -1,4 +1,5 @@
-import { dailyOptions, toNumber, totalOptions, valueKey } from './query';
+import { dailyOptions, queryDaily, queryTotal, toNumber, totalOptions, valueKey } from './query';
+import type { OwoxLike } from '../owox/sources';
 
 test('value keys follow the http-data labels', () => {
   expect(valueKey({ field: 'revenue', fn: 'SUM' })).toBe('revenue | SUM');
@@ -22,3 +23,44 @@ test('options', () => {
 test.each([[12, 12], ['1234.50', 1234.5], [null, null], [undefined, null], ['abc', null], [NaN, null], [true, null]] as const)(
   'toNumber(%s)', (v, n) => expect(toNumber(v)).toBe(n),
 );
+
+// ODM refuses COUNT_DISTINCT on an INTEGER key (gyroscope#5); the unique count falls back to COUNT
+const strictMart = (refuse: (fn: string) => boolean) => {
+  const fns: string[] = [];
+  const owox = {
+    dataMarts: {
+      traverseData: async (_id: string, o: Record<string, unknown>) => {
+        const fn = (o.aggregation as { function: string }[])[0]!.function;
+        fns.push(fn);
+        // what the SDK throws in the plugin iframe: its own wrapper, the backend's text on the transport error under it
+        if (refuse(fn)) throw new Error('Failed to open OWOX Data Mart data stream', { cause: Object.assign(new Error(`Output controls validation failed. Aggregation function not allowed for field: ${fn}(customer_id).`), { code: 'HTTP_ERROR' }) });
+        const daily = Array.isArray(o.dateTrunc);
+        const row = (fn === 'COUNT' ? { 'customer_id | COUNT': 42 } : { 'customer_id | COUNTUNIQUE': 40 });
+        return { async *rowChunks() { yield daily ? [{ date: '2026-10-01', ...row }] : [row]; } };
+      },
+    },
+  } as unknown as OwoxLike;
+  return { owox, fns };
+};
+
+test('a refused COUNT_DISTINCT is read with COUNT, and the mart is not asked again', async () => {
+  const { owox, fns } = strictMart((fn) => fn === 'COUNT_DISTINCT');
+  const m = { field: 'customer_id', fn: 'COUNT_DISTINCT' as const };
+  expect(await queryTotal(owox, 'cus-int', m, null, null, true)).toBe(42);
+  expect((await queryDaily(owox, 'cus-int', m, 'date', { from: '2026-10-01', to: '2026-10-01' }, true)).get('2026-10-01')).toBe(42);
+  expect(fns).toEqual(['COUNT_DISTINCT', 'COUNT', 'COUNT']);
+});
+
+test('an allowed COUNT_DISTINCT stays distinct, and other errors still throw', async () => {
+  const ok = strictMart(() => false);
+  expect(await queryTotal(ok.owox, 'cus-str', { field: 'customer_id', fn: 'COUNT_DISTINCT' }, null, null, true)).toBe(40);
+  const refusesSum = strictMart(() => true);
+  await expect(queryTotal(refusesSum.owox, 'cus-sum', { field: 'customer_id', fn: 'SUM' }, null, null, true)).rejects.toThrow(/data stream/);
+  expect(refusesSum.fns).toEqual(['SUM']);
+});
+
+test('a distinct count that is not the unique key never becomes COUNT', async () => {
+  const { owox, fns } = strictMart((fn) => fn === 'COUNT_DISTINCT');
+  await expect(queryTotal(owox, 'orders', { field: 'customer_id', fn: 'COUNT_DISTINCT' }, null, null)).rejects.toThrow(/data stream/);
+  expect(fns).toEqual(['COUNT_DISTINCT']);
+});

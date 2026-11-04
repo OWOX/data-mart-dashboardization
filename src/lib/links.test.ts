@@ -15,3 +15,15 @@ test('null and empty markdown give no links', () => {
   expect(extractLinks(null, 'project', 0)).toEqual([]);
   expect(extractLinks('', 'c1', 5)).toEqual([]);
 });
+
+test('a label with escaped brackets, as the ODM editor writes a bracketed title, still links', () => {
+  const id = '3bae3f18-d3e1-4a8d-b16b-21ce547353dc';
+  const [l] = extractLinks(`| Plan | [\\[Plan\\] Company · Planned Net Revenue](https://app.owox.com/ui/p/data-marts/${id}/data-setup?field=net_revenue) |`, 'project', 0);
+  expect(l).toMatchObject({ text: '[Plan] Company · Planned Net Revenue', martId: id, field: 'net_revenue' });
+});
+
+test('two links in one cell with a bracketed label stay separate', () => {
+  const id = '3bae3f18-d3e1-4a8d-b16b-21ce547353dc';
+  const links = extractLinks(`[\\[Demo\\] Orders](https://app.owox.com/ui/p/data-marts/${id}/data-setup?field=a) and [B](https://app.owox.com/ui/p/data-marts/${id}/data-setup?field=b)`, 'project', 0);
+  expect(links.map((l) => [l.text, l.field])).toEqual([['[Demo] Orders', 'a'], ['B', 'b']]);
+});

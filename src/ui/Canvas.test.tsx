@@ -65,7 +65,7 @@ test('loading line only while refreshing, determinate once the total is known', 
 
 test('retry on error card calls onRetry', () => {
   const onRetry = vi.fn();
-  const cache = { cards: { m: { metrics: { k: { error: 'boom' } }, spark: null } } } as never;
+  const cache = { cards: { m: { metrics: { k: { error: 'boom', fact: null, trend: 'flat', status: 'neutral' } }, spark: null } } } as never;
   render(<Canvas model={rich} cache={cache} comparisonOn refreshing={false} onRetry={onRetry} />);
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(onRetry).toHaveBeenCalledTimes(1);
@@ -135,4 +135,11 @@ test('toolbar tools sit in the same row as the context chips', () => {
   const toolbar = container.querySelector('.gy-toolbar')!;
   expect(toolbar.querySelector('.gy-chips')).not.toBeNull();
   expect(toolbar.querySelector('.gy-toolbar-end [aria-label="Date range"]')).not.toBeNull();
+});
+
+test('a hidden class is not drawn, and a hidden goal class still is', () => {
+  const hidden = { ...rich, classes: rich.classes.map((c) => ({ ...c, shown: c.id === 'b' })) } as Model;
+  const { container } = render(<Canvas model={hidden} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect([...container.querySelectorAll('[data-class-id]')].map((e) => e.getAttribute('data-class-id'))).toEqual(['m', 'b']);
+  expect(screen.queryByText('Alpha')).toBeNull();
 });
