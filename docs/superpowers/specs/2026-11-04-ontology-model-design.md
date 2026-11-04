@@ -1,6 +1,6 @@
 # Ontology Model: design
 
-Date: 2026-11-04. Status: draft for review.
+Date: 2026-11-04. Status: approved with the answers below (2026-11-04).
 
 ## What the user asked for
 
@@ -22,8 +22,9 @@ Date: 2026-11-04. Status: draft for review.
 | Edits | none | stored in the same doc |
 
 1. `plugin.json` adds `ontology` (member). Collections are fixed within a compatibility line, so this ships as **v0.3.0**.
-2. `model` (project) stays in the manifest for one line, read-only: a member with no `ontology` doc gets the project model copied in as their starting point, with no AI call. A member with no project model either builds from scratch. The plugin stops writing `model`.
-3. The doc is the existing `Model` JSON with the additions below and `version: 2`. A `version: 1` doc is upgraded on load.
+2. `model` (project) stays in the manifest, read-only: a member with no `ontology` doc starts from the project model, with no AI call, **keeping only the classes whose Data Marts the member can access** (`dataMarts.list`). The goal class is always kept; if the member can't access it, its card shows the existing no-access state. Edges and metrics of dropped classes go with them. With no project model either, the build runs from scratch. The plugin stops writing `model`.
+3. No export or import: the JSON lives only in plugin storage.
+4. The doc is the existing `Model` JSON with the additions below and `version: 2`. A `version: 1` doc is upgraded on load.
 
 ## Model additions
 
@@ -89,19 +90,27 @@ The build runs on open instead of waiting for a "Build model" click. Its page sh
 
 When `forecast` is set, the card's forecast is the forecast field over the range: a sum for a flow, or the value on the range's last day for a level. The sparkline's dashed part draws that field's daily values after the anchor. Status is still judged by the forecast while the range is running. If the forecast query fails, the card falls back to extrapolation and the info tooltip says so.
 
+## Deleted Data Marts and fields
+
+Any Data Mart or field the model references can be deleted or renamed after it was built or chosen. That must show a warning, never an error screen or a crash.
+
+1. On open, after the Data Mart list is read, a health check compares the model with the schemas of the Data Marts it references (class marts, plan marts, forecast marts). It reports, per metric or class:
+   1. Data Mart not found or no longer accessible;
+   2. fact, plan, forecast or date field not found.
+2. A metric with a broken fact or date field is not queried. Its badge or key number shows `—` with a warning icon, and the info tooltip says what is missing, for example "Field revenue no longer exists in Orders".
+3. A broken plan or forecast reference only drops that part: the metric shows its fact, without a plan or with an extrapolated forecast, and the tooltip says why.
+4. A class whose Data Mart is gone shows a card with a warning, like the no-access card, with the text "Data Mart not found". The goal class stays on the canvas this way, too.
+5. When anything is broken, a one-line banner above the canvas says "N references in the model are broken" with a link to the Ontology Model tab. There, the broken rows are flagged in red with the old name kept.
+6. If a query still fails while running (the Data Mart was deleted between the check and the refresh), that metric shows `—` with the error in its tooltip, and the other metrics carry on.
+
 ## Out of scope
 
 1. Adding or removing classes and links by hand.
-2. Sharing one member's model with others, and export or import of the JSON.
+2. Sharing one member's model with others, and export or import of the JSON (not wanted).
 3. Writing edits back to the project or Data Mart descriptions.
 
 ## Risks
 
-1. Each member's first open runs the AI build once (or copies the project model). AI cost goes from once per project to once per member who has no project model to copy.
+1. The AI build runs only for a member with no project model to start from, so AI cost rises only in new projects.
 2. Members can see different numbers on their canvases, because each one's model can differ.
 3. v0.3.0 is a new compatibility line. Every installation moves to it, and its cache docs are rebuilt on first open.
-
-## Questions for review
-
-1. Is seeding a member's model from the existing project model right, or should every member start with a fresh AI build?
-2. Does "stored in user level json format" also mean export and import of the JSON file? This spec leaves export and import out.
