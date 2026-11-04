@@ -113,3 +113,37 @@ test('removing a class drops its edges, and a removed key metric falls back to t
   expect(next.classes[0]!.keyMetricId).toBe('a:z:SUM'); // a:rev removed; a:qty is hidden
   expect(next.goal.metricId).toBeNull();
 });
+
+test('the goal class is never offered for removal unless the candidate moves the goal to a class that exists', () => {
+  const cur = base();
+  const cand = copy(base());
+  cand.classes = cand.classes.filter((c) => c.id !== 'a');
+  cand.metrics = cand.metrics.filter((m) => m.martId !== 'a');
+  expect(diffModels(cur, cand).some((c) => c.kind === 'class_removed')).toBe(false);
+  cand.goal = { ...cand.goal, classId: 'c', metricId: 'c:n:SUM', goalMartId: 'c' };
+  expect(diffModels(cur, cand)).toContainEqual({ kind: 'class_removed', classId: 'a', title: 'Orders' });
+});
+
+test('picking only class_added keeps the current goal even when the candidate goal differs', () => {
+  const cur = base();
+  const cand = copy(base());
+  cand.classes.push(cls('d', 'Deals', 1, ['d:v:SUM']));
+  cand.metrics.push(metric('d:v:SUM', 'd', 'Value', 'v'));
+  cand.goal = { classId: 'd', metricId: 'd:v:SUM', goalMartId: 'd', viaFallback: false };
+  const next = applyChanges(cur, cand, diffModels(cur, cand).filter((c) => c.kind === 'class_added'), 'now');
+  expect(next.goal).toEqual(cur.goal);
+  expect(next.classes.map((c) => c.id)).toContain('d');
+});
+
+test('an added class does not duplicate a metric that exists under another id', () => {
+  const cur = base();
+  cur.metrics[0] = { ...cur.metrics[0]!, id: 'mine' };
+  cur.classes[0]!.metricIds = ['mine', 'a:qty:SUM'];
+  cur.goal = { ...cur.goal, metricId: 'mine' };
+  const cand = copy(base());
+  cand.classes.push(cls('d', 'Deals', 1, ['a:rev:SUM', 'd:v:SUM']));
+  cand.metrics.push(metric('d:v:SUM', 'd', 'Value', 'v'));
+  const next = applyChanges(cur, cand, diffModels(cur, cand).filter((c) => c.kind === 'class_added'), 'now');
+  expect(next.metrics.filter((m) => m.measure.field === 'rev')).toHaveLength(1);
+  expect(next.classes.find((c) => c.id === 'd')!.metricIds).toEqual(['d:v:SUM']);
+});

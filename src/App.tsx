@@ -92,7 +92,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [steps, setSteps] = useState<BuildStep[]>([]);
-  const [outdated, setOutdated] = useState(false);
+  // the input hash the model is out of date against, or null; a discarded proposal's hash is dismissed for this session only
+  const [outdated, setOutdated] = useState<string | null>(null);
+  const [dismissedHash, setDismissedHash] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
   // what this member can see, fetched once per model; data is null when the fetch failed
@@ -151,7 +153,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     setRefreshing(false);
     setLoading(false);
     setView({ name: 'building' });
-    setOutdated(false);
+    setOutdated(null);
     try {
       const result = await buildModel({ owox, generate, userId, now: now(), onStep: (s) => setSteps((p) => [...p, s]) });
       if (!result.ok) { setView({ name: 'blocked', blocked: result.blocked }); return; }
@@ -259,7 +261,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (!done || !data || !data.contextsOk || checkedFor.current === inputs) return;
       checkedFor.current = inputs;
       const hash = await currentInputHash(owox, data, model.classes.map((c) => c.id), healthNow.current?.model === model ? healthNow.current.details : undefined).catch(() => null);
-      if (hash !== null && modelNow.current === model) setOutdated(hash !== model.inputHash);
+      if (hash !== null && modelNow.current === model) setOutdated(hash !== model.inputHash ? hash : null);
     });
   }, [inputsReady, inputs, model, owox, refresh]);
 
@@ -320,6 +322,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           onBack={leaveSettings}
           onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), onStep })}
           projectId={ctx.projectId}
+          onDismiss={setDismissedHash}
           onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}
           canRebuild={!!generate}
           error={settingsError}
@@ -342,7 +345,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
               <button type="button" className="gy-link" onClick={() => openSettings('ontology')}>Review in Ontology Model</button>
             </div>
           )}
-          {outdated && (
+          {outdated !== null && outdated !== dismissedHash && (
             <div className="gy-banner">
               <button type="button" className="gy-link" onClick={() => openSettings('ontology')}>The descriptions changed. Rebuild to see proposed changes</button>
             </div>

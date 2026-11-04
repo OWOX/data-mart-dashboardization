@@ -19,10 +19,12 @@ export interface OntologyProps {
   onSave: (m: Model) => Promise<void>;
 }
 
-export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, error, tab: initialTab = 'general', onTabChange, ontology }: {
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
   /** Reads the descriptions and schemas again into a candidate model; the Ontology tab shows it as a proposal. */
-  onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void; error?: string | null;
+  onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void;
+  /** A discarded proposal's input hash: the canvas stops calling the model out of date for it. */
+  onDismiss?: (hash: string) => void; error?: string | null;
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
@@ -61,47 +63,47 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
         ))}
       </div>
       <main>
-      <div className="dm-page-content" role="tabpanel" id="gy-panel-ontology" aria-labelledby="gy-tab-ontology" hidden={tab !== 'ontology'}>
-        {ontology
-          ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} />
-          : <><LoadingLine /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
-      </div>
-      <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>
-        <form className="dm-card gy-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
-          <p className="dm-muted gy-form-note">These settings apply to everyone in the project.</p>
-          <div className="gy-field">
-            <label htmlFor="gy-threshold">Red when below plan by more than (%)</label>
-            <input id="gy-threshold" className="gy-input" type="number" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-            <span className="dm-muted gy-field-hint">A card between plan and this threshold shows orange.</span>
-          </div>
-          <div className="gy-field">
-            <label htmlFor="gy-default-range">Default date range</label>
-            <select id="gy-default-range" className="gy-select" value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
-              {PRESET_GROUPS.map((g) => (
-                <optgroup key={g.label} label={g.label}>
-                  {g.presets.map((p) => <option key={p} value={p}>{PRESET_LABELS[p]}</option>)}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          <div className="gy-field">
-            <label htmlFor="gy-week-start">Week starts on</label>
-            <select id="gy-week-start" className="gy-select" value={weekStart} onChange={(e) => setWeekStart(e.target.value as WeekStart)}>
-              <option value="monday">Monday</option>
-              <option value="sunday">Sunday</option>
-            </select>
-          </div>
-          <label className="gy-check">
-            <input type="checkbox" checked={comparison} onChange={(e) => setComparison(e.target.checked)} />
-            Compare with previous period by default
-          </label>
-          {error && <p role="alert" className="gy-form-error">{error}</p>}
-          <div className="gy-form-actions">
-            <button type="submit" className="gy-btn gy-btn-primary">Save</button>
-            <button type="button" className="gy-btn" onClick={onBack}>Cancel</button>
-          </div>
-        </form>
-      </div>
+        <div className="dm-page-content" role="tabpanel" id="gy-panel-ontology" aria-labelledby="gy-tab-ontology" hidden={tab !== 'ontology'}>
+          {ontology
+            ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} />
+            : <><LoadingLine /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
+        </div>
+        <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>
+          <form className="dm-card gy-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
+            <p className="dm-muted gy-form-note">These settings apply to everyone in the project.</p>
+            <div className="gy-field">
+              <label htmlFor="gy-threshold">Red when below plan by more than (%)</label>
+              <input id="gy-threshold" className="gy-input" type="number" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+              <span className="dm-muted gy-field-hint">A card between plan and this threshold shows orange.</span>
+            </div>
+            <div className="gy-field">
+              <label htmlFor="gy-default-range">Default date range</label>
+              <select id="gy-default-range" className="gy-select" value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
+                {PRESET_GROUPS.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.presets.map((p) => <option key={p} value={p}>{PRESET_LABELS[p]}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div className="gy-field">
+              <label htmlFor="gy-week-start">Week starts on</label>
+              <select id="gy-week-start" className="gy-select" value={weekStart} onChange={(e) => setWeekStart(e.target.value as WeekStart)}>
+                <option value="monday">Monday</option>
+                <option value="sunday">Sunday</option>
+              </select>
+            </div>
+            <label className="gy-check">
+              <input type="checkbox" checked={comparison} onChange={(e) => setComparison(e.target.checked)} />
+              Compare with previous period by default
+            </label>
+            {error && <p role="alert" className="gy-form-error">{error}</p>}
+            <div className="gy-form-actions">
+              <button type="submit" className="gy-btn gy-btn-primary">Save</button>
+              <button type="button" className="gy-btn" onClick={onBack}>Cancel</button>
+            </div>
+          </form>
+        </div>
       </main>
     </div>
   );

@@ -16,7 +16,7 @@ function describe(c: Change, nameOf: (id: string) => string): { what: string; de
 }
 
 /** What a rebuild would change, one row per change, all picked. Nothing is saved until Apply selected. */
-export function RebuildProposal({ changes, titleOf, nameOf, busy, error, onApply, onDiscard }: {
+export function RebuildProposal({ changes, titleOf, nameOf, busy, error, onApply, onDiscard, onClose }: {
   changes: Change[];
   titleOf: (classId: string) => string;
   nameOf: (metricId: string) => string;
@@ -24,6 +24,8 @@ export function RebuildProposal({ changes, titleOf, nameOf, busy, error, onApply
   error: string | null;
   onApply: (picked: Change[]) => void;
   onDiscard: () => void;
+  /** With no changes: closes the proposal. */
+  onClose: () => void;
 }) {
   const [off, setOff] = useState<ReadonlySet<number>>(new Set());
   const picked = changes.filter((_, i) => !off.has(i));
@@ -33,7 +35,7 @@ export function RebuildProposal({ changes, titleOf, nameOf, busy, error, onApply
     return (
       <section className="dm-card gy-onto-intro" aria-label="Rebuild proposal">
         <p className="gy-onto-note">The model already matches the descriptions.</p>
-        <div className="gy-form-actions"><button type="button" className="gy-btn" onClick={onDiscard}>Close</button></div>
+        <div className="gy-form-actions"><button type="button" className="gy-btn" onClick={onClose} disabled={busy}>Close</button></div>
       </section>
     );
   }

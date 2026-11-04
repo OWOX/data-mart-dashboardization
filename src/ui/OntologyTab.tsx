@@ -73,7 +73,7 @@ function Source({ label, detail, status, measure, dateField, noDate, onMeasure, 
   );
 }
 
-export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen }: {
+export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss }: {
   model: Model;
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
@@ -86,6 +86,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   /** Builds a candidate model from the descriptions; saves nothing. */
   onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean;
   projectId?: string; onOpen?: (path: string) => void;
+  /** A discarded proposal's input hash. */
+  onDismiss?: (hash: string) => void;
 }) {
   const [draft, setDraft] = useState<Model>(model);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +169,17 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
       setSaving(false);
     }
   };
+  // no differences: the model is current, so remember the new input hash without calling it an edit
+  const closeMatching = async (candidate: Model) => {
+    if (candidate.inputHash === model.inputHash) { closeRebuild(); return; }
+    setSaving(true);
+    try {
+      await onSave({ ...model, inputHash: candidate.inputHash });
+    } catch (e) {
+      setError(`Couldn't save the model: ${describeError(e)}`);
+      setSaving(false);
+    }
+  };
   const closeRebuild = () => { setError(null); setRebuild({ phase: 'idle' }); };
 
   // without an access list only the Data Marts already referenced can be offered
@@ -198,7 +211,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
       </section>
 
       {rebuild.phase === 'building' && <BuildProgress steps={rebuild.steps} embedded />}
-      {rebuild.phase === 'blocked' && <Blocked blocked={rebuild.blocked} projectId={projectId} onRetry={() => void startRebuild()} onBack={closeRebuild} backLabel="Back to the model" onOpen={onOpen} />}
+      {rebuild.phase === 'blocked' && <Blocked blocked={rebuild.blocked} projectId={projectId} onRetry={() => void startRebuild()} onBack={closeRebuild} backLabel="Back to the model" embedded onOpen={onOpen} />}
       {rebuild.phase === 'error' && (
         <section className="dm-card gy-onto-intro" aria-label="Rebuild proposal">
           <p role="alert" className="gy-form-error">{rebuild.message}</p>
@@ -213,7 +226,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
           changes={rebuild.changes} busy={saving} error={error}
           titleOf={(id) => model.classes.find((c) => c.id === id)?.title ?? rebuild.candidate.classes.find((c) => c.id === id)?.title ?? id}
           nameOf={(id) => model.metrics.find((m) => m.id === id)?.alias ?? id}
-          onApply={(picked) => void applyProposal(rebuild.candidate, picked)} onDiscard={closeRebuild}
+          onApply={(picked) => void applyProposal(rebuild.candidate, picked)} onDiscard={() => { onDismiss?.(rebuild.candidate.inputHash); closeRebuild(); }} onClose={() => void closeMatching(rebuild.candidate)}
         />
       )}
 

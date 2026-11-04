@@ -51,7 +51,9 @@ export function diffModels(current: Model, candidate: Model): Change[] {
   const have = new Set(current.classes.map((c) => c.id));
   const want = new Set(candidate.classes.map((c) => c.id));
   for (const c of candidate.classes) if (!have.has(c.id)) changes.push({ kind: 'class_added', classId: c.id, title: c.title });
-  for (const c of current.classes) if (!want.has(c.id)) changes.push({ kind: 'class_removed', classId: c.id, title: c.title });
+  // the goal class goes only when the candidate names another goal class that will exist; otherwise the row would be dropped on apply
+  const goalMoves = candidate.goal.classId !== current.goal.classId && want.has(candidate.goal.classId);
+  for (const c of current.classes) if (!want.has(c.id) && (c.id !== current.goal.classId || goalMoves)) changes.push({ kind: 'class_removed', classId: c.id, title: c.title });
 
   const pairs = pairMetrics(current, candidate);
   const matched = new Set([...pairs.values()].map((m) => m.id));
@@ -85,6 +87,7 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
   let classes: ClassNode[] = current.classes.map((c) => ({ ...c, metricIds: [...c.metricIds] }));
   let metrics: MetricDef[] = current.metrics.map((m) => ({ ...m }));
   const touched = new Set<string>(); // classes added or removed
+  let goalRemoved = false;
 
   // a goal class goes only if the candidate names another one that will exist
   const added = new Set(picked.flatMap((p) => (p.kind === 'class_added' ? [p.classId] : [])));
@@ -97,12 +100,13 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
       if (!gone) continue;
       const ids = new Set(gone.metricIds);
       classes = classes.filter((c) => c.id !== p.classId);
+      if (p.classId === current.goal.classId) goalRemoved = true;
       metrics = metrics.filter((m) => !ids.has(m.id));
       touched.add(p.classId);
     } else if (p.kind === 'class_added') {
       const c = candClass.get(p.classId);
       if (!c || classes.some((x) => x.id === c.id)) continue;
-      const own = c.metricIds.flatMap((id) => { const m = candById.get(id); return m && !metrics.some((x) => x.id === id) ? [{ ...m, shown: true, forecast: null }] : []; });
+      const own = c.metricIds.flatMap((id) => { const m = candById.get(id); return m && !pairs.has(id) && !metrics.some((x) => x.id === id) ? [{ ...m, shown: true, forecast: null }] : []; });
       metrics = [...metrics, ...own];
       classes = [...classes, { ...c, shown: true, metricIds: own.map((m) => m.id), keyMetricId: own.some((m) => m.id === c.keyMetricId) ? c.keyMetricId : own[0]?.id ?? null }];
       touched.add(p.classId);
@@ -150,7 +154,8 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
     // edges touching an added or removed class, and the goal, follow the candidate
     const meets = (e: Edge) => touched.has(e.from) || touched.has(e.to);
     edges = [...edges.filter((e) => !meets(e)), ...candidate.edges.filter((e) => meets(e) && ids.has(e.from) && ids.has(e.to))];
-    if (ids.has(candidate.goal.classId)) goal = { ...candidate.goal, metricId: candidate.goal.metricId ? idFor(candidate.goal.metricId) : null };
+    // the goal follows the candidate only when the current goal class is gone
+    if (goalRemoved && ids.has(candidate.goal.classId)) goal = { ...candidate.goal, metricId: candidate.goal.metricId ? idFor(candidate.goal.metricId) : null };
   }
   if (goal.metricId && !metrics.some((m) => m.id === goal.metricId)) goal = { ...goal, metricId: null };
 

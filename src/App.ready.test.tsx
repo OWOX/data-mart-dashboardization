@@ -156,6 +156,40 @@ test('Rebuild is off while the draft has unsaved edits', async () => {
   expect(screen.getByText('Save or cancel your edits first')).toBeInTheDocument();
 });
 
+const NOTICE = 'The descriptions changed. Rebuild to see proposed changes';
+
+test('Closing a rebuild with no differences stores the new input hash, keeps editedAt and clears the notice', async () => {
+  const { deps, store } = await setup({ inputHash: 'old' });
+  const before = await loadOntology(store);
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: NOTICE }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
+  await screen.findByText('The model already matches the descriptions.');
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  await screen.findByRole('button', { name: 'Date range' });
+  const saved = await loadOntology(store);
+  expect(saved?.inputHash).not.toBe('old');
+  expect(saved).toEqual({ ...before, inputHash: saved?.inputHash });
+  expect(saved?.editedAt).toBe(before?.editedAt);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(screen.queryByText(NOTICE)).toBeNull();
+});
+
+test('Discard hides the out-of-date notice for this session without touching the doc', async () => {
+  const { deps, store } = await setup({ inputHash: 'old' });
+  const before = await loadOntology(store);
+  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => renamedAi }} />);
+  fireEvent.click(await screen.findByRole('button', { name: NOTICE }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
+  await screen.findByRole('checkbox', { name: 'Revenue: name' });
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Back' }));
+  await screen.findByRole('button', { name: 'Date range' });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(screen.queryByText(NOTICE)).toBeNull();
+  expect(await loadOntology(store)).toEqual(before);
+});
+
 test('saving a changed threshold refreshes; an unchanged one does not', async () => {
   const { deps, traversals } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
@@ -205,7 +239,8 @@ test('retry after a failed initial load re-runs the load, not the AI build', asy
 });
 
 test('a blocked rebuild shows inside the tab and keeps the current model', async () => {
-  const { deps } = await setup({ generate: async () => missingAi });
+  const { deps, store } = await setup({ generate: async () => missingAi });
+  const before = await loadOntology(store);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
@@ -213,6 +248,7 @@ test('a blocked rebuild shows inside the tab and keeps the current model', async
   expect(await screen.findByRole('heading', { name: "Goal can't be tracked" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to the model' }));
   expect(await screen.findByRole('button', { name: 'Rebuild model' })).toBeEnabled();
+  expect(await loadOntology(store)).toEqual(before);
 });
 
 test('modifiedAt churn alone shows no banner; a class-mart formula change does', async () => {
