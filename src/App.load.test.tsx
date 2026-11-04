@@ -59,7 +59,7 @@ test('with neither, the build starts on open and shows its progress', async () =
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });
   render(<App ctx={ctx} deps={{ ...deps, generate: async () => { await gate; return goalAi; } }} />);
-  expect(await screen.findByText('AI reading descriptions…')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText('AI read the descriptions').closest('li')).toHaveAttribute('data-state', 'running'));
   expect(screen.queryByRole('button', { name: 'Build model' })).toBeNull();
   release();
   expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();

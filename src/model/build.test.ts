@@ -183,3 +183,37 @@ test('a failing project read says what failed', async () => {
   const owox = { ...fakeOwox(data()), project: { getSettings: async () => { throw new Error('boom'); } } };
   await expect(buildModel({ owox, generate: async () => goalAi, userId: 'u1', now })).rejects.toThrow("Couldn't read the project description and Data Marts: boom");
 });
+
+test('onStep emits the checklist points in order for a project with one context and no plan', async () => {
+  const d = { ...data(), contexts: [{ id: 'ctx', name: 'Sales', description: 'Sales team' }] };
+  const steps: BuildStep[] = [];
+  const r = await buildModel({ owox: fakeOwox(d), generate: async () => goalAi, userId: 'u1', now, onStep: (s) => steps.push(s) });
+  expect(r.ok).toBe(true);
+  expect(steps.find((s) => s.kind === 'contexts')).toEqual({ kind: 'contexts', list: [{ id: 'ctx', name: 'Sales' }] });
+  const checks = steps.flatMap((s) => (s.kind === 'check' ? [s] : []));
+  const last = (id: string) => checks.filter((c) => c.id === id).at(-1);
+  expect(last('project.description')).toMatchObject({ state: 'done' });
+  expect(last('context:ctx.description')).toMatchObject({ state: 'done' });
+  expect(last('marts')).toMatchObject({ state: 'done' });
+  expect(last('ai')).toMatchObject({ state: 'done' });
+  expect(last('project.fact')).toMatchObject({ state: 'done' });
+  expect(last('project.plan')).toMatchObject({ state: 'missing' });
+  expect(last('project.forecast')).toMatchObject({ state: 'done', detail: 'Extrapolated from the fact' });
+  expect(last('context:ctx.fact')).toMatchObject({ state: 'missing' });
+  expect(last('classes')).toMatchObject({ state: 'done' });
+  const order = (id: string, state: string) => checks.findIndex((c) => c.id === id && c.state === state);
+  expect(order('project.description', 'done')).toBeLessThan(order('marts', 'running'));
+  expect(order('marts', 'running')).toBeLessThan(order('ai', 'running'));
+  expect(order('ai', 'done')).toBeLessThan(order('project.fact', 'done'));
+  expect(order('marts', 'done')).toBeLessThan(order('classes', 'running'));
+  expect(steps.findIndex((s) => s.kind === 'contexts')).toBeLessThan(steps.findIndex((s) => s.kind === 'check'));
+});
+
+test('a blocked build marks the matching required point failed with the blocked detail', async () => {
+  const steps: BuildStep[] = [];
+  const r = await buildModel({ owox: fakeOwox({ ...data(), projectDescription: null }), generate: async () => ({ goal: { status: 'missing', metricRef: null, note: '' }, metrics: [] }), userId: 'u1', now, onStep: (s) => steps.push(s) });
+  expect(r).toMatchObject({ ok: false, blocked: { code: 'NO_GOAL' } });
+  const checks = steps.flatMap((s) => (s.kind === 'check' ? [s] : []));
+  expect(checks.find((c) => c.id === 'project.description')).toMatchObject({ state: 'missing' });
+  expect(checks.at(-1)).toMatchObject({ id: 'project.fact', state: 'failed', detail: 'The project description has no Critical number in its metrics table.' });
+});

@@ -69,12 +69,31 @@ const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'GOAL_NOT_CONNECTED', d
 /** What the build is doing, for the progress page. Mart counts run over both detail-loading phases against all visible marts. */
 export type BuildStep =
   | { kind: 'read'; what: 'project' | 'contexts' | 'marts' | 'ai'; done: number; total: number | null; finished: boolean; failed?: boolean }
+  | { kind: 'contexts'; list: { id: string; name: string }[] }
+  | { kind: 'check'; id: CheckId; state: CheckState; detail?: string }
   | { kind: 'found'; goal: string | null; classes: string[]; metrics: number };
+
+/** One point of the build checklist. Context points are `context:<id>.<point>`. */
+export type CheckId = 'project.description' | 'project.fact' | 'project.plan' | 'project.forecast'
+  | 'marts' | 'ai' | 'classes'
+  | `context:${string}.description` | `context:${string}.fact` | `context:${string}.plan` | `context:${string}.forecast`;
+export type CheckState = 'pending' | 'running' | 'done' | 'missing' | 'failed';
+
+const hasText = (t: string | null) => !!t && t.trim() !== '';
 
 export async function buildModel(args: { owox: OwoxLike; generate: Generate | null; userId: string; now: Date; onStep?: (s: BuildStep) => void }): Promise<BuildResult> {
   const { owox, generate, userId, now } = args;
   const step = args.onStep ?? (() => undefined);
-  if (!generate) return fail('AI_NOT_CONFIGURED', 'Ask a project admin to map an AI model to this plugin.');
+  const check = (id: CheckId, state: CheckState, detail?: string) => step(detail === undefined ? { kind: 'check', id, state } : { kind: 'check', id, state, detail });
+  /** Marks the point a blocked result is about as failed, with the blocked detail. */
+  const block = (r: BuildResult): BuildResult => {
+    if (!r.ok) {
+      const { code, detail } = r.blocked;
+      check(code === 'AI_NOT_CONFIGURED' || code === 'AI_INVALID' ? 'ai' : 'project.fact', 'failed', detail);
+    }
+    return r;
+  };
+  if (!generate) return block(fail('AI_NOT_CONFIGURED', 'Ask a project admin to map an AI model to this plugin.'));
 
   step({ kind: 'read', what: 'project', done: 0, total: null, finished: false });
   let inputs: Inputs;
@@ -85,6 +104,10 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     throw new Error(`Couldn't read the project description and Data Marts: ${describeError(e)}`);
   }
   step({ kind: 'read', what: 'project', done: 1, total: 1, finished: true });
+  step({ kind: 'contexts', list: inputs.contexts.map((c) => ({ id: c.id, name: c.name })) });
+  if (hasText(inputs.projectDescription)) check('project.description', 'done');
+  else check('project.description', 'missing', 'The project description is empty.');
+  for (const c of inputs.contexts) check(`context:${c.id}.description`, hasText(c.description) ? 'done' : 'missing');
   step(inputs.contextsOk
     ? { kind: 'read', what: 'contexts', done: inputs.contexts.length, total: inputs.contexts.length, finished: true }
     : { kind: 'read', what: 'contexts', done: 0, total: null, finished: false, failed: true });
@@ -102,6 +125,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     step({ kind: 'read', what: 'marts', done: counted.size, total: martTotal, finished: false });
   };
   step({ kind: 'read', what: 'marts', done: 0, total: martTotal, finished: false });
+  check('marts', 'running');
   const got = await runPool(linked.map((id) => async () => {
     try { return await fetchMartDetail(owox, id); } finally { tick(id); }
   }), POOL);
@@ -114,19 +138,36 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
 
   let ai;
   step({ kind: 'read', what: 'ai', done: 0, total: null, finished: false });
+  check('ai', 'running');
+  for (const id of ['project.fact', 'project.plan', 'project.forecast'] as const) check(id, 'running');
+  for (const c of inputs.contexts) for (const p of ['fact', 'plan', 'forecast'] as const) check(`context:${c.id}.${p}`, 'running');
   try {
     ai = await interpret(generate, { projectDescription: inputs.projectDescription, contexts: inputs.contexts, links, dateFields });
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') throw e;
-    return fail('AI_INVALID', "The AI's reading of the descriptions doesn't match the Data Mart schemas.", [e instanceof Error ? e.message : String(e)]);
+    return block(fail('AI_INVALID', "The AI's reading of the descriptions doesn't match the Data Mart schemas.", [e instanceof Error ? e.message : String(e)]));
   }
+  check('ai', 'done');
+  // the critical metric of the project and of each context decides its fact, plan and forecast points
+  const linkOk = (i: number | null) => { const l = i === null ? undefined : links[i]; return !!l && !l.placeholder && !!l.martId && !!l.field; };
+  const resolve = (source: string, id: (p: 'fact' | 'plan' | 'forecast') => CheckId) => {
+    const m = ai.metrics.find((x) => x.role === 'critical' && x.source === source);
+    const fact = linkOk(m?.factLink ?? null);
+    check(id('fact'), fact ? 'done' : 'missing', m ? 'The Critical number has no link to a Data Mart field.' : 'There is no Critical number row.');
+    check(id('plan'), linkOk(m?.planLink ?? null) ? 'done' : 'missing');
+    // a metric's forecast source doesn't exist at build time, so extrapolating the fact is the only path
+    if (fact && m?.factDateField) check(id('forecast'), 'done', 'Extrapolated from the fact');
+    else check(id('forecast'), 'missing');
+  };
+  resolve('project', (p) => `project.${p}`);
+  for (const c of inputs.contexts) resolve(c.id, (p) => `context:${c.id}.${p}`);
 
   const goalMetric = ai.metrics.find((m) => m.ref === ai.goal.metricRef);
   const gl = goalMetric && goalMetric.factLink !== null ? links[goalMetric.factLink] : undefined;
   if (ai.goal.status === 'ok' && gl?.martId && visible.has(gl.martId) && failures.has(gl.martId)) throw buildFailed(gl.martId, failures.get(gl.martId));
 
   const v = validate({ ai, links, details, visible });
-  if (!v.ok) return v;
+  if (!v.ok) return block(v);
   step({ kind: 'read', what: 'ai', done: 1, total: 1, finished: true });
   step({ kind: 'found', goal: `${goalMetric?.alias ?? v.goal.field} (${titleOf(v.goal.martId)})`, classes: [], metrics: 0 });
 
@@ -140,12 +181,14 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     }
   }), POOL);
   step({ kind: 'read', what: 'marts', done: martTotal, total: martTotal, finished: true });
+  check('marts', 'done');
+  check('classes', 'running');
   const nodes = loaded.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
   loaded.forEach((r, i) => { if (r.status === 'rejected') failures.set(inputs.marts[i]!.id, r.reason); });
 
   const goalLink = links.find((l) => l.martId === v.goal.martId && l.field === v.goal.field);
   const main = chooseMain({ goalMartId: v.goal.martId, goalField: v.goal.field, nodes, visible });
-  if (!main) return fail('GOAL_NOT_CONNECTED', `None of the Data Marts you can see reference ${goalLink?.text ?? v.goal.field} through a calculated field.`);
+  if (!main) return block(fail('GOAL_NOT_CONNECTED', `None of the Data Marts you can see reference ${goalLink?.text ?? v.goal.field} through a calculated field.`));
 
   if (!nodes.some((n) => n.id === main.id)) throw buildFailed(main.id, failures.get(main.id));
 
@@ -173,6 +216,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
 
   const goalClass = classes.find((c) => c.id === main.id);
   const goalDef = metrics.find((m) => m.id === v.goal.metricId);
+  check('classes', classes.length > 0 ? 'done' : 'missing', classes.length > 0 ? undefined : 'No classes were found.');
   step({
     kind: 'found',
     goal: goalClass ? `${goalDef?.alias ?? goalClass.title} (${goalClass.title})` : null,

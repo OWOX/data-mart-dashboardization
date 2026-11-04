@@ -110,7 +110,7 @@ test('Rebuild from Settings shows the build progress', async () => {
   render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => { await gate; return goalAi; } }} />);
   await openOntology();
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
-  expect(await screen.findByText('AI reading descriptions…')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText('AI read the descriptions').closest('li')).toHaveAttribute('data-state', 'running'));
   expect(screen.getByRole('progressbar')).toHaveAttribute('data-determinate', 'false');
   release();
   expect(await screen.findByText('The model already matches the descriptions.')).toBeInTheDocument();
