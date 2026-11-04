@@ -8,7 +8,8 @@ export interface MartLink {
   placeholder: boolean;
 }
 
-const LINK = /\[([^\]]*)\]\(([^)\s]+)\)/g;
+// the label may hold escaped brackets: the ODM editor writes `[\[Plan\] Sales](…)` for a bracketed title
+const LINK = /\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
 const MART = /\/data-marts\/([^/?#]+)/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -22,7 +23,7 @@ export function extractLinks(markdown: string | null | undefined, source: 'proje
     const query = url.includes('?') ? url.slice(url.indexOf('?') + 1).split('#')[0]! : '';
     const field = new URLSearchParams(query).get('field');
     const martId = UUID.test(seg) ? seg.toLowerCase() : null;
-    out.push({ index: startIndex + out.length, source, text: m[1]!.trim(), url, martId, field, placeholder: martId === null });
+    out.push({ index: startIndex + out.length, source, text: m[1]!.replace(/\\(.)/g, '$1').trim(), url, martId, field, placeholder: martId === null });
   }
   return out;
 }
