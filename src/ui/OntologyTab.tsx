@@ -194,7 +194,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
 
   const save = async () => {
     const problem = validateDraft(draft);
-    if (problem) { setError(problem); return; }
+    // the named metric may sit in a folded class, so unfold them all
+    if (problem) { setError(problem); setOpenIds(new Set(draft.classes.map((c) => c.id))); return; }
     setError(null);
     setSaving(true);
     try {
