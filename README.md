@@ -21,9 +21,9 @@ The plugin platform does not support a local preview. Test Gyroscope as an insta
 
 ## Release
 
-1. Push to `feat/data-mart-dashboards`. GitHub Pages deploys `dist/` to the folder of the compatibility line: `v3/` for 0.3.x. Installs of 0.2 keep loading the root.
+1. Push to `main`. GitHub Pages deploys `dist/` to the folder of the compatibility line: `v3/` for 0.3.x. Installs of 0.2 keep loading the root.
 2. A new compatibility line (0.4) needs `plugin.json` `delivery.url` moved to its folder (`/v4/`); a test fails until it is.
-3. Check the plugin with `owox-ctl plugins check OWOX/gyroscope --ref feat/data-mart-dashboards`.
+3. Check the plugin with `owox-ctl plugins check OWOX/gyroscope --ref main`.
 4. Create a release with `gh release create v0.3.0 --target <full commit SHA> --generate-notes`.
 5. In OWOX, open Plugins, then Publish Plugin, and choose "Only me" for testing.
 

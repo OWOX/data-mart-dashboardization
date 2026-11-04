@@ -2,7 +2,7 @@ name: Deploy Gyroscope to GitHub Pages
 
 on:
   push:
-    branches: [feat/data-mart-dashboards]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
