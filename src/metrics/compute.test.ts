@@ -141,13 +141,20 @@ test('a running range with too little history to forecast is not judged against 
 
 describe('forecast from a source', () => {
   const spec = () => rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
-  // forecast mart 'f' holds 5/day
+  // the anchor is 10-23. Forecast mart 'f' has gaps: 10-23 (the anchor), 10-25, 10-27, 12-20; every other day is missing
+  const fvals: Record<string, number> = { '2026-10-23': 7, '2026-10-25': 3, '2026-10-27': 4, '2026-12-20': 9 };
+  const inWindow = (from: string, to: string) => Object.entries(fvals).filter(([d]) => d >= from && d <= to);
   const withF = fakeOwox({
     projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
     rows: (id, o) => {
       const f = o.filter as { value: string }[];
       const from = f[0]!.value, to = addDays(f[1]!.value, -1);
-      const per = id === 'f' ? 5 : 10;
+      if (id === 'f') {
+        const hit = inWindow(from, to);
+        if (o.dateTrunc) return hit.map(([d, v]) => ({ date: d, 'revenue | SUM': String(v) }));
+        return hit.length ? [{ 'revenue | SUM': hit.reduce((s, [, v]) => s + v, 0) }] : [{ 'revenue | SUM': null }];
+      }
+      const per = id === 'p' ? 12 : 10;
       if (o.dateTrunc) {
         const out = [];
         for (let d = from; d <= to; d = addDays(d, 1)) out.push({ date: d, 'revenue | SUM': String(per) });
@@ -160,19 +167,45 @@ describe('forecast from a source', () => {
   });
   const fdef = { martId: 'f', measure: { field: 'revenue', fn: 'SUM' as const }, dateField: 'date' };
 
-  test('flow: total over the range, spark from the day after the anchor', async () => {
-    const { result, spark } = await computeMetric({ owox: withF, metric: { ...metric, plan: null, forecast: fdef }, spec: spec(), thresholdPct: 20, withSpark: true });
-    expect(result.forecast).toBe(5 * 92);
+  test('flow: total over the range, missing days count 0, spark starts after the anchor, status vs plan', async () => {
+    const { result, spark } = await computeMetric({ owox: withF, metric: { ...metric, forecast: fdef }, spec: spec(), thresholdPct: 20, withSpark: true });
+    expect(result.forecast).toBe(7 + 3 + 4 + 9);
     expect(result.warning ?? null).toBeNull();
+    expect(result.plan).toBe(12 * 92);
+    expect(result.status).toBe('below');
+    expect(spark!.forecastStart).toBe('2026-10-24');
     expect(spark!.forecast).toHaveLength(69);
-    expect(spark!.forecast.every((v) => v === 5)).toBe(true);
+    expect(spark!.forecast.slice(0, 4)).toEqual([0, 3, 0, 4]);
+    expect(spark!.forecast[addDaysIndex('2026-12-20')]).toBe(9);
+    expect(spark!.forecast.at(-1)).toBe(0);
   });
 
-  test('level: value on the last day', async () => {
+  test('level: last known value on the last day, gaps carry the previous value', async () => {
     const m = { ...metric, plan: null, kind: 'level' as const, forecast: fdef };
     const { result, spark } = await computeMetric({ owox: withF, metric: m, spec: spec(), thresholdPct: 20, withSpark: true });
-    expect(result.forecast).toBe(5);
-    expect(spark!.forecast).toHaveLength(69);
+    expect(result.forecast).toBe(9);
+    expect(spark!.forecast.slice(0, 4)).toEqual([7, 3, 3, 4]);
+    expect(spark!.forecast.at(-1)).toBe(9);
+  });
+
+  test('a level with no value after the anchor starts from the day before it', async () => {
+    const only = { ...fvals };
+    for (const d of Object.keys(fvals)) if (d > '2026-10-24') delete fvals[d];
+    try {
+      const m = { ...metric, plan: null, kind: 'level' as const, forecast: fdef };
+      const { spark } = await computeMetric({ owox: withF, metric: m, spec: spec(), thresholdPct: 20, withSpark: true });
+      expect(spark!.forecast.every((v) => v === 7)).toBe(true);
+    } finally { Object.assign(fvals, only); }
+  });
+
+  test('no data at all in the source falls back to extrapolation with a warning', async () => {
+    const only = { ...fvals };
+    for (const d of Object.keys(fvals)) delete fvals[d];
+    try {
+      const { result } = await computeMetric({ owox: withF, metric: { ...metric, plan: null, forecast: fdef }, spec: spec(), thresholdPct: 20, withSpark: false });
+      expect(result.forecast).toBeCloseTo(920);
+      expect(result.warning).toBe('Forecast source has no data');
+    } finally { Object.assign(fvals, only); }
   });
 
   test('a rejecting forecast query falls back to extrapolation with a warning', async () => {
@@ -185,23 +218,27 @@ describe('forecast from a source', () => {
     expect(result.warning).toBe('Forecast source failed: BOOM');
   });
 
-  test('forecast null keeps today numbers', async () => {
+  test('a range in the past does not query the forecast mart', async () => {
+    const past = { ...rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), comparison: null, compareFact: null };
+    const before = withF.calls.length;
+    await computeMetric({ owox: withF, metric: { ...metric, forecast: fdef }, spec: past, thresholdPct: 20, withSpark: true });
+    expect(withF.calls.slice(before).some((c) => c.path === 'traverse:f')).toBe(false);
+  });
+
+  test('forecast null keeps the numbers of the previous implementation', async () => {
+    // numbers are the ones the first test above asserted before forecasts came from a source
     const { result, spark } = await computeMetric({ owox, metric, spec: spec(), thresholdPct: 20, withSpark: true });
-    expect(result).toMatchInlineSnapshot(`
-      {
-        "compareFact": null,
-        "comparison": 230,
-        "diffPct": 0,
-        "error": null,
-        "fact": 230,
-        "forecast": 920,
-        "forecastApprox": false,
-        "note": null,
-        "plan": 1104,
-        "status": "near",
-        "trend": "flat",
-      }
-    `);
+    expect(result).toEqual({
+      fact: 230, compareFact: null, comparison: 230, diffPct: 0, plan: 12 * 92, forecast: expect.closeTo(920),
+      forecastApprox: false, status: 'near', trend: 'flat', note: null, error: null,
+    });
+    expect(spark!.forecastStart).toBe('2026-10-24');
     expect(spark!.forecast).toHaveLength(69);
   });
 });
+
+const addDaysIndex = (d: string) => {
+  let n = 0;
+  for (let x = '2026-10-24'; x < d; x = addDays(x, 1)) n++;
+  return n;
+};

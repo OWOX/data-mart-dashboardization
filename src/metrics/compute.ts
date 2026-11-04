@@ -1,5 +1,5 @@
 import type { DateWindow, MetricDef, MetricResult, RangeSpec, SeriesPack } from '../types';
-import { addDays, eachDay, minDay } from '../lib/dates';
+import { addDays, eachDay, maxDay, minDay } from '../lib/dates';
 import { describeError } from '../lib/errors';
 import { diffPct, forecastFor, levelAt, planForRange, statusOf, trendOf } from '../lib/stats';
 import type { OwoxLike } from '../owox/sources';
@@ -11,6 +11,8 @@ const empty = (over: Partial<MetricResult> = {}): MetricResult => ({
   fact: null, compareFact: null, comparison: null, diffPct: null, plan: null, forecast: null, forecastApprox: false,
   status: 'neutral', trend: 'flat', note: null, error: null, ...over,
 });
+
+class NoData extends Error {}
 
 const daysIn = (w: DateWindow) => eachDay(w).length;
 
@@ -48,10 +50,12 @@ export async function computeMetric(args: {
       if (metric.forecast) {
         const fc = metric.forecast;
         try {
-          const fcDaily = await queryDaily(owox, fc.martId, fc.measure, fc.dateField, range);
+          // the latest days are what matters, so the row cap must never cut them
+          const fcDaily = await queryDaily(owox, fc.martId, fc.measure, fc.dateField, { from: maxDay(range.from, addDays(anchor, -1)), to: range.to });
           forecast = kind === 'flow' ? await queryTotal(owox, fc.martId, fc.measure, fc.dateField, range) : levelAt(fcDaily, range);
+          if (forecast === null) throw new NoData();
           // a level carries its last value over a missing day, a flow counts none
-          let prev = kind === 'flow' ? 0 : levelAt(fcDaily, { from: range.from, to: anchor }) ?? 0;
+          let prev = kind === 'flow' ? 0 : levelAt(fcDaily, { from: addDays(anchor, -1), to: anchor }) ?? 0;
           future = eachDay({ from: addDays(anchor, 1), to: range.to }).map((d) => {
             const v = fcDaily.get(d);
             if (v !== undefined) prev = v;
@@ -60,7 +64,7 @@ export async function computeMetric(args: {
           forecastMeasure = fc.measure;
           sourced = true;
         } catch (e) {
-          warning = `Forecast source failed: ${describeError(e)}`;
+          warning = e instanceof NoData ? 'Forecast source has no data' : `Forecast source failed: ${describeError(e)}`;
           forecast = null;
           future = [];
         }

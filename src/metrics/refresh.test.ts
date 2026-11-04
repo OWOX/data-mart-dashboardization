@@ -205,4 +205,19 @@ describe('broken references', () => {
     expect(doc.cards.a!.metrics.bad).toMatchObject({ fact: null, warning: 'Not found' });
     expect(doc.cards.a!.metrics.good!.fact).toBe(5);
   });
+
+  test('a failed forecast source and a soft issue show as one joined warning', async () => {
+    const plan = { martId: 'p', measure: { field: 'x', fn: 'SUM' as const }, dateField: 'd', shape: 'daily' as const };
+    const forecast = { martId: 'f', measure: { field: 'id', fn: 'COUNT_DISTINCT' as const }, dateField: 'date' };
+    const owox = ok();
+    const base = owox.dataMarts.traverseData;
+    owox.dataMarts.traverseData = async (id, o) => {
+      if (id === 'f') throw new Error('BOOM');
+      return base(id, o);
+    };
+    const m = model([metric('m', { dateField: 'date', plan, forecast })]);
+    const future = rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
+    const doc = await refreshCanvas({ owox, model: m, spec: future, key: 'k', thresholdPct: 20, issues: [{ kind: 'plan_field_missing', classId: 'a', martId: 'a', metricId: 'm', text: 'The plan field x no longer exists in p' }] });
+    expect(doc.cards.a!.metrics.m!.warning).toBe('The plan field x no longer exists in p; Forecast source failed: BOOM');
+  });
 });
