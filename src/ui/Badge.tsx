@@ -8,11 +8,12 @@ export function Badge({ metric, result, onPick }: { metric: MetricDef; result: M
   const trend = failed ? 'flat' : result.trend;
   // The same trend glyphs as the one before the main number, and as the owox.com map's badges.
   const Icon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : MoveRight;
+  const value = failed ? '—' : formatValue(result.fact ?? result.forecast, metric);
   const Tag = onPick ? 'button' : 'span';
   return (
-    <Tag className="gy-badge" data-status={status} {...(onPick ? { type: 'button' as const, 'aria-label': `Show ${metric.alias}`, onClick: onPick } : {})}>
+    <Tag className="gy-badge" data-status={status} {...(onPick ? { type: 'button' as const, 'aria-label': `Show ${metric.alias}, ${value}`, onClick: onPick } : {})}>
       <Icon size={12} aria-label={`trend ${trend}`} />
-      <span className="num gy-badge-value">{failed ? '—' : formatValue(result.fact ?? result.forecast, metric)}</span>{' '}
+      <span className="num gy-badge-value">{value}</span>{' '}
       <span className="gy-badge-name" title={metric.alias}>{metric.alias}</span>
       {result?.warning && <span className="gy-warn" title={result.warning}><TriangleAlert size={12} aria-label="Warning" /></span>}
     </Tag>

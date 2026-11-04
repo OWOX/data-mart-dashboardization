@@ -43,10 +43,10 @@ function Badges({ items, cache, onPick }: { items: MetricDef[]; cache: CardCache
   useEffect(() => {
     if (!open) return;
     const down = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); toggle.current?.focus(); } };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); toggle.current?.focus(); } };
     document.addEventListener('pointerdown', down);
-    document.addEventListener('keydown', key);
-    return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key); };
+    document.addEventListener('keydown', key, true);
+    return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key, true); };
   }, [open]);
   const badge = (m: MetricDef) => (
     <Badge key={m.id} metric={m} result={cache?.metrics[m.id]} onPick={() => { setOpen(false); onPick(m.id); }} />
@@ -170,6 +170,8 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   const secondary = swapped
     ? swapped.rest.flatMap((id) => metrics.find((m) => m.id === id) ?? [])
     : metrics.filter((m) => m.id !== key?.id);
+  // a new key metric on the class drops the reader's swap
+  useEffect(() => setSwap(null), [cls.keyMetricId]);
   const pick = (id: string) => { if (key) setSwap({ main: id, rest: secondary.map((m) => (m.id === id ? key.id : m.id)) }); };
   const res = key ? cache?.metrics[key.id] : undefined;
   const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} />;

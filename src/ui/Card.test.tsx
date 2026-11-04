@@ -164,7 +164,7 @@ test('more than three secondary metrics: the rest open in a panel, and Show less
   // the three beside the number plus the panel are every secondary metric
   expect(container.querySelectorAll('.gy-badge')).toHaveLength(5);
   expect(panel.querySelectorAll('.gy-badge')).toHaveLength(2);
-  for (let i = 0; i < 5; i++) expect(screen.getByRole('button', { name: `Show Extra ${i}` })).toBeInTheDocument();
+  for (let i = 0; i < 5; i++) expect(screen.getByRole('button', { name: `Show Extra ${i}, 5` })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
   expect(container.querySelector('.gy-badges-panel')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Show +2 more' }));
@@ -186,21 +186,21 @@ test('three secondary metrics need no button', () => {
 test('clicking a secondary metric makes it the main one and the old main takes its place', () => {
   const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
   expect(container.querySelector('.gy-card-metric')!.textContent).toBe('ARR');
-  fireEvent.click(screen.getByRole('button', { name: 'Show Customers' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show Customers, 7.15K' }));
   expect(container.querySelector('.gy-card-metric')!.textContent).toBe('Count');
   expect(container.querySelector('.gy-big')!.textContent).toBe('7.15K');
   expect(container.querySelector('.gy-card')!.getAttribute('data-status')).toBe('above');
   expect(container.querySelector('.gy-spark')).toBeNull();
   const badge = container.querySelector('.gy-badge')!;
   expect(badge.textContent).toMatch(/^1\.24M ARR/);
-  fireEvent.click(screen.getByRole('button', { name: 'Show ARR' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show ARR, 1.24M' }));
   expect(container.querySelector('.gy-big')!.textContent).toBe('1.24M');
   expect(container.querySelector('.gy-spark')).not.toBeNull();
 });
 
 test('a swap keeps the picked metric in the list slot it came from', () => {
   const { container } = many(3);
-  fireEvent.click(screen.getByRole('button', { name: 'Show Extra 1' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show Extra 1, 5' }));
   expect([...container.querySelectorAll('.gy-badge-name')].map((n) => n.textContent)).toEqual(['Extra 0', 'ARR', 'Extra 2']);
 });
 
@@ -262,4 +262,25 @@ test('missing wins over noAccess; a plain noAccess keeps its text', () => {
   expect(screen.getByText('Data Mart not found or not accessible')).toBeInTheDocument();
   rerender(<Card cls={cls} metrics={[arr]} cache={cache()} noAccess comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(screen.getByText("You don't have access to this Data Mart")).toBeInTheDocument();
+});
+
+test('a new key metric on the class drops the swap', () => {
+  const props = { metrics: [arr, uc], cache: cache(), comparisonOn: false, refreshing: false, onRetry: () => {} };
+  const { container, rerender } = render(<Card cls={cls} {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Show Customers, 7.15K' }));
+  expect(container.querySelector('.gy-big')!.textContent).toBe('7.15K');
+  rerender(<Card cls={{ ...cls, keyMetricId: 'uc' }} {...props} />);
+  expect(container.querySelector('.gy-big')!.textContent).toBe('7.15K');
+  rerender(<Card cls={cls} {...props} />);
+  expect(container.querySelector('.gy-big')!.textContent).toBe('1.24M');
+});
+
+test('Escape closing the panel does not reach other listeners', () => {
+  many(5);
+  const other = vi.fn();
+  window.addEventListener('keydown', other);
+  fireEvent.click(screen.getByRole('button', { name: 'Show +2 more' }));
+  fireEvent.keyDown(document.body, { key: 'Escape' });
+  window.removeEventListener('keydown', other);
+  expect(other).not.toHaveBeenCalled();
 });
