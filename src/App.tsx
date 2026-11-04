@@ -37,9 +37,11 @@ type View =
   | { name: 'ready' }
   | { name: 'settings'; tab: SettingsTab };
 
-function depsFrom(ctx: PluginContext): AppDeps {
-  // the model is built once and saved, so the build reads the descriptions on the stronger tier
-  const ai = (ctx.credentials?.ai as AiCredentialHandle | undefined)?.reasoning;
+export function depsFrom(ctx: PluginContext): AppDeps {
+  // the model is built once and saved, so the build reads the descriptions on the stronger tier;
+  // installs published before 0.3.1 declare only fast, and the direct handle is that fast model
+  const handle = ctx.credentials?.ai as AiCredentialHandle | undefined;
+  const ai = handle?.reasoning ?? handle?.fast;
   return {
     owox: ctx.owox as unknown as OwoxLike,
     store: ctx as unknown as CollectionsLike,
