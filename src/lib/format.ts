@@ -55,7 +55,7 @@ function moneyFormat(code: string): Intl.NumberFormat {
   return f;
 }
 
-const pct1 = (n: number): string => (n * 100).toFixed(1);
+const pct1 = (n: number): string => { const s = (n * 100).toFixed(1); return s === '-0.0' ? '0.0' : s; };
 
 /** A value in the metric's format: `4.0%`, `$7.15K`, `7.15K`. */
 export function formatValue(n: number | null, m: Fmt | undefined): string {

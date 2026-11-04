@@ -39,6 +39,7 @@ test('formatValue renders a percent, a currency and a number', () => {
   expect(formatValue(7148, { format: 'currency', currency: null })).toBe('7.15K');
   expect(formatValue(7148, { format: 'currency', currency: 'nope' })).toBe('7.15K');
   expect(formatValue(7148, { format: 'number', currency: null })).toBe('7.15K');
+  expect(formatValue(-0.00001, { format: 'percent', currency: null })).toBe('0.0%');
   expect(formatValue(null, { format: 'percent', currency: null })).toBe('—');
 });
 

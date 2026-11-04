@@ -26,6 +26,16 @@ test('a format change is a metric_changed on format, and applies with its curren
   expect(applyChanges(cur, cand, changes, 'now').metrics[0]).toMatchObject({ format: 'currency', currency: 'EUR' });
 });
 
+test('a candidate currency without a code never proposes wiping a typed one', () => {
+  const cur = base();
+  cur.metrics[0] = { ...cur.metrics[0]!, format: 'currency', currency: 'EUR' };
+  const cand = copy(base());
+  cand.metrics[0] = { ...cand.metrics[0]!, format: 'currency', currency: null };
+  expect(diffModels(cur, cand)).toEqual([]);
+  cand.metrics[0] = { ...cand.metrics[0]!, currency: 'GBP' };
+  expect(diffModels(cur, cand)).toHaveLength(1);
+});
+
 test('no differences, no changes', () => expect(diffModels(base(), copy(base()))).toEqual([]));
 
 test('every change kind is found', () => {

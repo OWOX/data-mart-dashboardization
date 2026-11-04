@@ -24,7 +24,7 @@ const FIELDS: { field: MetricField; text: (m: MetricDef) => string }[] = [
   { field: 'format', text: formatText },
 ];
 // text can hide a difference (a plan's Data Mart), so what counts as changed is the structure
-const same = (f: MetricField, a: MetricDef, b: MetricDef): boolean => (f === 'measure' || f === 'plan' ? JSON.stringify(a[f]) === JSON.stringify(b[f]) : f === 'format' ? formatText(a) === formatText(b) : a[f] === b[f]);
+const same = (f: MetricField, a: MetricDef, b: MetricDef): boolean => (f === 'measure' || f === 'plan' ? JSON.stringify(a[f]) === JSON.stringify(b[f]) : f === 'format' ? (a.format === 'currency' && b.format === 'currency' && b.currency === null) || formatText(a) === formatText(b) : a[f] === b[f]);
 
 const classOf = (m: Model, metricId: string, martId: string): string => m.classes.find((c) => c.metricIds.includes(metricId))?.id ?? martId;
 

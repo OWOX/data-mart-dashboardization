@@ -42,6 +42,9 @@ test('the Format select saves, and a currency code input appears for Currency', 
   expect(r.queryByLabelText('Currency code')).toBeNull();
   fireEvent.change(r.getByLabelText('Format'), { target: { value: 'currency' } });
   fireEvent.change(r.getByLabelText('Currency code'), { target: { value: 'eur' } });
+  fireEvent.change(r.getByLabelText('Currency code'), { target: { value: '' } });
+  expect(r.getByLabelText('Currency code')).toHaveValue('');
+  fireEvent.change(r.getByLabelText('Currency code'), { target: { value: 'eur' } });
   fireEvent.change(row('Revenue').getByLabelText('Format'), { target: { value: 'percent' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));

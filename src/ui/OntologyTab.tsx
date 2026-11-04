@@ -350,7 +350,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                     {m.format === 'currency' && (
                       <input
                         className="gy-input gy-onto-cur" aria-label="Currency code" placeholder="USD" maxLength={3} value={m.currency ?? ''}
-                        onChange={(e) => patchMetric(m.id, (x) => ({ ...x, currency: e.target.value.toUpperCase() }))}
+                        onChange={(e) => patchMetric(m.id, (x) => ({ ...x, currency: e.target.value.toUpperCase() || null }))}
                       />
                     )}
                   </div>
