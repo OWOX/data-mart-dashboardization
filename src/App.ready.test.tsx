@@ -152,7 +152,7 @@ test('Rebuild is off while the draft has unsaved edits', async () => {
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await openOntology();
   const rebuild = await screen.findByRole('button', { name: 'Rebuild model' });
-  fireEvent.click(screen.getAllByRole('button', { expanded: false })[0]!);
+  fireEvent.click(within(screen.getAllByRole('region').find((r) => r.classList.contains('gy-onto-class'))!).getAllByRole('button')[0]!);
   fireEvent.change(screen.getAllByLabelText('Name')[0]!, { target: { value: 'Edited' } });
   expect(rebuild).toBeDisabled();
   expect(screen.getByText('Save or cancel your edits first')).toBeInTheDocument();

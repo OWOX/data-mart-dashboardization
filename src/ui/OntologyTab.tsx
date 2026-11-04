@@ -48,22 +48,23 @@ export function validateDraft(model: Model): string | null {
   return null;
 }
 
-/** An (i) button that shows a live description on hover, focus and click. */
-function InfoTip({ text }: { text: string }) {
+/** An (i) button that shows a live description on hover, focus and click. The text stays mounted so it is read once. */
+function InfoTip({ name, text }: { name: string; text: string }) {
   const id = useId();
   const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const open = hover || pinned;
+  const open = hover || focus || pinned;
   return (
     <span className="gy-tip" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <button
-        type="button" className="gy-tip-btn" aria-label={text} aria-describedby={open ? id : undefined}
-        onClick={() => setPinned((v) => !v)} onFocus={() => setHover(true)} onBlur={() => { setHover(false); setPinned(false); }}
-        onKeyDown={(e) => { if (e.key === 'Escape') { setHover(false); setPinned(false); } }}
+        type="button" className="gy-tip-btn" aria-label={`About ${name}`} aria-describedby={id}
+        onClick={() => setPinned((v) => !v)} onFocus={() => setFocus(true)} onBlur={() => { setFocus(false); setPinned(false); }}
+        onKeyDown={(e) => { if (e.key === 'Escape') { setHover(false); setFocus(false); setPinned(false); } }}
       >
         <Info size={14} aria-hidden="true" />
       </button>
-      {open && <span role="tooltip" id={id} className="gy-tip-pop">{text}</span>}
+      <span role="tooltip" id={id} hidden={!open} className="gy-tip-pop">{text}</span>
     </span>
   );
 }
@@ -85,7 +86,7 @@ function Source({ label, detail, status, measure, dateField, noDate, onMeasure, 
   return (
     <>
       <FieldPicker label={`${label} field`} value={measure.field} options={infos.map(toOption)} unverified={unverified} note={status === 'unreadable' ? "Couldn't read the schema" : undefined} onChange={pick} />
-      {fieldNote && <InfoTip text={fieldNote} />}
+      {fieldNote && <InfoTip name={measure.field} text={fieldNote} />}
       <FieldPicker
         label={`${label} aggregation`} value={measure.fn ?? CALCULATED}
         options={[{ value: CALCULATED, label: 'Calculated' }, ...AGGS.map((a) => ({ value: a, label: a }))]}
@@ -155,22 +156,27 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     return { detail, status: extra.get(id) === null ? 'unreadable' : 'loading' };
   };
 
-  /** References of a class that are verified missing: its Data Mart and the Data Marts and fields of its metrics. */
+  /** What the pickers flag for a class: 1 when its Data Mart is gone, else one per flagged reference of its metrics. */
   const brokenIn = (c: ClassNode): number => {
-    const bad = (martId: string, paths: string[]): number => {
+    if (detailOf(c.martId).status === 'gone') return 1;
+    // a source: a gone Data Mart counts once; a readable schema flags its field and date field as the pickers do
+    const source = (martId: string, field: string, date: string): number => {
       const { detail, status } = detailOf(martId);
       if (status === 'gone') return 1;
       if (status !== 'ok' || !detail) return 0;
-      const known = new Set(martFields(detail.fields).map((x) => x.path));
-      return paths.filter((p) => p !== '' && !known.has(p)).length;
+      const infos = martFields(detail.fields);
+      const dates = new Set(dateFields(infos).map((x) => x.path));
+      const fieldBad = field !== '' && !infos.some((x) => x.path === field);
+      const dateBad = date !== '' && !dates.has(date);
+      return (fieldBad ? 1 : 0) + (dateBad ? 1 : 0);
     };
-    let n = detailOf(c.martId).status === 'gone' ? 1 : 0;
+    let n = 0;
     for (const id of c.metricIds) {
       const m = draft.metrics.find((x) => x.id === id);
       if (!m) continue;
-      n += bad(m.martId, [m.measure.field, m.dateField ?? '']);
-      if (m.plan) n += bad(m.plan.martId, [m.plan.measure.field, m.plan.dateField]);
-      if (m.forecast) n += bad(m.forecast.martId, [m.forecast.measure.field, m.forecast.dateField]);
+      n += source(m.martId, m.measure.field, m.dateField ?? '');
+      if (m.plan) n += source(m.plan.martId, m.plan.measure.field, m.plan.dateField);
+      if (m.forecast) n += source(m.forecast.martId, m.forecast.measure.field, m.forecast.dateField);
     }
     return n;
   };
@@ -312,7 +318,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                 <span className="dm-muted gy-onto-contexts">{shownCount} of {metrics.length} metrics shown</span>
                 {broken > 0 && <span className="gy-bad-text">{broken} broken</span>}
               </button>
-              {martNote && <InfoTip text={martNote} />}
+              {martNote && <InfoTip name={c.title} text={martNote} />}
               {classNote && <span className="gy-bad-text">{classNote}</span>}
             </div>
             <div id={bodyId} hidden={!open} className="gy-onto-body">

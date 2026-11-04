@@ -242,11 +242,12 @@ test('the (i) icons show the live mart and field descriptions, not the stored on
   const details = new Map(DETAILS);
   details.set('a', detail('a', 'Orders', [{ ...field('revenue'), description: 'Live revenue' }, field('qty'), field('day', 'DATE')]));
   setup(m, details, MARTS.map((x) => (x.id === 'a' ? { ...x, description: 'Live orders mart' } : x)));
-  expect(screen.getByRole('button', { name: 'Live orders mart' })).toBeInTheDocument();
-  expect(within(screen.getByRole('region', { name: 'Orders' })).getByRole('button', { name: 'Live revenue' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'stored text' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Live revenue' }));
+  expect(screen.getByRole('button', { name: 'About Orders' })).toBeInTheDocument();
+  expect(within(screen.getByRole('region', { name: 'Orders' })).getByRole('button', { name: 'About revenue' })).toBeInTheDocument();
+  expect(screen.queryByText('stored text')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'About revenue' }));
   expect(screen.getByRole('tooltip')).toHaveTextContent('Live revenue');
+  expect(screen.getByRole('button', { name: 'About Orders' })).toHaveAccessibleDescription('Live orders mart');
 });
 
 test('no (i) icon when the descriptions are empty', () => {
@@ -254,4 +255,77 @@ test('no (i) icon when the descriptions are empty', () => {
   details.set('a', detail('a', 'Orders', [{ ...field('revenue'), description: '  ' }, field('qty'), field('day', 'DATE')]));
   setup(model(), details, MARTS.map((x) => (x.id === 'a' ? { ...x, description: '' } : x)));
   expect(document.querySelector('.gy-tip')).toBeNull();
+});
+
+const orderedMetric = (): Model => {
+  const m = model();
+  m.metrics[0] = { ...m.metrics[0]!,
+    plan: { martId: 'p', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day', shape: 'daily' },
+    forecast: { martId: 'p', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day' } };
+  return m;
+};
+
+test('Plan, Forecast and nested fields show their live descriptions', () => {
+  const details = new Map(DETAILS);
+  details.set('p', detail('p', 'Targets', [
+    { ...field('goal'), description: 'Plan goal' }, field('stat_day', 'DATE'),
+    { name: 'meta', type: 'RECORD', isPrimaryKey: false, fields: [{ ...field('target'), description: 'Nested target' }] },
+  ]));
+  const m = orderedMetric();
+  m.metrics[1] = { ...m.metrics[1]!, plan: { martId: 'p', measure: { field: 'meta.target', fn: 'SUM' }, dateField: 'stat_day', shape: 'daily' } };
+  setup(m, details);
+  expect(row('Revenue').getAllByRole('button', { name: 'About goal' })).toHaveLength(2);
+  expect(row('Units').getByRole('button', { name: 'About meta.target' })).toHaveAccessibleDescription('Nested target');
+});
+
+test('the (i) opens on hover and focus, click does not close a focused one, Escape and blur close it', () => {
+  const details = new Map(DETAILS);
+  details.set('a', detail('a', 'Orders', [{ ...field('revenue'), description: 'Live revenue' }, field('qty'), field('day', 'DATE')]));
+  setup(model(), details);
+  const btn = screen.getByRole('button', { name: 'About revenue' });
+  const tip = () => document.getElementById(btn.getAttribute('aria-describedby')!)!;
+  expect(tip()).toHaveAttribute('hidden');
+  fireEvent.mouseEnter(btn.parentElement!);
+  expect(tip()).not.toHaveAttribute('hidden');
+  fireEvent.mouseLeave(btn.parentElement!);
+  expect(tip()).toHaveAttribute('hidden');
+  fireEvent.focus(btn);
+  expect(tip()).not.toHaveAttribute('hidden');
+  fireEvent.click(btn);
+  fireEvent.click(btn);
+  expect(tip()).not.toHaveAttribute('hidden');
+  fireEvent.keyDown(btn, { key: 'Escape' });
+  expect(tip()).toHaveAttribute('hidden');
+  fireEvent.click(btn);
+  expect(tip()).not.toHaveAttribute('hidden');
+  fireEvent.click(btn);
+  expect(tip()).toHaveAttribute('hidden');
+  fireEvent.click(btn);
+  fireEvent.blur(btn);
+  expect(tip()).toHaveAttribute('hidden');
+});
+
+test('aria-controls points at an existing element while folded', () => {
+  setup(model(), DETAILS, MARTS, false);
+  const h = header('Orders');
+  expect(document.getElementById(h.getAttribute('aria-controls')!)).not.toBeNull();
+});
+
+test('broken count: a gone class counts 1 and its metrics add nothing', () => {
+  const details = new Map(DETAILS);
+  details.delete('a');
+  setup(model(), details, MARTS.filter((x) => x.id !== 'a'), false);
+  expect(header('Orders')).toHaveTextContent('1 broken');
+});
+
+test('broken count: a gone plan Data Mart is 1; a missing field and a non-date date field each add 1', () => {
+  const m = orderedMetric();
+  m.metrics[0] = { ...m.metrics[0]!, plan: { martId: 'gone', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day', shape: 'daily' } };
+  // fact field missing, fact date field no longer a DATE, forecast date field missing
+  m.metrics[1] = { ...m.metrics[1]!, measure: { field: 'nope', fn: 'SUM' }, dateField: 'qty',
+    forecast: { martId: 'p', measure: { field: 'goal', fn: 'SUM' }, dateField: 'absent' } };
+  setup(m, DETAILS, MARTS, false);
+  // Revenue: plan gone 1 + forecast ok 0; Units: 1 + 1 + 1
+  expect(header('Orders')).toHaveTextContent('4 broken');
+  expect(header('Customers')).not.toHaveTextContent('broken');
 });
