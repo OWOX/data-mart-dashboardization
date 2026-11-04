@@ -317,3 +317,62 @@ test('changing the default range in settings resets the choice and saves it', as
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(async () => expect((await loadPreferences(store))?.range).toEqual({ kind: 'preset', preset: 'last_month' }));
 });
+
+// holds the mart list and every traversal until released, so a test can look at the steps in between
+function gated(deps: AppDeps) {
+  let open!: () => void;
+  const gate = new Promise<void>((r) => { open = r; });
+  let openList!: () => void;
+  const listGate = new Promise<void>((r) => { openList = r; });
+  const o = deps.owox;
+  const owox = {
+    ...o,
+    dataMarts: {
+      list: async () => { await listGate; return o.dataMarts.list(); },
+      traverseData: async (...a: Parameters<typeof o.dataMarts.traverseData>) => { await gate; return o.dataMarts.traverseData(...a); },
+    },
+  } as AppDeps['owox'];
+  return { deps: { ...deps, owox }, openList, open };
+}
+
+test('without a cache the preloader walks through its steps and goes away', async () => {
+  const s = await setup({ cache: 'none' });
+  const g = gated(s.deps);
+  render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  expect(screen.getByText('Loading settings and model…')).toBeInTheDocument();
+  expect(await screen.findByText('Reading Data Marts…')).toBeInTheDocument();
+  g.openList();
+  expect(await screen.findByText('Loading metrics…')).toBeInTheDocument();
+  g.open();
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+});
+
+test('a fresh cache shows no preloader', async () => {
+  const { deps } = await setup();
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await screen.findByText(/Updated 1 h ago/);
+  expect(screen.queryByRole('status')).toBeNull();
+});
+
+test('a stale cache refreshes behind the thin bar, not the overlay', async () => {
+  const s = await setup({ cache: 'stale' });
+  const g = gated(s.deps);
+  render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  g.openList();
+  await screen.findByRole('progressbar', { name: 'Refreshing' });
+  expect(screen.queryByRole('status')).toBeNull();
+  g.open();
+  await waitFor(() => expect(screen.queryByRole('progressbar', { name: 'Refreshing' })).toBeNull());
+});
+
+test('the refresh icon shows the overlay', async () => {
+  const s = await setup();
+  const g = gated(s.deps);
+  g.openList();
+  render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  await screen.findByText(/Updated 1 h ago/);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  expect(await screen.findByText('Loading metrics…')).toBeInTheDocument();
+  g.open();
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+});

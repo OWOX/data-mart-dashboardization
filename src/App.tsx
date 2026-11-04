@@ -13,6 +13,7 @@ import {
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { Canvas } from './ui/Canvas';
+import { Preloader } from './ui/Preloader';
 import { Header, RangeControls } from './ui/Header';
 import { SettingsPage } from './ui/SettingsPage';
 
@@ -58,6 +59,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [compare, setCompare] = useState<CompareChoice>(() => compareOf(DEFAULT_SETTINGS));
   const [cache, setCache] = useState<CacheDoc | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // overlay: the preloader covers the canvas; progress: metrics done of total, once known
+  const [overlay, setOverlay] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [outdated, setOutdated] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
@@ -88,6 +92,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const build = useCallback(async () => {
     refreshId.current++;
     setRefreshing(false);
+    setOverlay(false);
     setView({ name: 'building' });
     setOutdated(false);
     try {
@@ -133,9 +138,15 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (!current()) return false;
       if (keep) setCache(saved);
       else setCache((c) => (c?.key === key ? c : null));
-      if (!force && keep && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); return true; }
+      if (!force && keep && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); setOverlay(false); return true; }
+      // overlay for the refresh icon or when there is nothing cached to show; a stale cache gets the thin bar
+      setOverlay(force || !saved);
+      setProgress(null);
       setRefreshing(true);
-      const doc = await refreshCanvas({ owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible });
+      const doc = await refreshCanvas({
+        owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible,
+        onProgress: (done, total) => { if (current()) setProgress({ done, total }); },
+      });
       if (!current()) return false;
       setCache(doc);
       setSaveNote(null);
@@ -149,7 +160,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     } catch {
       // cards keep their last cached values
     } finally {
-      if (current()) setRefreshing(false);
+      if (current()) { setRefreshing(false); setOverlay(false); setProgress(null); }
     }
     return current();
   }, [model, range, compare, owox, store, now, settings.thresholdPct, settings.weekStart, visible]);
@@ -158,6 +169,12 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   useEffect(() => {
     if (!inReady || !model || fetchedFor.current === model) return;
     fetchedFor.current = model;
+    // without a cached doc the first screen is the preloader, not empty cards
+    const probe = refreshId.current;
+    const probeKey = cacheKey(range, compare, settings.weekStart);
+    void (persistable(range, compare) ? loadCache(store, probeKey).catch(() => null) : Promise.resolve(null)).then((saved) => {
+      if (!saved && refreshId.current === probe) setOverlay(true);
+    });
     fetchInputs(owox).catch(() => null).then((data) => setInputs({ model, data }));
   }, [inReady, model, owox]);
 
@@ -195,7 +212,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
 
   switch (view.name) {
     case 'loading':
-      return <main className="gy-main"><p>Loading…</p></main>;
+      return <main className="gy-main"><div className="gy-preloader-page"><Preloader label="Loading settings and model…" /></div></main>;
     case 'intro':
       return (
         <main className="gy-main">
@@ -246,6 +263,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={openSettings} />}
             model={model} cache={cache} visibleIds={visible} marts={marts}
             compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
+            preloader={overlay ? (refreshing && progress ? { label: 'Loading metrics…', ...progress } : { label: refreshing ? 'Loading metrics…' : 'Reading Data Marts…' }) : null}
             comparisonOn={compare.kind !== 'off'} refreshing={refreshing} onRetry={() => void refresh(true)}
           />
         </main>
