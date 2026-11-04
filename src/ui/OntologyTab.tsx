@@ -9,7 +9,8 @@ import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, Metri
 import { Blocked } from './Blocked';
 import { BuildProgress } from './BuildProgress';
 import { RebuildProposal } from './RebuildProposal';
-import { AGGS, FieldPicker, dateFields, martFields, type Option } from './FieldPicker';
+import { AGGS, FieldPicker, dateFields, fieldOption, martFields, valueFields, type Option } from './FieldPicker';
+import { ForecastPicker, type FieldGroup } from './ForecastPicker';
 
 const ROLES: MetricRole[] = ['critical', 'leading', 'lagging', 'unique'];
 const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
@@ -69,31 +70,42 @@ function InfoTip({ name, text }: { name: string; text: string }) {
   );
 }
 
-/** Field, aggregation and date field of one source. `noDate` is the date select's empty choice. */
-function Source({ label, detail, status, measure, dateField, noDate, onMeasure, onDate, children }: {
-  label: string; detail: MartDetail | undefined; status: DetailStatus; measure: Measure; dateField: string; noDate?: Option;
+/** The live description of a source's field, if it has one. */
+const fieldNoteOf = (detail: MartDetail | undefined, path: string): string | undefined =>
+  martFields(detail?.fields ?? []).find((x) => x.path === path)?.field.description?.trim();
+
+/** Field, aggregation and date field of one source as table cells. `noDate` is the date select's empty choice; `noField` leaves the field cell to the caller. */
+function Source({ label, detail, status, measure, dateField, noDate, noField = false, onMeasure, onDate, children }: {
+  label: string; detail: MartDetail | undefined; status: DetailStatus; measure: Measure; dateField: string; noDate?: Option; noField?: boolean;
   onMeasure: (m: Measure) => void; onDate: (d: string) => void; children?: React.ReactNode;
 }) {
   const infos = martFields(detail?.fields ?? []);
   // a schema that is still loading, or couldn't be read, flags nothing
   const unverified = status === 'loading' || status === 'unreadable';
-  const fieldNote = infos.find((x) => x.path === measure.field)?.field.description?.trim();
-  const toOption = (x: { path: string }): Option => ({ value: x.path, label: x.path });
+  const fieldNote = fieldNoteOf(detail, measure.field);
   const pick = (path: string) => {
     const calc = infos.find((x) => x.path === path)?.field.calculated?.level === 'metric';
     onMeasure({ field: path, fn: calc ? null : measure.fn ?? 'SUM' });
   };
   return (
     <>
-      <FieldPicker label={`${label} field`} value={measure.field} options={infos.map(toOption)} unverified={unverified} note={status === 'unreadable' ? "Couldn't read the schema" : undefined} onChange={pick} />
-      {fieldNote && <InfoTip name={measure.field} text={fieldNote} />}
-      <FieldPicker
-        label={`${label} aggregation`} value={measure.fn ?? CALCULATED}
-        options={[{ value: CALCULATED, label: 'Calculated' }, ...AGGS.map((a) => ({ value: a, label: a }))]}
-        onChange={(v) => onMeasure({ ...measure, fn: v === CALCULATED ? null : (v as Measure['fn']) })}
-      />
-      <FieldPicker label={`${label} date field`} value={dateField} options={dateFields(infos).map(toOption)} none={noDate} unverified={unverified} onChange={onDate} />
-      {children}
+      {!noField && (
+        <td>
+          <span className="gy-onto-cell">
+            <FieldPicker label={`${label} field`} value={measure.field} options={infos.map(fieldOption)} unverified={unverified} note={status === 'unreadable' ? "Couldn't read the schema" : undefined} onChange={pick} />
+            {fieldNote && <InfoTip name={measure.field} text={fieldNote} />}
+          </span>
+        </td>
+      )}
+      <td>
+        <FieldPicker
+          label={`${label} aggregation`} value={measure.fn ?? CALCULATED}
+          options={[{ value: CALCULATED, label: 'Calculated' }, ...AGGS.map((a) => ({ value: a, label: a }))]}
+          onChange={(v) => onMeasure({ ...measure, fn: v === CALCULATED ? null : (v as Measure['fn']) })}
+        />
+      </td>
+      <td><FieldPicker label={`${label} date field`} value={dateField} options={dateFields(infos).map(fieldOption)} none={noDate} unverified={unverified} onChange={onDate} /></td>
+      {children ?? <td />}
     </>
   );
 }
@@ -131,6 +143,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
   const toggleOpen = (id: string) => setOpenIds((p) => { const n = new Set(p); if (!n.delete(id)) n.add(id); return n; });
   const original = useMemo(() => new Map(model.metrics.map((m) => [m.id, m])), [model]);
+  // a forecast list was opened: every accessible Data Mart's schema is read to fill it
+  const [browseAll, setBrowseAll] = useState(false);
 
   // every Data Mart the draft references gets its schema, from the health check or from a fetch
   const referenced = useMemo(() => {
@@ -139,14 +153,15 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     for (const m of draft.metrics) { ids.add(m.martId); if (m.plan) ids.add(m.plan.martId); if (m.forecast) ids.add(m.forecast.martId); }
     return ids;
   }, [draft]);
+  const wanted = useMemo(() => (browseAll && marts ? new Set([...referenced, ...marts.map((m) => m.id)]) : referenced), [browseAll, marts, referenced]);
   useEffect(() => {
-    const ids = [...referenced].filter((id) => !details.has(id) && !requested.current.has(id) && !(accessible && !accessible.has(id)));
+    const ids = [...wanted].filter((id) => !details.has(id) && !requested.current.has(id) && !(accessible && !accessible.has(id)));
     for (const id of ids) requested.current.add(id);
     void runPool(ids.map((id) => async () => {
       const d = await fetchMartDetail(owox, id).catch(() => null);
       setExtra((p) => new Map(p).set(id, d));
     }), 6);
-  }, [referenced, details, accessible, owox]);
+  }, [wanted, details, accessible, owox]);
 
   const detailOf = (id: string): { detail: MartDetail | undefined; status: DetailStatus } => {
     const detail = details.get(id) ?? extra.get(id) ?? undefined;
@@ -248,6 +263,13 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     ? marts.map((m) => ({ value: m.id, label: m.title }))
     : [...referenced].map((id) => ({ value: id, label: details.get(id)?.title ?? extra.get(id)?.title ?? id }));
   const martsUnchecked = marts === null;
+  const martTitle = (id: string) => martOptions.find((o) => o.value === id)?.label ?? details.get(id)?.title ?? extra.get(id)?.title ?? id;
+  // the forecast list: the fields of every offered Data Mart, grouped by it
+  const forecastGroups: FieldGroup[] = martOptions.flatMap((o) => {
+    const { detail, status } = detailOf(o.value);
+    if (status === 'gone') return [];
+    return [{ martId: o.value, title: o.label, status, options: valueFields(martFields(detail?.fields ?? [])).map(fieldOption) }];
+  });
 
   const emptyMeasure = (): Measure => ({ field: '', fn: 'SUM' });
 
@@ -323,76 +345,115 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
               {classNote && <span className="gy-bad-text">{classNote}</span>}
             </div>
             <div id={bodyId} hidden={!open} className="gy-onto-body">
-            {open && metrics.map((m) => {
-              const label = original.get(m.id)?.alias ?? m.alias;
-              const plan = m.plan;
-              const forecast = m.forecast;
-              return (
-                <div key={m.id} role="group" aria-label={`Metric ${label}`} className="gy-onto-metric">
-                  <div className="gy-onto-line">
-                    <input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => toggleMetric(c, m, e.target.checked)} />
-                    <input
-                      type="radio" className="gy-onto-check" name={`key-${c.id}`} aria-label="Key metric"
-                      checked={c.keyMetricId === m.id} disabled={m.shown === false}
-                      onChange={() => patchClass(c.id, (x) => ({ ...x, keyMetricId: m.id }))}
-                    />
-                    <input className="gy-input gy-onto-name" aria-label="Name" value={m.alias} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, alias: e.target.value }))} />
-                    <select className="gy-select" aria-label="Role" value={m.role} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, role: e.target.value as MetricRole }))}>
-                      {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                  </div>
-                  <div className="gy-onto-line">
-                    <span className="gy-onto-label">Fact</span>
-                    <Source
-                      label="Fact" {...detailOf(m.martId)} measure={m.measure} dateField={m.dateField ?? ''} noDate={{ value: '', label: 'No date (all time)' }}
-                      onMeasure={(measure) => patchMetric(m.id, (x) => {
-                        const f = martFields(detailOf(m.martId).detail?.fields ?? []).find((i) => i.path === measure.field)?.field;
-                        return f && measure.field !== x.measure.field
-                          ? { ...x, measure, calculated: f.calculated?.level === 'metric', description: f.description ?? null }
-                          : { ...x, measure };
-                      })}
-                      onDate={(d) => patchMetric(m.id, (x) => ({ ...x, dateField: d === '' ? null : d }))}
-                    />
-                  </div>
-                  <div className="gy-onto-line">
-                    <span className="gy-onto-label">Plan</span>
-                    <FieldPicker
-                      label="Plan data mart" value={plan?.martId ?? ''} options={martOptions} none={NO_MART} unverified={martsUnchecked}
-                      onChange={(id) => patchMetric(m.id, (x) => ({
-                        ...x, plan: id === '' ? null : { martId: id, measure: emptyMeasure(), dateField: '', shape: x.plan?.shape ?? 'daily' } satisfies PlanDef,
-                      }))}
-                    />
-                    {plan && (
-                      <Source
-                        label="Plan" {...detailOf(plan.martId)} measure={plan.measure} dateField={plan.dateField}
-                        onMeasure={(measure) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, measure } } : x))}
-                        onDate={(dateField) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, dateField } } : x))}
-                      >
-                        <select className="gy-select" aria-label="Plan shape" value={plan.shape} onChange={(e) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, shape: e.target.value as PlanShape } } : x))}>
-                          {SHAPES.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </Source>
-                    )}
-                  </div>
-                  <div className="gy-onto-line">
-                    <span className="gy-onto-label">Forecast</span>
-                    <FieldPicker
-                      label="Forecast data mart" value={forecast?.martId ?? ''} options={martOptions} none={{ value: '', label: 'Extrapolated' }} unverified={martsUnchecked}
-                      onChange={(id) => patchMetric(m.id, (x) => ({
-                        ...x, forecast: id === '' ? null : { martId: id, measure: emptyMeasure(), dateField: '' } satisfies ForecastDef,
-                      }))}
-                    />
-                    {forecast && (
-                      <Source
-                        label="Forecast" {...detailOf(forecast.martId)} measure={forecast.measure} dateField={forecast.dateField}
-                        onMeasure={(measure) => patchMetric(m.id, (x) => (x.forecast ? { ...x, forecast: { ...x.forecast, measure } } : x))}
-                        onDate={(dateField) => patchMetric(m.id, (x) => (x.forecast ? { ...x, forecast: { ...x.forecast, dateField } } : x))}
+            {open && (
+              <div className="gy-onto-scroll">
+                <table className="gy-onto-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Shown</th><th scope="col">Key</th><th scope="col">Name</th><th scope="col">Role</th>
+                      <th scope="col">Series</th><th scope="col">Data Mart</th><th scope="col">Field</th><th scope="col">Aggregation</th>
+                      <th scope="col">Date field</th><th scope="col">Shape</th>
+                    </tr>
+                  </thead>
+                  {metrics.map((m) => {
+                    const label = original.get(m.id)?.alias ?? m.alias;
+                    const plan = m.plan;
+                    const forecast = m.forecast;
+                    const forecastMart = forecast ? detailOf(forecast.martId) : null;
+                    const forecastNote = forecast && fieldNoteOf(forecastMart?.detail, forecast.measure.field);
+                    const forecastMissing = !!forecast && !!forecastMart && (forecastMart.status === 'gone'
+                      || (forecastMart.status === 'ok' && !martFields(forecastMart.detail?.fields ?? []).some((x) => x.path === forecast.measure.field)));
+                    const combo = (
+                      <ForecastPicker
+                        martId={forecast?.martId ?? null} field={forecast?.measure.field ?? ''} groups={forecastGroups} missing={forecastMissing}
+                        onOpen={() => setBrowseAll(true)}
+                        onPick={(p) => patchMetric(m.id, (x) => {
+                          if (!p) return { ...x, forecast: null };
+                          const f = martFields(detailOf(p.martId).detail?.fields ?? []).find((i) => i.path === p.field)?.field;
+                          const fn = f?.calculated?.level === 'metric' ? null : x.forecast?.measure.fn ?? 'SUM';
+                          // the date field belongs to the Data Mart: a new one starts empty
+                          const dateField = x.forecast?.martId === p.martId ? x.forecast.dateField : '';
+                          return { ...x, forecast: { martId: p.martId, measure: { field: p.field, fn }, dateField } satisfies ForecastDef };
+                        })}
                       />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                    );
+                    return (
+                      <tbody key={m.id} role="group" aria-label={`Metric ${label}`} className="gy-onto-metric">
+                        <tr>
+                          <td rowSpan={3}><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => toggleMetric(c, m, e.target.checked)} /></td>
+                          <td rowSpan={3}>
+                            <input
+                              type="radio" className="gy-onto-check" name={`key-${c.id}`} aria-label="Key metric"
+                              checked={c.keyMetricId === m.id} disabled={m.shown === false}
+                              onChange={() => patchClass(c.id, (x) => ({ ...x, keyMetricId: m.id }))}
+                            />
+                          </td>
+                          <td rowSpan={3}><input className="gy-input gy-onto-name" aria-label="Name" value={m.alias} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, alias: e.target.value }))} /></td>
+                          <td rowSpan={3}>
+                            <select className="gy-select" aria-label="Role" value={m.role} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, role: e.target.value as MetricRole }))}>
+                              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                          </td>
+                          <th scope="row" className="gy-onto-label">Fact</th>
+                          <td className="gy-onto-mart">{martTitle(m.martId)}</td>
+                          <Source
+                            label="Fact" {...detailOf(m.martId)} measure={m.measure} dateField={m.dateField ?? ''} noDate={{ value: '', label: 'No date (all time)' }}
+                            onMeasure={(measure) => patchMetric(m.id, (x) => {
+                              const f = martFields(detailOf(m.martId).detail?.fields ?? []).find((i) => i.path === measure.field)?.field;
+                              return f && measure.field !== x.measure.field
+                                ? { ...x, measure, calculated: f.calculated?.level === 'metric', description: f.description ?? null }
+                                : { ...x, measure };
+                            })}
+                            onDate={(d) => patchMetric(m.id, (x) => ({ ...x, dateField: d === '' ? null : d }))}
+                          />
+                        </tr>
+                        <tr>
+                          <th scope="row" className="gy-onto-label">Plan</th>
+                          <td>
+                            <FieldPicker
+                              label="Plan data mart" value={plan?.martId ?? ''} options={martOptions} none={NO_MART} unverified={martsUnchecked}
+                              onChange={(id) => patchMetric(m.id, (x) => ({
+                                ...x, plan: id === '' ? null : { martId: id, measure: emptyMeasure(), dateField: '', shape: x.plan?.shape ?? 'daily' } satisfies PlanDef,
+                              }))}
+                            />
+                          </td>
+                          {plan ? (
+                            <Source
+                              label="Plan" {...detailOf(plan.martId)} measure={plan.measure} dateField={plan.dateField}
+                              onMeasure={(measure) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, measure } } : x))}
+                              onDate={(dateField) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, dateField } } : x))}
+                            >
+                              <td>
+                                <select className="gy-select" aria-label="Plan shape" value={plan.shape} onChange={(e) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, shape: e.target.value as PlanShape } } : x))}>
+                                  {SHAPES.map((s) => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                              </td>
+                            </Source>
+                          ) : <td colSpan={4} />}
+                        </tr>
+                        <tr>
+                          <th scope="row" className="gy-onto-label">Forecast</th>
+                          {/* one cell either way, so the box keeps focus when a source is picked */}
+                          <td colSpan={2}>
+                            <span className="gy-onto-cell">
+                              {combo}
+                              {forecast && forecastNote && <InfoTip name={forecast.measure.field} text={forecastNote} />}
+                            </span>
+                          </td>
+                          {forecast ? (
+                            <Source
+                              label="Forecast" {...detailOf(forecast.martId)} measure={forecast.measure} dateField={forecast.dateField} noField
+                              onMeasure={(measure) => patchMetric(m.id, (x) => (x.forecast ? { ...x, forecast: { ...x.forecast, measure } } : x))}
+                              onDate={(dateField) => patchMetric(m.id, (x) => (x.forecast ? { ...x, forecast: { ...x.forecast, dateField } } : x))}
+                            />
+                          ) : <td colSpan={3} />}
+                        </tr>
+                      </tbody>
+                    );
+                  })}
+                </table>
+              </div>
+            )}
             </div>
           </section>
         );

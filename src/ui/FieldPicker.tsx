@@ -17,7 +17,14 @@ export function martFields(fields: SchemaField[], prefix = ''): FieldInfo[] {
 
 export const dateFields = (infos: FieldInfo[]): FieldInfo[] => infos.filter((x) => DATE_TYPES.has(x.field.type.toUpperCase()));
 
+/** Fields a forecast can be fed from: not dates, not records. */
+export const valueFields = (infos: FieldInfo[]): FieldInfo[] =>
+  infos.filter((x) => !DATE_TYPES.has(x.field.type.toUpperCase()) && !['RECORD', 'STRUCT'].includes(x.field.type.toUpperCase()));
+
 export interface Option { value: string; label: string }
+
+/** A field as a choice: its alias when it has one, else its path. */
+export const fieldOption = (x: FieldInfo): Option => ({ value: x.path, label: x.field.alias?.trim() || x.path });
 
 /**
  * A select whose current value may no longer exist: the old value stays as a disabled "(missing)" option and the

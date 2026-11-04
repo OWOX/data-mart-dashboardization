@@ -58,8 +58,8 @@ test('editing name, role, fact, plan and forecast, then Save, writes the doc wit
   fireEvent.change(r.getByLabelText('Plan field'), { target: { value: 'goal' } });
   fireEvent.change(r.getByLabelText('Plan date field'), { target: { value: 'stat_day' } });
   fireEvent.change(r.getByLabelText('Plan shape'), { target: { value: 'cumulative' } });
-  fireEvent.change(r.getByLabelText('Forecast data mart'), { target: { value: 'p' } });
-  fireEvent.change(r.getByLabelText('Forecast field'), { target: { value: 'goal' } });
+  fireEvent.focus(r.getByRole('combobox', { name: 'Forecast source' }));
+  fireEvent.click(within(r.getByRole('group', { name: 'Targets' })).getByRole('option', { name: 'goal' }));
   fireEvent.change(r.getByLabelText('Forecast aggregation'), { target: { value: 'MAX' } });
   fireEvent.change(r.getByLabelText('Forecast date field'), { target: { value: 'stat_day' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -328,4 +328,64 @@ test('broken count: a gone plan Data Mart is 1; a missing field and a non-date d
   // Revenue: plan gone 1 + forecast ok 0; Units: 1 + 1 + 1
   expect(header('Orders')).toHaveTextContent('4 broken');
   expect(header('Customers')).not.toHaveTextContent('broken');
+});
+
+test('the field lists show aliases and keep the field path as the value', () => {
+  const details = new Map(DETAILS);
+  details.set('a', detail('a', 'Orders', [{ ...field('revenue'), alias: 'Net revenue' }, field('qty'), field('day', 'DATE')]));
+  setup(model(), details);
+  const pick = row('Revenue').getByLabelText('Fact field') as HTMLSelectElement;
+  expect(within(pick).getAllByRole('option').map((o) => o.textContent)).toEqual(['Net revenue', 'qty', 'day']);
+  expect(pick.value).toBe('revenue');
+});
+
+test('each class lists its metrics as a table, one row per series', () => {
+  setup();
+  const table = within(screen.getByRole('region', { name: 'Orders' })).getByRole('table');
+  expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(
+    ['Shown', 'Key', 'Name', 'Role', 'Series', 'Data Mart', 'Field', 'Aggregation', 'Date field', 'Shape']);
+  expect(row('Revenue').getAllByRole('rowheader').map((h) => h.textContent)).toEqual(['Fact', 'Plan', 'Forecast']);
+});
+
+test('the forecast list groups fields by Data Mart, reads the schemas it lacks, filters, and Extrapolated clears it', async () => {
+  const details = new Map(DETAILS);
+  details.delete('p');
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
+  const onSave = vi.fn(async () => undefined);
+  const m = orderedMetric();
+  render(<OntologyTab model={m} details={details} marts={MARTS} owox={owox} now={() => new Date()} onSave={onSave} onCancel={() => {}} />);
+  openAll();
+  const box = row('Units').getByRole('combobox', { name: 'Forecast source' });
+  expect(box).toHaveValue('Extrapolated');
+  fireEvent.focus(box);
+  const list = () => screen.getByRole('listbox', { name: 'Forecast source' });
+  await waitFor(() => expect(within(within(list()).getByRole('group', { name: 'Targets' })).getByRole('option', { name: 'goal' })).toBeInTheDocument());
+  expect(owox.calls.map((c) => c.path)).toContain('/api/data-marts/p');
+  // dates are not offered; strings are
+  expect(within(within(list()).getByRole('group', { name: 'Targets' })).getAllByRole('option').map((o) => o.textContent)).toEqual(['goal', 'note']);
+  expect(within(list()).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Orders', 'Customers', 'Targets']);
+  fireEvent.change(box, { target: { value: 'targ' } });
+  expect(within(list()).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Targets']);
+  fireEvent.keyDown(box, { key: 'ArrowDown' });
+  fireEvent.keyDown(box, { key: 'Enter' });
+  expect(screen.queryByRole('listbox')).toBeNull();
+  expect(box).toHaveValue('Targets › goal');
+  const rev = row('Revenue').getByRole('combobox', { name: 'Forecast source' });
+  fireEvent.focus(rev);
+  fireEvent.click(within(list()).getByRole('option', { name: 'Extrapolated' }));
+  expect(rev).toHaveValue('Extrapolated');
+  fireEvent.change(row('Units').getByLabelText('Forecast date field'), { target: { value: 'stat_day' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
+  expect(saved.metrics.find((x) => x.id === 'a:qty:SUM')!.forecast).toEqual({ martId: 'p', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day' });
+  expect(saved.metrics.find((x) => x.id === 'a:revenue:SUM')!.forecast).toBeNull();
+});
+
+test('a forecast field that no longer exists turns the box red', () => {
+  const m = orderedMetric();
+  m.metrics[0] = { ...m.metrics[0]!, forecast: { martId: 'p', measure: { field: 'gone', fn: 'SUM' }, dateField: 'stat_day' } };
+  setup(m);
+  expect(row('Revenue').getByRole('combobox', { name: 'Forecast source' })).toHaveClass('gy-bad');
+  expect(row('Units').getByRole('combobox', { name: 'Forecast source' })).not.toHaveClass('gy-bad');
 });
