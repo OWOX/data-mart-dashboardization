@@ -553,7 +553,7 @@ test('a failed access check shows no class rather than every class', async () =>
 
 test('a broken reference shows the banner with its count, and the link opens Settings', async () => {
   const { deps, d } = await setup();
-  delete d.details[GID]!.fields.splice(1, 1)[0];
+  d.details[GID]!.fields.splice(1, 1);
   const { ctx, setRoute } = ctxWith();
   render(<App ctx={ctx} deps={deps} />);
   expect(await screen.findByText(/1 reference in the model is broken\./)).toBeInTheDocument();
