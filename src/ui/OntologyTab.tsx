@@ -226,6 +226,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
           changes={rebuild.changes} busy={saving} error={error}
           titleOf={(id) => model.classes.find((c) => c.id === id)?.title ?? rebuild.candidate.classes.find((c) => c.id === id)?.title ?? id}
           nameOf={(id) => model.metrics.find((m) => m.id === id)?.alias ?? id}
+          needs={(c) => (c.kind === 'class_removed' && c.classId === model.goal.classId
+            ? rebuild.changes.find((x) => x.kind === 'class_added' && x.classId === rebuild.candidate.goal.classId) ?? null : null)}
           onApply={(picked) => void applyProposal(rebuild.candidate, picked)} onDiscard={() => { onDismiss?.(rebuild.candidate.inputHash); closeRebuild(); }} onClose={() => void closeMatching(rebuild.candidate)}
         />
       )}

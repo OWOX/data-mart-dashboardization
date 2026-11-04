@@ -16,10 +16,12 @@ function describe(c: Change, nameOf: (id: string) => string): { what: string; de
 }
 
 /** What a rebuild would change, one row per change, all picked. Nothing is saved until Apply selected. */
-export function RebuildProposal({ changes, titleOf, nameOf, busy, error, onApply, onDiscard, onClose }: {
+export function RebuildProposal({ changes, titleOf, nameOf, busy, error, needs, onApply, onDiscard, onClose }: {
   changes: Change[];
   titleOf: (classId: string) => string;
   nameOf: (metricId: string) => string;
+  /** The change a row cannot go ahead without, if any. */
+  needs?: (c: Change) => Change | null;
   busy: boolean;
   error: string | null;
   onApply: (picked: Change[]) => void;
@@ -28,13 +30,21 @@ export function RebuildProposal({ changes, titleOf, nameOf, busy, error, onApply
   onClose: () => void;
 }) {
   const [off, setOff] = useState<ReadonlySet<number>>(new Set());
-  const picked = changes.filter((_, i) => !off.has(i));
-  const toggle = (i: number, on: boolean) => setOff((p) => { const n = new Set(p); if (on) n.delete(i); else n.add(i); return n; });
+  const dep = (i: number): number => { const d = needs?.(changes[i]!); return d ? changes.indexOf(d) : -1; };
+  const blocked = (i: number): boolean => dep(i) >= 0 && off.has(dep(i));
+  const picked = changes.filter((_, i) => !off.has(i) && !blocked(i));
+  const toggle = (i: number, on: boolean) => setOff((p) => {
+    const n = new Set(p);
+    if (on) n.delete(i);
+    else { n.add(i); changes.forEach((_, j) => { if (dep(j) === i) n.add(j); }); }
+    return n;
+  });
 
   if (changes.length === 0) {
     return (
       <section className="dm-card gy-onto-intro" aria-label="Rebuild proposal">
         <p className="gy-onto-note">The model already matches the descriptions.</p>
+        {error && <p role="alert" className="gy-form-error">{error}</p>}
         <div className="gy-form-actions"><button type="button" className="gy-btn" onClick={onClose} disabled={busy}>Close</button></div>
       </section>
     );
@@ -48,11 +58,12 @@ export function RebuildProposal({ changes, titleOf, nameOf, busy, error, onApply
           return (
             <li key={i} className="gy-proposal-row">
               <label className="gy-check">
-                <input type="checkbox" checked={!off.has(i)} onChange={(e) => toggle(i, e.target.checked)} />
+                <input type="checkbox" checked={!off.has(i) && !blocked(i)} disabled={blocked(i)} onChange={(e) => toggle(i, e.target.checked)} />
                 <span>{what}</span>
               </label>
               <span className="dm-muted gy-onto-contexts">{titleOf(c.classId)}</span>
               {detail && <span>{detail}</span>}
+              {blocked(i) && <span className="dm-muted gy-onto-contexts">Needs the new goal class</span>}
             </li>
           );
         })}
