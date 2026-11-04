@@ -154,10 +154,10 @@ h2 { margin: 0; }
 /* The full width of the icon column above it; the glyph is twice as wide as it is tall. */
 .gy-trend-arrow { width: 2.5rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .gy-big { display: block; font-size: 3rem; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; }
-.gy-badges { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; padding-top: 0.3rem; }
-.gy-badges[data-open] { overflow-y: auto; padding-right: 2px; }
-.gy-badges[data-open] .gy-more { position: sticky; bottom: 0; background: var(--card); }
-.gy-more { border: 0; background: none; padding: 0; font: inherit; font-size: 0.6875rem; color: var(--muted-foreground); cursor: pointer; }
+.gy-badges { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; padding-top: 0.3rem; padding-right: 2px; }
+.gy-badges[data-open] { overflow-y: auto; }
+.gy-badges[data-open] .gy-more { position: sticky; bottom: 0; align-self: stretch; flex: none; text-align: right; padding-top: 0.25rem; background: var(--card); }
+.gy-more { border: 0; background: none; padding: 0; font: inherit; font-size: 0.6875rem; color: var(--muted-foreground); cursor: pointer; border-radius: 0.25rem; }
 .gy-more:hover { color: var(--primary); }
 .gy-badge {
   display: inline-flex; align-items: center; gap: 0.25rem; max-width: 100%;

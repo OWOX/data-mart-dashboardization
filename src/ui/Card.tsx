@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Info } from 'lucide-react';
 import type { CardCache, ClassNode, MetricDef } from '../types';
 import { diffPct } from '../lib/stats';
@@ -40,6 +40,13 @@ function Badges({ items }: { items: ReactNode[] }) {
     setPinned(!open && h > 0 ? h : null);
     setOpen(!open);
   };
+  // opening scrolls to the first badge that was hidden, so the click visibly shows something new
+  useEffect(() => {
+    const list = ref.current;
+    const first = list?.querySelectorAll<HTMLElement>('.gy-badge')[SHOWN];
+    if (open && list && first) list.scrollTop = first.offsetTop - list.offsetTop;
+    else if (list) list.scrollTop = 0;
+  }, [open]);
   return (
     <div className="gy-badges" id={id} ref={ref} data-open={open || undefined} style={open && pinned ? { height: pinned } : undefined}>
       {open || more <= 0 ? items : items.slice(0, SHOWN)}
