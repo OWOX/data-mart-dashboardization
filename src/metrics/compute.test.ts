@@ -138,3 +138,70 @@ test('a running range with too little history to forecast is not judged against 
   expect(result.plan).toBe(12 * 92);
   expect(result.status).toBe('neutral');
 });
+
+describe('forecast from a source', () => {
+  const spec = () => rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
+  // forecast mart 'f' holds 5/day
+  const withF = fakeOwox({
+    projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+    rows: (id, o) => {
+      const f = o.filter as { value: string }[];
+      const from = f[0]!.value, to = addDays(f[1]!.value, -1);
+      const per = id === 'f' ? 5 : 10;
+      if (o.dateTrunc) {
+        const out = [];
+        for (let d = from; d <= to; d = addDays(d, 1)) out.push({ date: d, 'revenue | SUM': String(per) });
+        return out;
+      }
+      let days = 0;
+      for (let d = from; d <= to; d = addDays(d, 1)) days++;
+      return [{ 'revenue | SUM': per * days }];
+    },
+  });
+  const fdef = { martId: 'f', measure: { field: 'revenue', fn: 'SUM' as const }, dateField: 'date' };
+
+  test('flow: total over the range, spark from the day after the anchor', async () => {
+    const { result, spark } = await computeMetric({ owox: withF, metric: { ...metric, plan: null, forecast: fdef }, spec: spec(), thresholdPct: 20, withSpark: true });
+    expect(result.forecast).toBe(5 * 92);
+    expect(result.warning ?? null).toBeNull();
+    expect(spark!.forecast).toHaveLength(69);
+    expect(spark!.forecast.every((v) => v === 5)).toBe(true);
+  });
+
+  test('level: value on the last day', async () => {
+    const m = { ...metric, plan: null, kind: 'level' as const, forecast: fdef };
+    const { result, spark } = await computeMetric({ owox: withF, metric: m, spec: spec(), thresholdPct: 20, withSpark: true });
+    expect(result.forecast).toBe(5);
+    expect(spark!.forecast).toHaveLength(69);
+  });
+
+  test('a rejecting forecast query falls back to extrapolation with a warning', async () => {
+    const failing = { ...withF, dataMarts: { ...withF.dataMarts, traverseData: async (id: string, o: never) => {
+      if (id === 'f') throw new Error('BOOM');
+      return withF.dataMarts.traverseData(id, o);
+    } } } as typeof withF;
+    const { result } = await computeMetric({ owox: failing, metric: { ...metric, plan: null, forecast: fdef }, spec: spec(), thresholdPct: 20, withSpark: false });
+    expect(result.forecast).toBeCloseTo(920);
+    expect(result.warning).toBe('Forecast source failed: BOOM');
+  });
+
+  test('forecast null keeps today numbers', async () => {
+    const { result, spark } = await computeMetric({ owox, metric, spec: spec(), thresholdPct: 20, withSpark: true });
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "compareFact": null,
+        "comparison": 230,
+        "diffPct": 0,
+        "error": null,
+        "fact": 230,
+        "forecast": 920,
+        "forecastApprox": false,
+        "note": null,
+        "plan": 1104,
+        "status": "near",
+        "trend": "flat",
+      }
+    `);
+    expect(spark!.forecast).toHaveLength(69);
+  });
+});

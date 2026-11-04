@@ -41,11 +41,36 @@ export async function computeMetric(args: {
     let forecast: number | null = null;
     let future: number[] = [];
     let note: MetricResult['note'] = null;
+    let warning: string | null = null;
+    let forecastMeasure = measure;
     if (spec.endsInFuture) {
-      // summing daily averages or ratios means nothing, so only counts and sums accumulate
-      const additive = kind === 'flow' && (measure.fn === 'SUM' || measure.fn === 'COUNT' || metric.isUniqueCount);
-      const f = forecastFor({ daily, anchor, rangeTo: range.to, additive, fact });
-      if (f) { forecast = f.value; future = f.future.map((p) => p.v); } else note = 'short_history';
+      let sourced = false;
+      if (metric.forecast) {
+        const fc = metric.forecast;
+        try {
+          const fcDaily = await queryDaily(owox, fc.martId, fc.measure, fc.dateField, range);
+          forecast = kind === 'flow' ? await queryTotal(owox, fc.martId, fc.measure, fc.dateField, range) : levelAt(fcDaily, range);
+          // a level carries its last value over a missing day, a flow counts none
+          let prev = kind === 'flow' ? 0 : levelAt(fcDaily, { from: range.from, to: anchor }) ?? 0;
+          future = eachDay({ from: addDays(anchor, 1), to: range.to }).map((d) => {
+            const v = fcDaily.get(d);
+            if (v !== undefined) prev = v;
+            return kind === 'flow' ? v ?? 0 : prev;
+          });
+          forecastMeasure = fc.measure;
+          sourced = true;
+        } catch (e) {
+          warning = `Forecast source failed: ${describeError(e)}`;
+          forecast = null;
+          future = [];
+        }
+      }
+      if (!sourced) {
+        // summing daily averages or ratios means nothing, so only counts and sums accumulate
+        const additive = kind === 'flow' && (measure.fn === 'SUM' || measure.fn === 'COUNT' || metric.isUniqueCount);
+        const f = forecastFor({ daily, anchor, rangeTo: range.to, additive, fact });
+        if (f) { forecast = f.value; future = f.future.map((p) => p.v); } else note = 'short_history';
+      }
     }
 
     let plan: number | null = null;
@@ -60,11 +85,11 @@ export async function computeMetric(args: {
       // a cut fact window whose recount failed has no day-for-day partner, so no comparison at all
       comparison: spec.compareFact && compareFact === null ? null : comparison,
       diffPct: diffPct(spec.compareFact ? compareFact : fact, comparison), plan, forecast,
-      forecastApprox: forecast !== null && (measure.fn === 'COUNT_DISTINCT' || measure.fn === null),
+      forecastApprox: forecast !== null && (forecastMeasure.fn === 'COUNT_DISTINCT' || forecastMeasure.fn === null),
       // a range still running is judged by its forecast; without one there is nothing fair to judge yet
       status: statusOf(spec.endsInFuture ? forecast : fact, plan, thresholdPct),
       trend: trendOf(daily, factWindow ?? historyWindow),
-      note, error: null,
+      note, error: null, ...(warning ? { warning } : {}),
     };
 
     let spark: SeriesPack | null = null;

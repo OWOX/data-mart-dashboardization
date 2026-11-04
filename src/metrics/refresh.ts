@@ -86,7 +86,7 @@ export async function refreshCanvas(args: {
           forecast: soft.some((i) => i.kind.startsWith('forecast_')) ? null : metric.forecast,
         };
         const out = await computeMetric({ owox, metric: usable, spec, thresholdPct, withSpark: keyIds.has(id) });
-        const warning = [...soft.map((i) => i.text), ...(out.result.error ? [out.result.error] : [])].join('; ') || null;
+        const warning = [...soft.map((i) => i.text), ...(out.result.warning ? [out.result.warning] : []), ...(out.result.error ? [out.result.error] : [])].join('; ') || null;
         results.set(id, warning ? { ...out.result, warning } : out.result);
         sparks.set(id, out.spark);
       }
