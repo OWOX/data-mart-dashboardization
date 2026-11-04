@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { PluginContext } from '@owox/plugin-sdk';
+import type { AiCredentialHandle, PluginContext } from '@owox/plugin-sdk';
 import type { Blocked as BlockedInfo, CacheDoc, CardCache, CompareChoice, Model, RangeChoice, Settings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { compareLabel, resolveRange } from './lib/dates';
@@ -38,7 +38,8 @@ type View =
   | { name: 'settings'; tab: SettingsTab };
 
 function depsFrom(ctx: PluginContext): AppDeps {
-  const ai = ctx.credentials?.ai;
+  // the model is built once and saved, so the build reads the descriptions on the stronger tier
+  const ai = (ctx.credentials?.ai as AiCredentialHandle | undefined)?.reasoning;
   return {
     owox: ctx.owox as unknown as OwoxLike,
     store: ctx as unknown as CollectionsLike,
