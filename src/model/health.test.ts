@@ -5,7 +5,7 @@ import type { MetricDef, Model } from '../types';
 const F = (name: string, over = {}) => ({ name, type: 'FLOAT', isPrimaryKey: false, ...over });
 const metric = (id: string, over: Partial<MetricDef> = {}): MetricDef => ({
   id, martId: 'o', alias: id, measure: { field: 'revenue', fn: 'SUM' }, kind: 'flow', dateField: 'date', role: 'critical',
-  source: 'project', isUniqueCount: false, plan: null, shown: true, forecast: null, ...over,
+  source: 'project', isUniqueCount: false, format: 'number', currency: null, plan: null, shown: true, forecast: null, ...over,
 });
 const model = (metrics: MetricDef[], extra: string[] = []): Model => ({
   version: 2, inputHash: 'h', builtAt: '', builtBy: 'u', editedAt: null,

@@ -8,7 +8,7 @@ const field = (name: string, type = 'FLOAT'): SchemaField => ({ name, type, isPr
 const detail = (id: string, title: string, fields = [field('revenue'), field('qty'), field('day', 'DATE')]): MartDetail => ({ id, title, fields });
 const metric = (id: string, martId: string, alias: string, f: string, extra: Partial<MetricDef> = {}): MetricDef => ({
   id, martId, alias, measure: { field: f, fn: 'SUM' }, kind: 'flow', dateField: 'day', role: 'critical', source: 'project',
-  isUniqueCount: false, plan: null, shown: true, forecast: null, ...extra,
+  isUniqueCount: false, format: 'number', currency: null, plan: null, shown: true, forecast: null, ...extra,
 });
 const model = (): Model => ({
   version: 2, inputHash: 'h', builtAt: 'b', builtBy: 'u', editedAt: null,
@@ -34,6 +34,21 @@ function setup(m: Model = model(), details = DETAILS, marts: typeof MARTS | null
   return { onSave, onCancel };
 }
 const row = (name: string) => within(screen.getByRole('group', { name: `Metric ${name}` }));
+
+test('the Format select saves, and a currency code input appears for Currency', async () => {
+  const { onSave } = setup();
+  const r = row('Units');
+  expect(r.getByLabelText('Format')).toHaveValue('number');
+  expect(r.queryByLabelText('Currency code')).toBeNull();
+  fireEvent.change(r.getByLabelText('Format'), { target: { value: 'currency' } });
+  fireEvent.change(r.getByLabelText('Currency code'), { target: { value: 'eur' } });
+  fireEvent.change(row('Revenue').getByLabelText('Format'), { target: { value: 'percent' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
+  expect(saved.metrics.find((m) => m.id === 'a:qty:SUM')).toMatchObject({ format: 'currency', currency: 'EUR' });
+  expect(saved.metrics.find((m) => m.id === 'a:revenue:SUM')).toMatchObject({ format: 'percent', currency: null });
+});
 
 test('says the changes are the member\'s own, lists the goal first and locks its checkbox', () => {
   setup();

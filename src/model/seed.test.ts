@@ -2,7 +2,7 @@ import { seedFrom } from './seed';
 import type { ClassNode, MetricDef, Model } from '../types';
 
 const c = (id: string, depth: number): ClassNode => ({ id, martId: id, title: id, contexts: [], depth, keyMetricId: `${id}:k`, metricIds: [`${id}:k`], shown: true });
-const m = (martId: string): MetricDef => ({ id: `${martId}:k`, martId, alias: martId, measure: { field: 'k', fn: 'SUM' }, kind: 'flow', dateField: null, role: 'critical', source: 'project', isUniqueCount: false, plan: null, shown: true, forecast: null });
+const m = (martId: string): MetricDef => ({ id: `${martId}:k`, martId, alias: martId, measure: { field: 'k', fn: 'SUM' }, kind: 'flow', dateField: null, role: 'critical', source: 'project', isUniqueCount: false, format: 'number', currency: null, plan: null, shown: true, forecast: null });
 const project: Model = {
   version: 2, inputHash: 'h', builtAt: 'b', builtBy: 'u', editedAt: null,
   goal: { classId: 'g', metricId: 'g:k', goalMartId: 'g', viaFallback: false },

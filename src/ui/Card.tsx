@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Info, TriangleAlert } from 'lucide-react';
 import type { CardCache, ClassNode, MetricDef } from '../types';
 import { diffPct } from '../lib/stats';
-import { compact, formatDelta, formatPct } from '../lib/format';
+import { formatDeltaFor, formatPct, formatValue } from '../lib/format';
 import { Badge } from './Badge';
 import { MartIcon } from './MartIcon';
 import { Sparkline } from './Sparkline';
@@ -88,12 +88,12 @@ function CardHead({ title, metric, mart, metrics }: { title: string; metric?: st
 }
 
 /** A chip with the difference (pressing it swaps relative and absolute), then "vs" and the comparison's name. */
-function Compare({ delta, pct, sign, label, absolute, onToggle }: {
-  delta: number | null; pct: number | null; sign: Sign; label: string; absolute: boolean; onToggle?: () => void;
+function Compare({ delta, pct, metric, sign, label, absolute, onToggle }: {
+  delta: number | null; pct: number | null; metric: MetricDef; sign: Sign; label: string; absolute: boolean; onToggle?: () => void;
 }) {
   // A zero comparison has no relative difference, so the chip can only say the absolute one.
   const showAbs = absolute || pct === null;
-  const text = delta === null ? '—' : showAbs ? formatDelta(delta) : formatPct(pct);
+  const text = delta === null ? '—' : showAbs ? formatDeltaFor(delta, metric) : formatPct(pct);
   return (
     <div className="gy-compare" data-sign={sign}>
       <button
@@ -187,12 +187,12 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   const sign: Sign = delta !== null ? (delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat') : res.trend;
   // a failed query shows no number; the error rides in the tooltip and the card offers a retry
   const warning = res.warning ?? res.error;
-  const big = failed ? compact(null) : fact !== null ? compact(fact) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${compact(res.forecast)}` : compact(null);
+  const big = failed ? formatValue(null, key) : fact !== null ? formatValue(fact, key) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${formatValue(res.forecast, key)}` : formatValue(null, key);
   const badges = metrics.filter((m) => m.id !== key.id).map((m) => <Badge key={m.id} metric={m} result={cache?.metrics[m.id]} />);
   // Plan and forecast stay off the face of the card; the number names them on hover.
   const detail = [
-    res.plan !== null ? `Plan ${compact(res.plan)}` : null,
-    res.forecast !== null ? `Forecast ${res.forecastApprox ? '≈' : ''}${compact(res.forecast)}` : null,
+    res.plan !== null ? `Plan ${formatValue(res.plan, key)}` : null,
+    res.forecast !== null ? `Forecast ${res.forecastApprox ? '≈' : ''}${formatValue(res.forecast, key)}` : null,
   ].filter(Boolean).join(' · ');
 
   return (
@@ -209,7 +209,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       {/* An all-time metric has no period to compare against. */}
       {canCompare && (
         <Compare
-          delta={delta} pct={fact !== null ? diffPct(fact, comparison) : null} sign={sign}
+          delta={delta} metric={key} pct={fact !== null ? diffPct(fact, comparison) : null} sign={sign}
           label={compareLabel} absolute={absolute} onToggle={onToggleDiff}
         />
       )}

@@ -9,6 +9,13 @@ const props = (changes: Change[], extra = {}) => ({
   needs: (c: Change) => (c === removed ? added : null), onApply: vi.fn(), onDiscard: vi.fn(), onClose: vi.fn(), ...extra,
 });
 
+test('a format change is listed with before and after', () => {
+  const c: Change = { kind: 'metric_changed', classId: 'a', metricId: 'm', field: 'format', before: 'number', after: 'percent' };
+  render(<RebuildProposal {...props([c])} />);
+  expect(screen.getByText('m: format')).toBeInTheDocument();
+  expect(screen.getByText('number → percent')).toBeInTheDocument();
+});
+
 test('with no changes, a failed save after Close is shown', () => {
   render(<RebuildProposal {...props([], { error: "Couldn't save the model: boom" })} />);
   expect(screen.getByText('The model already matches the descriptions.')).toBeInTheDocument();

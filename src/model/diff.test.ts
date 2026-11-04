@@ -3,7 +3,7 @@ import type { ClassNode, MetricDef, Model } from '../types';
 
 const metric = (id: string, martId: string, alias: string, f: string, extra: Partial<MetricDef> = {}): MetricDef => ({
   id, martId, alias, measure: { field: f, fn: 'SUM' }, kind: 'flow', dateField: 'day', role: 'critical', source: 'project',
-  isUniqueCount: false, plan: null, shown: true, forecast: null, ...extra,
+  isUniqueCount: false, format: 'number', currency: null, plan: null, shown: true, forecast: null, ...extra,
 });
 const cls = (id: string, title: string, depth: number, metricIds: string[], extra: Partial<ClassNode> = {}): ClassNode => ({
   id, martId: id, title, contexts: [], depth, keyMetricId: metricIds[0] ?? null, metricIds, shown: true, ...extra,
@@ -16,6 +16,15 @@ const base = (): Model => ({
   metrics: [metric('a:rev:SUM', 'a', 'Revenue', 'rev'), metric('a:qty:SUM', 'a', 'Units', 'qty', { role: 'leading' }), metric('c:n:SUM', 'c', 'Customers', 'n')],
 });
 const copy = (m: Model): Model => structuredClone(m);
+
+test('a format change is a metric_changed on format, and applies with its currency', () => {
+  const cur = base();
+  const cand = copy(base());
+  cand.metrics[0] = { ...cand.metrics[0]!, format: 'currency', currency: 'EUR' };
+  const changes = diffModels(cur, cand);
+  expect(changes).toEqual([{ kind: 'metric_changed', classId: 'a', metricId: 'a:rev:SUM', field: 'format', before: 'number', after: 'currency (EUR)' }]);
+  expect(applyChanges(cur, cand, changes, 'now').metrics[0]).toMatchObject({ format: 'currency', currency: 'EUR' });
+});
 
 test('no differences, no changes', () => expect(diffModels(base(), copy(base()))).toEqual([]));
 

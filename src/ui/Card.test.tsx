@@ -3,8 +3,8 @@ import { Card } from './Card';
 import type { CardCache, ClassNode, MetricDef, MetricResult } from '../types';
 
 const cls: ClassNode = { id: 'c', martId: 'c', title: 'Customers', contexts: [], depth: 0, keyMetricId: 'arr', metricIds: ['arr', 'uc'], shown: true };
-const arr: MetricDef = { id: 'arr', martId: 'c', alias: 'ARR', measure: { field: 'arr', fn: 'SUM' }, kind: 'level', dateField: 'date', role: 'critical', source: 'project', isUniqueCount: false, plan: null, shown: true, forecast: null };
-const uc: MetricDef = { id: 'uc', martId: 'c', alias: 'Customers', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, plan: null, shown: true, forecast: null };
+const arr: MetricDef = { id: 'arr', martId: 'c', alias: 'ARR', measure: { field: 'arr', fn: 'SUM' }, kind: 'level', dateField: 'date', role: 'critical', source: 'project', isUniqueCount: false, format: 'number', currency: null, plan: null, shown: true, forecast: null };
+const uc: MetricDef = { id: 'uc', martId: 'c', alias: 'Customers', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, format: 'number', currency: null, plan: null, shown: true, forecast: null };
 const res = (over: Partial<MetricResult>): MetricResult => ({ fact: 1_240_000, compareFact: null, comparison: 1_000_000, diffPct: 24, plan: 1_300_000, forecast: null, forecastApprox: false, status: 'near', trend: 'up', note: null, error: null, ...over });
 const cache = (over: Partial<MetricResult> = {}): CardCache => ({
   metrics: { arr: res(over), uc: res({ fact: 7148, status: 'above', trend: 'down', plan: null }) },
@@ -23,6 +23,23 @@ test('key metric, label, diff, badge order and status', () => {
   expect(screen.getByLabelText('trend down')).toBeInTheDocument();
   expect(container.querySelector('.gy-card')!.getAttribute('data-status')).toBe('near');
   expect(container.textContent).not.toMatch(/unique count/i);
+});
+
+test('a percent metric shows % on the number, badge, plan and the absolute chip in pp', () => {
+  const rate: MetricDef = { ...arr, format: 'percent' };
+  const rc = res({ fact: 0.0402, comparison: 0.0282, plan: 0.05, diffPct: 42.6 });
+  const c: CardCache = { metrics: { arr: rc, uc: res({ fact: 0.5, status: 'above', trend: 'down', plan: null }) }, spark: cache().spark };
+  const { container } = render(<Card cls={cls} metrics={[rate, { ...uc, format: 'percent' }]} cache={c} comparisonOn compareLabel="Last Month" absolute refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('4.0%')).toBeInTheDocument();
+  expect(screen.getByText('+1.2 pp')).toBeInTheDocument();
+  expect(container.querySelector('.gy-badge')!.textContent).toMatch(/^50\.0% Customers/);
+  expect(container.querySelector('.gy-big')!.getAttribute('title')).toBe('Plan 5.0%');
+});
+
+test('a currency metric shows its symbol', () => {
+  const money: MetricDef = { ...arr, format: 'currency', currency: 'USD' };
+  render(<Card cls={cls} metrics={[money]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('$1.24M')).toBeInTheDocument();
 });
 
 test('no diff when comparison is off; forecast shown when fact is missing', () => {

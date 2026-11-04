@@ -1,4 +1,5 @@
 import type { Model } from '../types';
+import { normalizeCurrency } from '../lib/format';
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStr = (v: unknown): v is string => typeof v === 'string';
@@ -20,6 +21,13 @@ function shaped(m: Record<string, unknown>): boolean {
     && m.edges.every((e) => isObj(e) && isStr(e.from) && isStr(e.to));
 }
 
+const FORMATS = new Set(['number', 'percent', 'currency']);
+// a missing or unknown format is a plain number
+const fixFormat = (x: Record<string, unknown>): Record<string, unknown> => {
+  const format = isStr(x.format) && FORMATS.has(x.format) ? x.format : 'number';
+  return { ...x, format, currency: format === 'currency' ? normalizeCurrency(x.currency) : null };
+};
+
 // a metric-level calculated field is a ratio: summing its daily values means nothing, so it is never a level
 const fixKind = (x: Record<string, unknown>): Record<string, unknown> => (isObj(x.measure) && x.measure.fn === null && x.kind !== 'flow' ? { ...x, kind: 'flow' } : x);
 
@@ -33,7 +41,7 @@ export function upgradeModel(raw: unknown): Model | null {
       && classes.every((c) => typeof c.shown === 'boolean')
       && metrics.every((x) => typeof x.shown === 'boolean');
     // a malformed forecast source falls back to the extrapolated forecast; the rest of the model stays
-    return ok ? ({ ...raw, metrics: metrics.map((x) => fixKind(validForecast(x.forecast) ? x : { ...x, forecast: null })) } as unknown as Model) : null;
+    return ok ? ({ ...raw, metrics: metrics.map((x) => fixFormat(fixKind(validForecast(x.forecast) ? x : { ...x, forecast: null }))) } as unknown as Model) : null;
   }
   if (raw.version !== 1) return null;
   return {
@@ -41,6 +49,6 @@ export function upgradeModel(raw: unknown): Model | null {
     version: 2,
     editedAt: null,
     classes: (raw.classes as Record<string, unknown>[]).map((c) => ({ ...c, shown: true })),
-    metrics: (raw.metrics as Record<string, unknown>[]).map((x) => fixKind({ ...x, shown: true, forecast: null })),
+    metrics: (raw.metrics as Record<string, unknown>[]).map((x) => fixFormat(fixKind({ ...x, shown: true, forecast: null }))),
   } as unknown as Model;
 }

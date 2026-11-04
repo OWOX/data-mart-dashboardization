@@ -36,6 +36,8 @@ export interface PlanDef { martId: string; measure: Measure; dateField: string; 
 /** A forecast fed from another series than the metric's own fact series. */
 export interface ForecastDef { martId: string; measure: Measure; dateField: string }
 
+export type MetricFormat = 'number' | 'percent' | 'currency';
+
 export interface MetricDef {
   id: string;                // `${martId}:${measure.field}:${fn ?? 'calc'}`
   martId: string;
@@ -48,6 +50,8 @@ export interface MetricDef {
   isUniqueCount: boolean;
   plan: PlanDef | null;
   shown: boolean;            // appears on the card
+  format: MetricFormat;
+  currency: string | null;   // ISO 4217 code; only for 'currency'
   forecast: ForecastDef | null; // null: extrapolate from the fact series
   /** The measure is a calculated field of the mart: only such a metric can colour a line. Absent on models built before it. */
   calculated?: boolean;

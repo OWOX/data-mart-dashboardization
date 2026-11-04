@@ -52,3 +52,15 @@ test('a saved level ratio with a null fn loads as flow, on both versions', () =>
   const from2 = upgradeModel({ ...v2, metrics: [{ ...v2.metrics[0], ...ratio, shown: true, forecast: null }] })!;
   expect(from2.metrics[0]!.kind).toBe('flow');
 });
+
+test('every metric without a valid format gets number, on both versions', () => {
+  const v1m = upgradeModel(v1)!.metrics[0]!;
+  expect(v1m).toMatchObject({ format: 'number', currency: null });
+  const metric = { ...v1.metrics[0], shown: true, forecast: null };
+  const load = (extra: object) => upgradeModel({ ...v2, metrics: [{ ...metric, ...extra }] })!.metrics[0]!;
+  expect(load({})).toMatchObject({ format: 'number', currency: null });
+  expect(load({ format: 'weird', currency: 'USD' })).toMatchObject({ format: 'number', currency: null });
+  expect(load({ format: 'currency', currency: 'EUR' })).toMatchObject({ format: 'currency', currency: 'EUR' });
+  expect(load({ format: 'currency', currency: 'nope' })).toMatchObject({ format: 'currency', currency: null });
+  expect(load({ format: 'percent', currency: 'USD' })).toMatchObject({ format: 'percent', currency: null });
+});

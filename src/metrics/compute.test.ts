@@ -6,7 +6,7 @@ import type { MetricDef } from '../types';
 
 const metric: MetricDef = {
   id: 'm:revenue:SUM', martId: 'm', alias: 'Revenue', measure: { field: 'revenue', fn: 'SUM' }, kind: 'flow',
-  dateField: 'date', role: 'critical', source: 'project', isUniqueCount: false,
+  dateField: 'date', role: 'critical', source: 'project', isUniqueCount: false, format: 'number', currency: null,
   plan: { martId: 'p', measure: { field: 'revenue', fn: 'SUM' }, dateField: 'date', shape: 'daily' },
   shown: true, forecast: null,
 };

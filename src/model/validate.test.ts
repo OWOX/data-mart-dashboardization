@@ -12,7 +12,7 @@ const links = [
 ];
 const ai = (over: Partial<AiOutput['metrics'][number]> = {}, goal: Partial<AiOutput['goal']> = {}): AiOutput => ({
   goal: { status: 'ok', metricRef: 'm1', note: '', ...goal },
-  metrics: [{ ref: 'm1', role: 'critical', source: 'project', alias: 'ARR', factLink: 0, planLink: null, kind: 'level', planShape: null, factDateField: 'date', planDateField: null, aggregation: null, ...over }],
+  metrics: [{ ref: 'm1', role: 'critical', source: 'project', alias: 'ARR', factLink: 0, planLink: null, kind: 'level', planShape: null, factDateField: 'date', planDateField: null, aggregation: null, format: 'number', currency: null, ...over }],
 });
 const details = new Map([['m1', arrMart]]);
 const visible = new Set(['m1']);
@@ -125,4 +125,11 @@ test('allowsAggregation: explicit list wins, else the OWOX default of the type',
   expect(allowsAggregation(f('JSON'), 'SUM')).toBe(false);
   expect(allowsAggregation({ ...f('FLOAT'), calculated: { formula: 'a/b', level: 'metric' } }, null)).toBe(true);
   expect(allowsAggregation(f('FLOAT'), null)).toBe(false);
+});
+
+test('the AI format reaches the metric, and currency only rides with currency', () => {
+  const r = validate({ ai: ai({ format: 'currency', currency: 'USD' }), links, details, visible });
+  expect(r.ok && r.metrics[0]).toMatchObject({ format: 'currency', currency: 'USD' });
+  const p = validate({ ai: ai({ format: 'percent', currency: 'USD' }), links, details, visible });
+  expect(p.ok && p.metrics[0]).toMatchObject({ format: 'percent', currency: null });
 });

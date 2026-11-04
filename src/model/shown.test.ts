@@ -1,7 +1,7 @@
 import { shownModel } from './shown';
 import type { ClassNode, MetricDef, Model } from '../types';
 
-const mt = (id: string, shown: boolean): MetricDef => ({ id, martId: 'a', alias: id, measure: { field: id, fn: 'SUM' }, kind: 'flow', dateField: null, role: 'critical', source: 'project', isUniqueCount: false, plan: null, shown, forecast: null });
+const mt = (id: string, shown: boolean): MetricDef => ({ id, martId: 'a', alias: id, measure: { field: id, fn: 'SUM' }, kind: 'flow', dateField: null, role: 'critical', source: 'project', isUniqueCount: false, format: 'number', currency: null, plan: null, shown, forecast: null });
 const cl = (id: string, shown: boolean, metricIds: string[] = [], keyMetricId: string | null = metricIds[0] ?? null): ClassNode => ({ id, martId: id, title: id, contexts: [], depth: 0, keyMetricId, metricIds, shown });
 const model = (classes: ClassNode[], metrics: MetricDef[]): Model => ({
   version: 2, inputHash: 'h', builtAt: 'b', builtBy: 'u', editedAt: null,

@@ -1,6 +1,6 @@
 import type { ClassNode, Edge, MetricDef, Model } from '../types';
 
-export type MetricField = 'alias' | 'role' | 'measure' | 'dateField' | 'plan' | 'kind';
+export type MetricField = 'alias' | 'role' | 'measure' | 'dateField' | 'plan' | 'kind' | 'format';
 
 export type Change =
   | { kind: 'class_added' | 'class_removed'; classId: string; title: string }
@@ -12,6 +12,8 @@ const measureText = (m: MetricDef): string => `${m.measure.field} (${m.measure.f
 const planText = (m: MetricDef): string => (m.plan ? `${m.plan.martId}: ${m.plan.measure.field} (${m.plan.measure.fn ?? 'calculated'}) by ${m.plan.dateField || 'no date'}, ${m.plan.shape}` : 'none');
 const dateText = (m: MetricDef): string => m.dateField ?? 'no date';
 
+const formatText = (m: MetricDef): string => (m.format === 'currency' && m.currency ? `currency (${m.currency})` : m.format);
+
 const FIELDS: { field: MetricField; text: (m: MetricDef) => string }[] = [
   { field: 'alias', text: (m) => m.alias },
   { field: 'role', text: (m) => m.role },
@@ -19,9 +21,10 @@ const FIELDS: { field: MetricField; text: (m: MetricDef) => string }[] = [
   { field: 'dateField', text: dateText },
   { field: 'plan', text: planText },
   { field: 'kind', text: (m) => m.kind },
+  { field: 'format', text: formatText },
 ];
 // text can hide a difference (a plan's Data Mart), so what counts as changed is the structure
-const same = (f: MetricField, a: MetricDef, b: MetricDef): boolean => (f === 'measure' || f === 'plan' ? JSON.stringify(a[f]) === JSON.stringify(b[f]) : a[f] === b[f]);
+const same = (f: MetricField, a: MetricDef, b: MetricDef): boolean => (f === 'measure' || f === 'plan' ? JSON.stringify(a[f]) === JSON.stringify(b[f]) : f === 'format' ? formatText(a) === formatText(b) : a[f] === b[f]);
 
 const classOf = (m: Model, metricId: string, martId: string): string => m.classes.find((c) => c.metricIds.includes(metricId))?.id ?? martId;
 
@@ -133,6 +136,7 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
           case 'alias': return { ...m, alias: next.alias };
           case 'role': return { ...m, role: next.role };
           case 'kind': return { ...m, kind: next.kind };
+          case 'format': return { ...m, format: next.format, currency: next.currency };
           case 'dateField': return { ...m, dateField: next.dateField };
           case 'plan': return { ...m, plan: next.plan };
           case 'measure': return { ...m, measure: next.measure, calculated: next.calculated, description: next.description };

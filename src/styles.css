@@ -371,6 +371,7 @@ h2 { margin: 0; }
 .gy-onto-label { flex: none; width: 4.5rem; font-size: 0.8125rem; font-weight: 500; color: var(--muted-foreground); }
 .gy-onto-check { width: 1rem; height: 1rem; margin: 0; accent-color: var(--primary); }
 .gy-onto-name { width: 14rem; max-width: 100%; }
+.gy-onto-cur { width: 4.5rem; text-transform: uppercase; }
 .gy-onto-pick { min-width: 8rem; max-width: 100%; }
 .gy-bad { border-color: var(--red); color: var(--red); }
 .gy-bad-text { color: var(--red); font-size: 0.8125rem; }

@@ -1,18 +1,20 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { normalizeCurrency } from '../lib/format';
 import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources';
 import { uncomputable } from '../model/aggregations';
 import { applyChanges, diffModels, type Change } from '../model/diff';
 import type { BuildStep } from '../model/build';
-import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricRole, Model, Measure, PlanDef, PlanShape } from '../types';
+import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricFormat, MetricRole, Model, Measure, PlanDef, PlanShape } from '../types';
 import { Blocked } from './Blocked';
 import { BuildProgress } from './BuildProgress';
 import { RebuildProposal } from './RebuildProposal';
 import { AGGS, FieldPicker, dateFields, martFields, type Option } from './FieldPicker';
 
 const ROLES: MetricRole[] = ['critical', 'leading', 'lagging', 'unique'];
+const FORMATS: { value: MetricFormat; label: string }[] = [{ value: 'number', label: 'Number' }, { value: 'percent', label: 'Percent' }, { value: 'currency', label: 'Currency' }];
 const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
 const CALCULATED = 'CALC';
 type DetailStatus = 'ok' | 'loading' | 'unreadable' | 'gone';
@@ -43,6 +45,7 @@ export function validateDraft(model: Model): string | null {
   }
   for (const m of model.metrics) {
     if (m.alias.trim() === '') return 'Every metric needs a name';
+    if (m.format === 'currency' && m.currency && !normalizeCurrency(m.currency)) return `${m.alias} has an invalid currency code`;
     if (m.plan && (!m.plan.measure.field || !m.plan.dateField)) return `The plan of ${m.alias} needs a field and a date field`;
     if (m.forecast && (!m.forecast.measure.field || !m.forecast.dateField)) return `The forecast of ${m.alias} needs a field and a date field`;
   }
@@ -341,6 +344,15 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                     <select className="gy-select" aria-label="Role" value={m.role} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, role: e.target.value as MetricRole }))}>
                       {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                     </select>
+                    <select className="gy-select" aria-label="Format" value={m.format} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, format: e.target.value as MetricFormat, currency: e.target.value === 'currency' ? x.currency : null }))}>
+                      {FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                    </select>
+                    {m.format === 'currency' && (
+                      <input
+                        className="gy-input gy-onto-cur" aria-label="Currency code" placeholder="USD" maxLength={3} value={m.currency ?? ''}
+                        onChange={(e) => patchMetric(m.id, (x) => ({ ...x, currency: e.target.value.toUpperCase() }))}
+                      />
+                    )}
                   </div>
                   {uncomputable(m, detailOf(m.martId).detail) && <p className="gy-bad-text gy-form-note">OWOX can&apos;t compute this aggregation for this field</p>}
                   <div className="gy-onto-line">

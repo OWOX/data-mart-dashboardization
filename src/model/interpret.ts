@@ -1,7 +1,9 @@
 import { generateText, Output } from 'ai';
 import { z } from 'zod';
 import type { MartLink } from '../lib/links';
+import { normalizeCurrency } from '../lib/format';
 
+const FORMAT = z.enum(['number', 'percent', 'currency']);
 const AGG = z.enum(['SUM', 'COUNT', 'COUNT_DISTINCT', 'AVG', 'MIN', 'MAX']);
 
 export const AiOutputSchema = z.object({
@@ -22,6 +24,8 @@ export const AiOutputSchema = z.object({
     factDateField: z.string().nullable(),
     planDateField: z.string().nullable(),
     aggregation: AGG.nullable(),
+    format: FORMAT.catch('number'),
+    currency: z.string().nullable().catch(null),
   })),
 });
 
@@ -46,7 +50,8 @@ const RULES = [
   '5. planShape is "cumulative" when plan values accumulate from a period start, "level" when the plan is a per-day level, else "daily". Null without a plan link.',
   '6. factDateField and planDateField come only from DATE FIELDS for that link\'s mart. Prefer a field the text names as the date field for the period.',
   '7. aggregation is null unless the text says how to aggregate.',
-  '8. ref values are "m1", "m2", ... in reading order. goal.metricRef is the goal row\'s ref.',
+  '8. format is "percent" for rates, shares and ratios stored as fractions (0.04 = 4%), "currency" for money, otherwise "number". currency is the ISO 4217 code when the description or the field names one, else null.',
+  '9. ref values are "m1", "m2", ... in reading order. goal.metricRef is the goal row\'s ref.',
 ].join('\n');
 
 export function buildPrompt(input: InterpretInput): string {
@@ -65,7 +70,7 @@ export async function interpret(generate: Generate, input: InterpretInput): Prom
   const raw = await generate(buildPrompt(input));
   const parsed = AiOutputSchema.safeParse(raw);
   if (!parsed.success) throw new Error('AI_INVALID: ' + parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; '));
-  return parsed.data;
+  return { ...parsed.data, metrics: parsed.data.metrics.map((m) => ({ ...m, currency: m.format === 'currency' ? normalizeCurrency(m.currency) : null })) };
 }
 
 export function aiGenerate(model: unknown, signal?: AbortSignal): Generate {
