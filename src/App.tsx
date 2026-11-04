@@ -49,6 +49,8 @@ function depsFrom(ctx: PluginContext): AppDeps {
   };
 }
 
+const SEED_NOTE = "Couldn't save your model; it will be saved next time.";
+
 const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology' };
 /** The settings tab a route opens; anything else opens the canvas. */
 const tabOf = (route: string | undefined): SettingsTab | null => {
@@ -97,6 +99,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [dismissedHash, setDismissedHash] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  // the seeded model couldn't be saved on first open; shown until a save goes through
+  const [seedNote, setSeedNote] = useState<string | null>(null);
   // what this member can see, fetched once per model; data is null when the fetch failed
   const [inputs, setInputs] = useState<{ model: Model; data: Inputs | null } | null>(null);
   // the health check of the model against the Data Marts; the schemas it read are kept for the Ontology Model page
@@ -120,15 +124,19 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         // first open: start from the project model cut to what this member can reach, with no AI call
         const project = await loadProjectModel(store);
         if (project) {
-          const marts = await owox.dataMarts.list();
-          m = seedFrom(project, new Set(marts.map((x) => x.id)));
+          const accessible = await owox.dataMarts.list().then((x) => new Set(x.map((y) => y.id))).catch(() => null);
+          // without the access list the whole project model is the seed (the canvas filter still applies) and its hash stays
+          m = accessible ? seedFrom(project, accessible) : project;
           // the kept classes hash differently from the project's; without this the first open would read as out of date
-          try {
-            const inputs = await fetchInputs(owox);
-            // a hash taken without the contexts would read as out of date once they load
-            if (inputs.contextsOk) m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id)) };
-          } catch { /* keep the project hash */ }
-          await saveOntology(store, m);
+          if (accessible) {
+            try {
+              const inputs = await fetchInputs(owox);
+              // a hash taken without the contexts would read as out of date once they load
+              if (inputs.contextsOk) m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id)) };
+            } catch { /* keep the project hash */ }
+          }
+          // a failed save keeps the seed in memory; the next save of the model writes it
+          try { await saveOntology(store, m); } catch { setSeedNote(SEED_NOTE); }
         }
       }
       setSettings(s);
@@ -158,6 +166,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const result = await buildModel({ owox, generate, userId, now: now(), onStep: (s) => setSteps((p) => [...p, s]) });
       if (!result.ok) { setView({ name: 'blocked', blocked: result.blocked }); return; }
       await saveOntology(store, result.model);
+      setSeedNote(null);
       setModel(result.model);
       setCache(null);
       setView({ name: 'ready' });
@@ -272,6 +281,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const remember = (r: RangeChoice, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
   const saveOntologyAndLeave = async (m: Model) => {
     await saveOntology(store, m);
+    setSeedNote(null);
     // a new model object re-runs the refresh; the cache is judged by editedAt
     setModel(m);
     leaveSettings();
@@ -279,8 +289,14 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const ontologyDetails = useMemo(() => (health && health.model === model ? health.details : new Map<string, MartDetail>()), [health, model]);
   // null: the access check failed, so the editor verifies nothing
   const ontologyMarts = useMemo(() => (inputs && inputs.model === model && inputs.data ? inputs.data.marts.map((x) => ({ id: x.id, title: x.title })) : null), [inputs, model]);
+  // the out-of-date check's hash for a model's classes; null when it can't be told (no contexts, or a transient failure)
+  const hashOf = async (m: Model): Promise<string | null> => {
+    const data = inputs && inputs.model === model ? inputs.data : null;
+    if (!data || !data.contextsOk) return null;
+    return currentInputHash(owox, data, m.classes.map((c) => c.id), ontologyDetails).catch(() => null);
+  };
   const ontologyProps = model && inputs && inputs.model === model
-    ? { model, owox, now, onSave: saveOntologyAndLeave, details: ontologyDetails, marts: ontologyMarts }
+    ? { model, owox, now, onSave: saveOntologyAndLeave, details: ontologyDetails, marts: ontologyMarts, hashOf }
     : null;
   const saveSettingsAndLeave = async (s: Settings) => {
     try {
@@ -322,7 +338,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           onBack={leaveSettings}
           onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), onStep })}
           projectId={ctx.projectId}
-          onDismiss={setDismissedHash}
+          onDismiss={() => setDismissedHash(outdated)}
           onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}
           canRebuild={!!generate}
           error={settingsError}
@@ -337,6 +353,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <main className="gy-main">
           <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} status={status} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
+          {seedNote && <p className="gy-muted">{seedNote}</p>}
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
           {issuesNow.length > 0 && (
             <div className="gy-banner">
@@ -345,7 +362,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
               <button type="button" className="gy-link" onClick={() => openSettings('ontology')}>Review in Ontology Model</button>
             </div>
           )}
-          {outdated !== null && outdated !== dismissedHash && (
+          {outdated !== null && outdated !== model.inputHash && outdated !== dismissedHash && (
             <div className="gy-banner">
               <button type="button" className="gy-link" onClick={() => openSettings('ontology')}>The descriptions changed. Rebuild to see proposed changes</button>
             </div>

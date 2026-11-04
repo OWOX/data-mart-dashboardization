@@ -35,15 +35,30 @@ export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'
   ]));
 }
 
+const isNotFound = (e: unknown): boolean => {
+  for (let c = e; c instanceof Error; c = c.cause) {
+    const p = (c as { payload?: { status?: unknown } }).payload;
+    if ((c as { status?: unknown }).status === 404 || p?.status === 404) return true;
+  }
+  return /\b404\b|not found/i.test(describeError(e));
+};
+
 /**
- * The hash as it would be computed now. A Data Mart that can't be fetched (deleted) is left out, so the
- * hash changes and the model reads as out of date. `known` are schemas already read, not fetched again.
+ * The hash as it would be computed now. A Data Mart missing from the access list, or one whose fetch says
+ * not found, is left out, so the hash changes and the model reads as out of date. Any other failure throws:
+ * the hash can't be told. `known` are schemas already read, not fetched again.
  */
 export async function currentInputHash(owox: OwoxLike, inputs: Inputs, martIds: string[], known?: ReadonlyMap<string, MartDetail>): Promise<string> {
-  const got = await runPool(martIds.map((id) => async (): Promise<HashMart> => ({
+  const listed = new Set(inputs.marts.map((m) => m.id));
+  const present = martIds.filter((id) => listed.has(id));
+  const got = await runPool(present.map((id) => async (): Promise<HashMart> => ({
     id, detail: known?.get(id) ?? await fetchMartDetail(owox, id), blendable: await fetchBlendable(owox, id),
   })), POOL);
-  const marts = got.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+  const marts: HashMart[] = [];
+  for (const r of got) {
+    if (r.status === 'fulfilled') marts.push(r.value);
+    else if (!isNotFound(r.reason)) throw r.reason;
+  }
   return inputHash(inputs, marts);
 }
 
@@ -62,7 +77,13 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   if (!generate) return fail('AI_NOT_CONFIGURED', 'Ask a project admin to map an AI model to this plugin.');
 
   step({ kind: 'read', what: 'project', done: 0, total: null, finished: false });
-  const inputs = await fetchInputs(owox);
+  let inputs: Inputs;
+  try {
+    inputs = await fetchInputs(owox);
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') throw e;
+    throw new Error(`Couldn't read the project description and Data Marts: ${describeError(e)}`);
+  }
   step({ kind: 'read', what: 'project', done: 1, total: 1, finished: true });
   step(inputs.contextsOk
     ? { kind: 'read', what: 'contexts', done: inputs.contexts.length, total: inputs.contexts.length, finished: true }

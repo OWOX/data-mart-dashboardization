@@ -2,6 +2,9 @@ import type { Model } from '../types';
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStr = (v: unknown): v is string => typeof v === 'string';
+const AGG_FNS = new Set(['SUM', 'COUNT', 'COUNT_DISTINCT', 'AVG', 'MIN', 'MAX']);
+const validForecast = (f: unknown): boolean => f === null
+  || (isObj(f) && isStr(f.martId) && isStr(f.dateField) && isObj(f.measure) && isStr(f.measure.field) && (f.measure.fn === null || (isStr(f.measure.fn) && AGG_FNS.has(f.measure.fn))));
 
 function shaped(m: Record<string, unknown>): boolean {
   if (!isStr(m.inputHash) || !isStr(m.builtAt) || !isStr(m.builtBy)) return false;
@@ -25,8 +28,9 @@ export function upgradeModel(raw: unknown): Model | null {
     const metrics = raw.metrics as Record<string, unknown>[];
     const ok = (raw.editedAt === null || isStr(raw.editedAt))
       && classes.every((c) => typeof c.shown === 'boolean')
-      && metrics.every((x) => typeof x.shown === 'boolean' && (x.forecast === null || isObj(x.forecast)));
-    return ok ? (raw as unknown as Model) : null;
+      && metrics.every((x) => typeof x.shown === 'boolean');
+    // a malformed forecast source falls back to the extrapolated forecast; the rest of the model stays
+    return ok ? ({ ...raw, metrics: metrics.map((x) => (validForecast(x.forecast) ? x : { ...x, forecast: null })) } as unknown as Model) : null;
   }
   if (raw.version !== 1) return null;
   return {

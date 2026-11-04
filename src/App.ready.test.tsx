@@ -190,6 +190,46 @@ test('Discard hides the out-of-date notice for this session without touching the
   expect(await loadOntology(store)).toEqual(before);
 });
 
+/** A saved model without the Customers class, so a rebuild proposes adding it and its hash covers one mart fewer. */
+async function dropCustomers(store: CollectionsLike) {
+  const m = (await loadOntology(store))!;
+  const keep = m.classes.filter((c) => c.martId !== CID);
+  await saveOntology(store, {
+    ...m, inputHash: 'old', classes: keep, edges: [],
+    metrics: m.metrics.filter((x) => keep.some((c) => c.id === x.martId)),
+  });
+}
+
+test('Discarding a proposal that adds a class hides the notice', async () => {
+  const { deps, store } = await setup({ withCustomers: true });
+  await dropCustomers(store);
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: NOTICE }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
+  await screen.findByRole('checkbox', { name: 'Add class Customers' });
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Back' }));
+  await screen.findByRole('button', { name: 'Date range' });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(screen.queryByText(NOTICE)).toBeNull();
+});
+
+test('a partial Apply that leaves a new class unchecked does not bring the notice back', async () => {
+  const { deps, store } = await setup({ withCustomers: true });
+  await dropCustomers(store);
+  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => renamedAi }} />);
+  fireEvent.click(await screen.findByRole('button', { name: NOTICE }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Add class Customers' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
+  await screen.findByRole('button', { name: 'Date range' });
+  const saved = await loadOntology(store);
+  expect(saved?.classes.some((c) => c.martId === CID)).toBe(false);
+  expect(saved?.inputHash).not.toBe('old');
+  await new Promise((r) => setTimeout(r, 100));
+  expect(screen.queryByText(NOTICE)).toBeNull();
+});
+
 test('saving a changed threshold refreshes; an unchanged one does not', async () => {
   const { deps, traversals } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);

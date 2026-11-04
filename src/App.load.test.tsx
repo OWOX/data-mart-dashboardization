@@ -102,11 +102,40 @@ test('seeding with unreadable contexts keeps the project hash', async () => {
   expect((await loadOntology(store))!.inputHash).toBe('project-hash');
 });
 
-test('dataMarts.list rejecting while seeding shows the error view', async () => {
+test('dataMarts.list rejecting while seeding seeds the whole project model and keeps its hash', async () => {
   const { deps, store, model } = await setup();
-  await store.collections<unknown>('model').put('current', model);
+  await store.collections<unknown>('model').put('current', { ...model, inputHash: 'project-hash' });
   const owox = { ...deps.owox, dataMarts: { ...deps.owox.dataMarts, list: async () => { throw new Error('LIST_FAILED'); } } } as AppDeps['owox'];
   render(<App ctx={ctx} deps={{ ...deps, owox }} />);
-  expect(await screen.findByText(/LIST_FAILED/)).toBeInTheDocument();
+  expect(screen.queryByText(/LIST_FAILED/)).toBeNull();
+  await screen.findByText(/Couldn't check which Data Marts you can access/);
+  expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+  const saved = (await loadOntology(store))!;
+  expect(saved.classes.map((c) => c.id)).toEqual(model.classes.map((c) => c.id));
+  expect(saved.inputHash).toBe('project-hash');
+});
+
+test('a failed save while seeding keeps the model, shows a note and saves with the next save', async () => {
+  const { deps, store, model } = await setup();
+  await store.collections<unknown>('model').put('current', model);
+  let failing = true;
+  const flaky: AppDeps['store'] = {
+    collections: <T,>(name: string) => {
+      const col = store.collections<T>(name);
+      return { get: col.get, put: async (id: string, doc: T) => { if (failing && name === 'ontology') throw new Error('PUT_FAILED'); return col.put(id, doc); } };
+    },
+  };
+  render(<App ctx={ctx} deps={{ ...deps, store: flaky }} />);
+  expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+  expect(await screen.findByText("Couldn't save your model; it will be saved next time.")).toBeInTheDocument();
+  expect(screen.queryByText(/Something went wrong/)).toBeNull();
   expect(await loadOntology(store)).toBeNull();
+});
+
+test('the first build failing to read the project says what failed', async () => {
+  const { deps } = await setup();
+  const owox = { ...deps.owox, project: { getSettings: async () => { throw new Error('boom'); } } } as AppDeps['owox'];
+  render(<App ctx={ctx} deps={{ ...deps, owox }} />);
+  expect(await screen.findByText(/Couldn't read the project description and Data Marts: boom/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
 });

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { describeError } from '../lib/errors';
+import { runPool } from '../lib/pool';
 import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources';
 import { applyChanges, diffModels, type Change } from '../model/diff';
 import type { BuildStep } from '../model/build';
@@ -73,7 +74,7 @@ function Source({ label, detail, status, measure, dateField, noDate, onMeasure, 
   );
 }
 
-export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss }: {
+export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss, hashOf }: {
   model: Model;
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
@@ -86,8 +87,10 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   /** Builds a candidate model from the descriptions; saves nothing. */
   onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean;
   projectId?: string; onOpen?: (path: string) => void;
-  /** A discarded proposal's input hash. */
-  onDismiss?: (hash: string) => void;
+  /** The proposal was discarded: the app stops flagging the hash it checked. */
+  onDismiss?: () => void;
+  /** The input hash of a model's Data Marts as the out-of-date check computes it; null when it can't be told. */
+  hashOf?: (m: Model) => Promise<string | null>;
 }) {
   const [draft, setDraft] = useState<Model>(model);
   const [error, setError] = useState<string | null>(null);
@@ -109,11 +112,12 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     return ids;
   }, [draft]);
   useEffect(() => {
-    for (const id of referenced) {
-      if (details.has(id) || requested.current.has(id) || (accessible && !accessible.has(id))) continue;
-      requested.current.add(id);
-      fetchMartDetail(owox, id).catch(() => null).then((d) => setExtra((p) => new Map(p).set(id, d)));
-    }
+    const ids = [...referenced].filter((id) => !details.has(id) && !requested.current.has(id) && !(accessible && !accessible.has(id)));
+    for (const id of ids) requested.current.add(id);
+    void runPool(ids.map((id) => async () => {
+      const d = await fetchMartDetail(owox, id).catch(() => null);
+      setExtra((p) => new Map(p).set(id, d));
+    }), 6);
   }, [referenced, details, accessible, owox]);
 
   const detailOf = (id: string): { detail: MartDetail | undefined; status: DetailStatus } => {
@@ -163,18 +167,21 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     setError(null);
     setSaving(true);
     try {
-      await onSave(applyChanges(model, candidate, picked, now().toISOString()));
+      const next = applyChanges(model, candidate, picked, now().toISOString());
+      // the hash covers the resulting model's Data Marts, as the check does; unknown keeps the old one
+      await onSave({ ...next, inputHash: (await hashOf?.(next)) ?? model.inputHash });
     } catch (e) {
       setError(`Couldn't save the model: ${describeError(e)}`);
       setSaving(false);
     }
   };
   // no differences: the model is current, so remember the new input hash without calling it an edit
-  const closeMatching = async (candidate: Model) => {
-    if (candidate.inputHash === model.inputHash) { closeRebuild(); return; }
+  const closeMatching = async () => {
     setSaving(true);
     try {
-      await onSave({ ...model, inputHash: candidate.inputHash });
+      const hash = await hashOf?.(model);
+      if (!hash || hash === model.inputHash) { setSaving(false); closeRebuild(); return; }
+      await onSave({ ...model, inputHash: hash });
     } catch (e) {
       setError(`Couldn't save the model: ${describeError(e)}`);
       setSaving(false);
@@ -228,7 +235,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
           nameOf={(id) => model.metrics.find((m) => m.id === id)?.alias ?? id}
           needs={(c) => (c.kind === 'class_removed' && c.classId === model.goal.classId
             ? rebuild.changes.find((x) => x.kind === 'class_added' && x.classId === rebuild.candidate.goal.classId) ?? null : null)}
-          onApply={(picked) => void applyProposal(rebuild.candidate, picked)} onDiscard={() => { onDismiss?.(rebuild.candidate.inputHash); closeRebuild(); }} onClose={() => void closeMatching(rebuild.candidate)}
+          onApply={(picked) => void applyProposal(rebuild.candidate, picked)} onDiscard={() => { onDismiss?.(); closeRebuild(); }} onClose={() => void closeMatching()}
         />
       )}
 

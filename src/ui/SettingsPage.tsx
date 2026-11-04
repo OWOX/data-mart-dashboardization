@@ -17,14 +17,15 @@ export interface OntologyProps {
   owox: OwoxLike;
   now: () => Date;
   onSave: (m: Model) => Promise<void>;
+  hashOf?: (m: Model) => Promise<string | null>;
 }
 
 export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
   /** Reads the descriptions and schemas again into a candidate model; the Ontology tab shows it as a proposal. */
   onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void;
-  /** A discarded proposal's input hash: the canvas stops calling the model out of date for it. */
-  onDismiss?: (hash: string) => void; error?: string | null;
+  /** A proposal was discarded: the canvas stops calling the model out of date against the hash it checked. */
+  onDismiss?: () => void; error?: string | null;
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);

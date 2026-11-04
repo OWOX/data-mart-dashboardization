@@ -20,7 +20,9 @@ test('staleness', () => {
   expect(isStale(null, model, '2026-10-23', 20)).toBe(true);
   expect(isStale(doc, model, '2026-10-23', 20)).toBe(false);
   expect(isStale(doc, model, '2026-10-24', 20)).toBe(true);
-  expect(isStale(doc, { ...model, inputHash: 'x' }, '2026-10-23', 20)).toBe(true);
+  // the model version is builtAt + editedAt: a hash that moves alone keeps the cache
+  expect(isStale(doc, { ...model, inputHash: 'x' }, '2026-10-23', 20)).toBe(false);
+  expect(isStale({ ...doc, editedAt: null }, { ...model, inputHash: 'x', editedAt: '2026-11-04T10:00:00Z' }, '2026-10-23', 20)).toBe(true);
 });
 
 test('a rebuild or a threshold change makes the cache stale', () => {

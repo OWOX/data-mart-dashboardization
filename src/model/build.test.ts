@@ -161,3 +161,25 @@ test('currentInputHash leaves a Data Mart that fails to fetch out, so the hash c
   expect(await currentInputHash(owox, inputs, [GID, 'c'], known)).toBe(full);
   expect(owox.calls.slice(calls).every((c) => c.path.endsWith('blendable-schema'))).toBe(true);
 });
+
+test('currentInputHash leaves out a mart missing from the access list, and throws on a transient failure', async () => {
+  const owox = fakeOwox(data());
+  const inputs = await fetchInputs(owox);
+  const full = await currentInputHash(owox, inputs, [GID, 'c']);
+  // not in the access list: left out without a fetch
+  const calls = owox.calls.length;
+  const hidden = await currentInputHash(owox, { ...inputs, marts: inputs.marts.filter((m) => m.id !== 'c') }, [GID, 'c']);
+  expect(hidden).not.toBe(full);
+  expect(owox.calls.slice(calls).some((c) => c.path.includes('/c'))).toBe(false);
+  // not found: left out
+  const notFound = { ...owox, getJson: (async (path: string) => { if (path === '/api/data-marts/c') throw new Error('Data Mart not found'); return owox.getJson(path); }) as typeof owox.getJson };
+  expect(await currentInputHash(notFound, inputs, [GID, 'c'])).not.toBe(full);
+  // anything else: can't tell
+  const flaky = { ...owox, getJson: (async (path: string) => { if (path === '/api/data-marts/c') throw new Error('503 unavailable'); return owox.getJson(path); }) as typeof owox.getJson };
+  await expect(currentInputHash(flaky, inputs, [GID, 'c'])).rejects.toThrow('503');
+});
+
+test('a failing project read says what failed', async () => {
+  const owox = { ...fakeOwox(data()), project: { getSettings: async () => { throw new Error('boom'); } } };
+  await expect(buildModel({ owox, generate: async () => goalAi, userId: 'u1', now })).rejects.toThrow("Couldn't read the project description and Data Marts: boom");
+});

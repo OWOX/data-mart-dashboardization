@@ -32,3 +32,14 @@ test('junk is rejected', () => {
     expect(upgradeModel(junk)).toBeNull();
   }
 });
+
+test('a malformed forecast source becomes null and the model stays', () => {
+  const metric = { ...v1.metrics[0], shown: true };
+  const withForecast = (forecast: unknown) => ({ ...v2, metrics: [{ ...metric, forecast }] });
+  for (const bad of [{}, 'x', { martId: 'f' }, { martId: 'f', dateField: 'd', measure: { field: 'v', fn: 'MEDIAN' } }, { martId: 'f', dateField: 'd', measure: { field: 1, fn: null } }, undefined]) {
+    expect(upgradeModel(withForecast(bad))!.metrics[0]!.forecast).toBeNull();
+  }
+  const good = { martId: 'f', dateField: 'd', measure: { field: 'v', fn: 'SUM' } };
+  expect(upgradeModel(withForecast(good))!.metrics[0]!.forecast).toEqual(good);
+  expect(upgradeModel(withForecast({ ...good, measure: { field: 'v', fn: null } }))!.metrics[0]!.forecast).not.toBeNull();
+});

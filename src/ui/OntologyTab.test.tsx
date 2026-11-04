@@ -167,3 +167,23 @@ test('a class whose Data Mart is gone is flagged', () => {
   expect(within(screen.getByRole('region', { name: 'Customers' })).getByText('Data Mart not found or not accessible')).toBeInTheDocument();
   expect(within(screen.getByRole('region', { name: 'Orders' })).queryByText('Data Mart not found or not accessible')).toBeNull();
 });
+
+test('schema fetches for referenced Data Marts run at most six at a time', async () => {
+  const ids = Array.from({ length: 10 }, (_, i) => `m${i}`);
+  const m = model();
+  m.metrics = ids.map((id) => metric(`${id}:qty:SUM`, id, id, 'qty'));
+  m.classes = [{ id: 'a', martId: 'a', title: 'Orders', contexts: [], depth: 0, keyMetricId: m.metrics[0]!.id, metricIds: m.metrics.map((x) => x.id), shown: true }];
+  m.goal = { classId: 'a', metricId: m.metrics[0]!.id, goalMartId: 'a', viaFallback: false };
+  const base = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(ids.map((id) => [id, detail(id, id)])), blendables: {} });
+  let active = 0, peak = 0;
+  const owox = { ...base, getJson: (async (path: string) => {
+    active++; peak = Math.max(peak, active);
+    await new Promise((r) => setTimeout(r, 5));
+    active--;
+    return base.getJson(path);
+  }) as typeof base.getJson };
+  render(<OntologyTab model={m} details={new Map()} marts={ids.map((id) => ({ id, title: id }))} owox={owox} now={() => new Date()} onSave={vi.fn(async () => undefined)} onCancel={vi.fn()} />);
+  await waitFor(() => expect(base.calls.length).toBe(10));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(peak).toBe(6);
+});
