@@ -92,6 +92,16 @@ test('if the hash cannot be recomputed the project hash is kept', async () => {
   expect((await loadOntology(store))!.inputHash).toBe('project-hash');
 });
 
+test('seeding with unreadable contexts keeps the project hash', async () => {
+  const { deps, store, model } = await setup();
+  await store.collections<unknown>('model').put('current', { ...model, inputHash: 'project-hash' });
+  const base = deps.owox;
+  const owox = { ...base, getJson: (async (path: string) => { if (path === '/api/contexts') throw new Error('403'); return base.getJson(path); }) as typeof base.getJson };
+  render(<App ctx={ctx} deps={{ ...deps, owox }} />);
+  expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+  expect((await loadOntology(store))!.inputHash).toBe('project-hash');
+});
+
 test('dataMarts.list rejecting while seeding shows the error view', async () => {
   const { deps, store, model } = await setup();
   await store.collections<unknown>('model').put('current', model);

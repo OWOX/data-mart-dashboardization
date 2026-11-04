@@ -18,7 +18,8 @@ test('first open builds with no click; no goal shows the blocked screen', async 
 
 test('without AI the blocked screen shows', async () => {
   render(<App ctx={{ projectId: 'p1' } as never} deps={deps(null)} />);
-  expect(await screen.findByText(/map an AI model/)).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'AI model not configured' })).toBeInTheDocument();
+  expect(screen.getByText(/map an AI model/)).toBeInTheDocument();
 });
 
 test('a failed build shows an error with Retry, not the blocked screen', async () => {

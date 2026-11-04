@@ -134,11 +134,13 @@ test('onStep reports reading, marts counting up to the total, and what was found
   const reads = steps.filter((s) => s.kind === 'read');
   expect(reads.map((s) => s.what).filter((w, i, a) => a.indexOf(w) === i)).toEqual(['project', 'contexts', 'marts', 'ai']);
   expect(reads.find((s) => s.what === 'project' && s.finished)).toBeDefined();
+  expect(reads.find((s) => s.what === 'contexts')).toMatchObject({ done: 0, total: 0, finished: true });
   const marts = reads.filter((s) => s.what === 'marts');
   expect(marts[0]).toMatchObject({ done: 0, total: 2, finished: false });
   expect(marts.map((s) => s.done)).toEqual([...marts.map((s) => s.done)].sort((a, b) => a - b));
   expect(marts.at(-1)).toMatchObject({ done: 2, total: 2, finished: true });
   expect(reads.at(-1)).toMatchObject({ what: 'marts', finished: true });
   expect(reads.find((s) => s.what === 'ai' && s.finished)).toBeDefined();
+  expect(steps.filter((s) => s.kind === 'found')[0]).toEqual({ kind: 'found', goal: 'Revenue (Orders)', classes: [], metrics: 0 });
   expect(steps.at(-1)).toEqual({ kind: 'found', goal: 'Revenue (Orders)', classes: ['Orders', 'Customers'], metrics: 3 });
 });

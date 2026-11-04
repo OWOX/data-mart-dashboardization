@@ -96,6 +96,19 @@ test('Rebuild with unchanged inputs still refreshes the canvas', async () => {
   await waitFor(() => expect(traversals()).toBeGreaterThan(0));
 });
 
+test('Rebuild from Settings shows the build progress', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const { deps } = await setup();
+  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => { await gate; return goalAi; } }} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rebuild model' }));
+  expect(await screen.findByText('AI reading descriptions…')).toBeInTheDocument();
+  expect(screen.getByRole('progressbar')).toHaveAttribute('data-determinate', 'false');
+  release();
+  expect(await screen.findByRole('button', { name: 'Date range' })).toBeInTheDocument();
+});
+
 test('saving a changed threshold refreshes; an unchanged one does not', async () => {
   const { deps, traversals } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);

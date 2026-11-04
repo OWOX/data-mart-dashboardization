@@ -50,7 +50,7 @@ const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'GOAL_NOT_CONNECTED', d
 
 /** What the build is doing, for the progress page. Mart counts run over both detail-loading phases against all visible marts. */
 export type BuildStep =
-  | { kind: 'read'; what: 'project' | 'contexts' | 'marts' | 'ai'; done: number; total: number | null; finished: boolean }
+  | { kind: 'read'; what: 'project' | 'contexts' | 'marts' | 'ai'; done: number; total: number | null; finished: boolean; failed?: boolean }
   | { kind: 'found'; goal: string | null; classes: string[]; metrics: number };
 
 export async function buildModel(args: { owox: OwoxLike; generate: Generate | null; userId: string; now: Date; onStep?: (s: BuildStep) => void }): Promise<BuildResult> {
@@ -61,7 +61,9 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   step({ kind: 'read', what: 'project', done: 0, total: null, finished: false });
   const inputs = await fetchInputs(owox);
   step({ kind: 'read', what: 'project', done: 1, total: 1, finished: true });
-  step({ kind: 'read', what: 'contexts', done: inputs.contexts.length, total: inputs.contexts.length, finished: true });
+  step(inputs.contextsOk
+    ? { kind: 'read', what: 'contexts', done: inputs.contexts.length, total: inputs.contexts.length, finished: true }
+    : { kind: 'read', what: 'contexts', done: 0, total: null, finished: false, failed: true });
   const visible = new Set(inputs.marts.map((m) => m.id));
 
   const links: MartLink[] = extractLinks(inputs.projectDescription, 'project', 0);
@@ -102,6 +104,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   const v = validate({ ai, links, details, visible });
   if (!v.ok) return v;
   step({ kind: 'read', what: 'ai', done: 1, total: 1, finished: true });
+  step({ kind: 'found', goal: `${goalMetric?.alias ?? v.goal.field} (${titleOf(v.goal.martId)})`, classes: [], metrics: 0 });
 
   const loaded = await runPool(inputs.marts.map((m) => async (): Promise<MartNode> => {
     try {
