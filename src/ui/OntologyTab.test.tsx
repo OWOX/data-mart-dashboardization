@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { OntologyTab } from './OntologyTab';
 import { fakeOwox } from '../owox/fake';
-import type { MartDetail } from '../owox/sources';
+import type { MartDetail, SchemaField } from '../owox/sources';
 import type { MetricDef, Model } from '../types';
 
-const field = (name: string, type = 'FLOAT') => ({ name, type, isPrimaryKey: false });
+const field = (name: string, type = 'FLOAT'): SchemaField => ({ name, type, isPrimaryKey: false });
 const detail = (id: string, title: string, fields = [field('revenue'), field('qty'), field('day', 'DATE')]): MartDetail => ({ id, title, fields });
 const metric = (id: string, martId: string, alias: string, f: string, extra: Partial<MetricDef> = {}): MetricDef => ({
   id, martId, alias, measure: { field: f, fn: 'SUM' }, kind: 'flow', dateField: 'day', role: 'critical', source: 'project',
@@ -21,13 +21,16 @@ const model = (): Model => ({
   metrics: [metric('a:revenue:SUM', 'a', 'Revenue', 'revenue'), metric('a:qty:SUM', 'a', 'Units', 'qty', { role: 'leading' }), metric('c:qty:SUM', 'c', 'Customers', 'qty')],
 });
 const DETAILS = new Map([['a', detail('a', 'Orders')], ['c', detail('c', 'Customers')], ['p', detail('p', 'Targets', [field('goal'), field('stat_day', 'DATE'), field('note', 'STRING')])]]);
-const MARTS = [{ id: 'a', title: 'Orders' }, { id: 'c', title: 'Customers' }, { id: 'p', title: 'Targets' }];
+const MARTS: { id: string; title: string; description?: string | null }[] = [{ id: 'a', title: 'Orders' }, { id: 'c', title: 'Customers' }, { id: 'p', title: 'Targets' }];
 
-function setup(m: Model = model(), details = DETAILS, marts: typeof MARTS | null = MARTS) {
+const openAll = () => { for (const b of screen.queryAllByRole('button', { expanded: false })) fireEvent.click(b); };
+
+function setup(m: Model = model(), details = DETAILS, marts: typeof MARTS | null = MARTS, open = true) {
   const onSave = vi.fn(async () => undefined);
   const onCancel = vi.fn();
   const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(details), blendables: {} });
   render(<OntologyTab model={m} details={details} marts={marts} owox={owox} now={() => new Date('2026-11-04T10:00:00Z')} onSave={onSave} onCancel={onCancel} />);
+  if (open) openAll();
   return { onSave, onCancel };
 }
 const row = (name: string) => within(screen.getByRole('group', { name: `Metric ${name}` }));
@@ -132,6 +135,7 @@ test('a Data Mart picked from the list has its schema fetched', async () => {
   details.delete('p');
   const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
   render(<OntologyTab model={model()} details={details} marts={MARTS} owox={owox} now={() => new Date()} onSave={async () => undefined} onCancel={() => {}} />);
+  openAll();
   fireEvent.change(row('Revenue').getByLabelText('Plan data mart'), { target: { value: 'p' } });
   await waitFor(() => expect(within(row('Revenue').getByLabelText('Plan field')).getByRole('option', { name: 'goal' })).toBeInTheDocument());
   expect(owox.calls.map((c) => c.path)).toContain('/api/data-marts/p');
@@ -186,4 +190,68 @@ test('schema fetches for referenced Data Marts run at most six at a time', async
   await waitFor(() => expect(base.calls.length).toBe(10));
   await new Promise((r) => setTimeout(r, 30));
   expect(peak).toBe(6);
+});
+
+const header = (name: string) => within(screen.getByRole('region', { name })).getAllByRole('button')[0]!;
+
+test('class blocks are folded by default and open and close on click', () => {
+  setup(model(), DETAILS, MARTS, false);
+  const h = header('Orders');
+  expect(h).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('group', { name: 'Metric Revenue' })).toBeNull();
+  fireEvent.click(h);
+  expect(h).toHaveAttribute('aria-expanded', 'true');
+  expect(h.getAttribute('aria-controls')).toBe(document.getElementById(h.getAttribute('aria-controls')!)?.id);
+  expect(screen.getByRole('group', { name: 'Metric Revenue' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Metric Customers' })).toBeNull();
+  fireEvent.click(h);
+  expect(h).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('group', { name: 'Metric Revenue' })).toBeNull();
+});
+
+test('the folded header shows the shown count and a broken count, and no input sits inside the button', () => {
+  const m = model();
+  m.metrics[1] = { ...m.metrics[1]!, shown: false };
+  const details = new Map(DETAILS);
+  details.set('a', detail('a', 'Orders', [field('qty'), field('day', 'DATE')]));
+  setup(m, details, MARTS, false);
+  const h = header('Orders');
+  expect(h).toHaveTextContent('1 of 2 metrics shown');
+  expect(h).toHaveTextContent('1 broken');
+  expect(h.querySelector('input')).toBeNull();
+  expect(header('Customers')).not.toHaveTextContent('broken');
+  expect(screen.getByRole('checkbox', { name: 'Orders' })).toBeInTheDocument();
+});
+
+test('draft edits inside a block survive folding and Save', async () => {
+  const { onSave } = setup();
+  fireEvent.change(row('Revenue').getByLabelText('Name'), { target: { value: 'Sales' } });
+  fireEvent.click(header('Orders'));
+  expect(screen.queryByRole('group', { name: 'Metric Revenue' })).toBeNull();
+  fireEvent.click(header('Orders'));
+  expect((row('Revenue').getByLabelText('Name') as HTMLInputElement).value).toBe('Sales');
+  fireEvent.click(header('Orders'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  expect((onSave.mock.calls[0] as unknown as [Model])[0].metrics[0]!.alias).toBe('Sales');
+});
+
+test('the (i) icons show the live mart and field descriptions, not the stored ones', () => {
+  const m = model();
+  m.metrics[0] = { ...m.metrics[0]!, description: 'stored text' };
+  const details = new Map(DETAILS);
+  details.set('a', detail('a', 'Orders', [{ ...field('revenue'), description: 'Live revenue' }, field('qty'), field('day', 'DATE')]));
+  setup(m, details, MARTS.map((x) => (x.id === 'a' ? { ...x, description: 'Live orders mart' } : x)));
+  expect(screen.getByRole('button', { name: 'Live orders mart' })).toBeInTheDocument();
+  expect(within(screen.getByRole('region', { name: 'Orders' })).getByRole('button', { name: 'Live revenue' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'stored text' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Live revenue' }));
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Live revenue');
+});
+
+test('no (i) icon when the descriptions are empty', () => {
+  const details = new Map(DETAILS);
+  details.set('a', detail('a', 'Orders', [{ ...field('revenue'), description: '  ' }, field('qty'), field('day', 'DATE')]));
+  setup(model(), details, MARTS.map((x) => (x.id === 'a' ? { ...x, description: '' } : x)));
+  expect(document.querySelector('.gy-tip')).toBeNull();
 });

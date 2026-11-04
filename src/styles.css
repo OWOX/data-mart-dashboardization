@@ -346,6 +346,14 @@ h2 { margin: 0; }
 .gy-onto-note { margin: 0; font-weight: 500; }
 .gy-onto-class { display: grid; gap: 0.75rem; }
 .gy-onto-class-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.gy-onto-fold { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.gy-onto-fold:focus-visible, .gy-tip-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); border-radius: 0.25rem; }
+.gy-onto-body { display: grid; gap: 0.75rem; }
+.gy-onto-body[hidden] { display: none; }
+.gy-tip { position: relative; display: inline-flex; align-items: center; }
+.gy-tip-btn { display: inline-grid; place-items: center; padding: 0.125rem; border: 0; background: none; color: var(--muted-foreground); cursor: pointer; }
+.gy-tip-btn:hover { color: var(--foreground); }
+.gy-tip-pop { position: absolute; z-index: 20; top: 100%; left: 0; width: max-content; max-width: 18rem; margin-top: 0.25rem; padding: 0.5rem 0.625rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card); color: var(--foreground); font-size: 0.8125rem; line-height: 1.4; box-shadow: 0 4px 12px rgb(0 0 0 / 0.12); white-space: pre-wrap; }
 .gy-onto-contexts { font-size: 0.8125rem; }
 .gy-onto-metric { display: grid; gap: 0.5rem; padding: 0.75rem 0 0; border-top: 1px solid var(--border); }
 .gy-onto-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }

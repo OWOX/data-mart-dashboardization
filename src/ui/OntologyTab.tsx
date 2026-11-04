@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources';
@@ -47,6 +48,26 @@ export function validateDraft(model: Model): string | null {
   return null;
 }
 
+/** An (i) button that shows a live description on hover, focus and click. */
+function InfoTip({ text }: { text: string }) {
+  const id = useId();
+  const [hover, setHover] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const open = hover || pinned;
+  return (
+    <span className="gy-tip" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <button
+        type="button" className="gy-tip-btn" aria-label={text} aria-describedby={open ? id : undefined}
+        onClick={() => setPinned((v) => !v)} onFocus={() => setHover(true)} onBlur={() => { setHover(false); setPinned(false); }}
+        onKeyDown={(e) => { if (e.key === 'Escape') { setHover(false); setPinned(false); } }}
+      >
+        <Info size={14} aria-hidden="true" />
+      </button>
+      {open && <span role="tooltip" id={id} className="gy-tip-pop">{text}</span>}
+    </span>
+  );
+}
+
 /** Field, aggregation and date field of one source. `noDate` is the date select's empty choice. */
 function Source({ label, detail, status, measure, dateField, noDate, onMeasure, onDate, children }: {
   label: string; detail: MartDetail | undefined; status: DetailStatus; measure: Measure; dateField: string; noDate?: Option;
@@ -55,6 +76,7 @@ function Source({ label, detail, status, measure, dateField, noDate, onMeasure, 
   const infos = martFields(detail?.fields ?? []);
   // a schema that is still loading, or couldn't be read, flags nothing
   const unverified = status === 'loading' || status === 'unreadable';
+  const fieldNote = infos.find((x) => x.path === measure.field)?.field.description?.trim();
   const toOption = (x: { path: string }): Option => ({ value: x.path, label: x.path });
   const pick = (path: string) => {
     const calc = infos.find((x) => x.path === path)?.field.calculated?.level === 'metric';
@@ -63,6 +85,7 @@ function Source({ label, detail, status, measure, dateField, noDate, onMeasure, 
   return (
     <>
       <FieldPicker label={`${label} field`} value={measure.field} options={infos.map(toOption)} unverified={unverified} note={status === 'unreadable' ? "Couldn't read the schema" : undefined} onChange={pick} />
+      {fieldNote && <InfoTip text={fieldNote} />}
       <FieldPicker
         label={`${label} aggregation`} value={measure.fn ?? CALCULATED}
         options={[{ value: CALCULATED, label: 'Calculated' }, ...AGGS.map((a) => ({ value: a, label: a }))]}
@@ -79,7 +102,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
   /** The Data Marts this member can choose from; null when the access check failed, so nothing is verified. */
-  marts: { id: string; title: string }[] | null;
+  marts: { id: string; title: string; description?: string | null }[] | null;
   owox: OwoxLike;
   now: () => Date;
   onSave: (m: Model) => Promise<void>;
@@ -102,6 +125,10 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   const [extra, setExtra] = useState<ReadonlyMap<string, MartDetail | null>>(new Map());
   const requested = useRef(new Set<string>());
   const accessible = useMemo(() => (marts ? new Set(marts.map((m) => m.id)) : null), [marts]);
+  const descriptions = useMemo(() => new Map((marts ?? []).map((m) => [m.id, m.description?.trim() ?? ''])), [marts]);
+  // folded by default; local, never saved
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
+  const toggleOpen = (id: string) => setOpenIds((p) => { const n = new Set(p); if (!n.delete(id)) n.add(id); return n; });
   const original = useMemo(() => new Map(model.metrics.map((m) => [m.id, m])), [model]);
 
   // every Data Mart the draft references gets its schema, from the health check or from a fetch
@@ -126,6 +153,26 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     // gone only when the access list was read and doesn't hold it
     if (accessible && !accessible.has(id)) return { detail, status: 'gone' };
     return { detail, status: extra.get(id) === null ? 'unreadable' : 'loading' };
+  };
+
+  /** References of a class that are verified missing: its Data Mart and the Data Marts and fields of its metrics. */
+  const brokenIn = (c: ClassNode): number => {
+    const bad = (martId: string, paths: string[]): number => {
+      const { detail, status } = detailOf(martId);
+      if (status === 'gone') return 1;
+      if (status !== 'ok' || !detail) return 0;
+      const known = new Set(martFields(detail.fields).map((x) => x.path));
+      return paths.filter((p) => p !== '' && !known.has(p)).length;
+    };
+    let n = detailOf(c.martId).status === 'gone' ? 1 : 0;
+    for (const id of c.metricIds) {
+      const m = draft.metrics.find((x) => x.id === id);
+      if (!m) continue;
+      n += bad(m.martId, [m.measure.field, m.dateField ?? '']);
+      if (m.plan) n += bad(m.plan.martId, [m.plan.measure.field, m.plan.dateField]);
+      if (m.forecast) n += bad(m.forecast.martId, [m.forecast.measure.field, m.forecast.dateField]);
+    }
+    return n;
   };
 
   const patchMetric = (id: string, f: (m: MetricDef) => MetricDef) => setDraft((d) => ({ ...d, metrics: d.metrics.map((m) => (m.id === id ? f(m) : m)) }));
@@ -244,20 +291,32 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         const classMart = detailOf(c.martId);
         const classNote = classMart.status === 'gone' ? 'Data Mart not found or not accessible' : classMart.status === 'unreadable' ? "Couldn't read the schema" : null;
         const metrics = c.metricIds.map((id) => draft.metrics.find((m) => m.id === id)).filter((m): m is MetricDef => !!m);
+        const open = openIds.has(c.id);
+        const bodyId = `gy-onto-body-${c.id}`;
+        const shownCount = metrics.filter((m) => m.shown !== false).length;
+        const broken = brokenIn(c);
+        const martNote = descriptions.get(c.martId);
         return (
           <section key={c.id} className="dm-card gy-onto-class" aria-label={c.title}>
             <div className="gy-onto-class-head">
               <label className="gy-check" title={goal ? 'The goal is always shown' : undefined}>
                 <input
-                  type="checkbox" checked={goal || c.shown !== false} disabled={goal}
+                  type="checkbox" aria-label={c.title} checked={goal || c.shown !== false} disabled={goal}
                   onChange={(e) => patchClass(c.id, (x) => ({ ...x, shown: e.target.checked }))}
                 />
-                <strong>{c.title}</strong>
               </label>
-              {c.contexts.length > 0 && <span className="dm-muted gy-onto-contexts">{c.contexts.map((x) => x.name).join(', ')}</span>}
+              <button type="button" className="gy-onto-fold" aria-expanded={open} aria-controls={bodyId} onClick={() => toggleOpen(c.id)}>
+                {open ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
+                <strong>{c.title}</strong>
+                {c.contexts.length > 0 && <span className="dm-muted gy-onto-contexts">{c.contexts.map((x) => x.name).join(', ')}</span>}
+                <span className="dm-muted gy-onto-contexts">{shownCount} of {metrics.length} metrics shown</span>
+                {broken > 0 && <span className="gy-bad-text">{broken} broken</span>}
+              </button>
+              {martNote && <InfoTip text={martNote} />}
               {classNote && <span className="gy-bad-text">{classNote}</span>}
             </div>
-            {metrics.map((m) => {
+            <div id={bodyId} hidden={!open} className="gy-onto-body">
+            {open && metrics.map((m) => {
               const label = original.get(m.id)?.alias ?? m.alias;
               const plan = m.plan;
               const forecast = m.forecast;
@@ -327,6 +386,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                 </div>
               );
             })}
+            </div>
           </section>
         );
       })}

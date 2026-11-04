@@ -287,7 +287,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   };
   const ontologyDetails = useMemo(() => (health && health.model === model ? health.details : new Map<string, MartDetail>()), [health, model]);
   // null: the access check failed, so the editor verifies nothing
-  const ontologyMarts = useMemo(() => (inputs && inputs.model === model && inputs.data ? inputs.data.marts.map((x) => ({ id: x.id, title: x.title })) : null), [inputs, model]);
+  const ontologyMarts = useMemo(() => (inputs && inputs.model === model && inputs.data ? inputs.data.marts.map((x) => ({ id: x.id, title: x.title, description: x.description })) : null), [inputs, model]);
   // the out-of-date check's hash for a model's classes; null when it can't be told (no contexts, or a transient failure)
   const hashOf = async (m: Model): Promise<string | null> => {
     const data = inputs && inputs.model === model ? inputs.data : null;
