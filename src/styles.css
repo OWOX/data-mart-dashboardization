@@ -367,8 +367,8 @@ h2 { margin: 0; }
 .gy-tip-pop { position: absolute; z-index: 20; top: 100%; left: 0; width: max-content; max-width: 18rem; margin-top: 0.25rem; padding: 0.5rem 0.625rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card); color: var(--foreground); font-size: 0.8125rem; line-height: 1.4; box-shadow: 0 4px 12px rgb(0 0 0 / 0.12); white-space: pre-wrap; }
 .gy-onto-contexts { font-size: 0.8125rem; }
 .gy-onto-check { width: 1rem; height: 1rem; margin: 0; accent-color: var(--primary); }
-/* a scroll box would clip the forecast list and the (i) popovers, so it is used only where the table can't fit */
-@media (max-width: 1100px) { .gy-onto-scroll { overflow-x: auto; } }
+/* the forecast list and the (i) popovers are placed fixed, so this scroll box doesn't clip them */
+.gy-onto-scroll { overflow-x: auto; }
 .gy-onto-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
 .gy-onto-table th, .gy-onto-table td { padding: 0.25rem 0.375rem; text-align: left; vertical-align: middle; white-space: nowrap; }
 .gy-onto-table thead th { font-size: 0.75rem; font-weight: 500; color: var(--muted-foreground); border-bottom: 1px solid var(--border); }

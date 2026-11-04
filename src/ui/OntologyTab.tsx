@@ -6,6 +6,7 @@ import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources
 import { applyChanges, diffModels, type Change } from '../model/diff';
 import type { BuildStep } from '../model/build';
 import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricRole, Model, Measure, PlanDef, PlanShape } from '../types';
+import { useBelow } from './anchor';
 import { Blocked } from './Blocked';
 import { BuildProgress } from './BuildProgress';
 import { RebuildProposal } from './RebuildProposal';
@@ -56,8 +57,10 @@ function InfoTip({ name, text }: { name: string; text: string }) {
   const [focus, setFocus] = useState(false);
   const [pinned, setPinned] = useState(false);
   const open = hover || focus || pinned;
+  const anchor = useRef<HTMLSpanElement>(null);
+  const style = useBelow(anchor, open);
   return (
-    <span className="gy-tip" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <span ref={anchor} className="gy-tip" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <button
         type="button" className="gy-tip-btn" aria-label={`About ${name}`} aria-describedby={id}
         onClick={() => setPinned((v) => !v)} onFocus={() => setFocus(true)} onBlur={() => { setFocus(false); setPinned(false); }}
@@ -65,7 +68,7 @@ function InfoTip({ name, text }: { name: string; text: string }) {
       >
         <Info size={14} aria-hidden="true" />
       </button>
-      <span role="tooltip" id={id} hidden={!open} className="gy-tip-pop">{text}</span>
+      <span role="tooltip" id={id} hidden={!open} className="gy-tip-pop" style={style}>{text}</span>
     </span>
   );
 }

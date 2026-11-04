@@ -401,3 +401,17 @@ test('aliases shared by several fields get the path added', () => {
   expect(within(row('Revenue').getByLabelText('Fact field')).getAllByRole('option').map((o) => o.textContent))
     .toEqual(['Amount (revenue)', 'Amount (qty)', 'day']);
 });
+
+test('Enter on a forecast whose field is not listed changes nothing', async () => {
+  const m = orderedMetric();
+  m.metrics[0] = { ...m.metrics[0]!, forecast: { martId: 'p', measure: { field: 'gone', fn: 'MAX' }, dateField: 'stat_day' } };
+  const { onSave } = setup(m);
+  const box = row('Revenue').getByRole('combobox', { name: 'Forecast source' });
+  fireEvent.keyDown(box, { key: 'ArrowDown' });
+  expect(box).not.toHaveAttribute('aria-activedescendant');
+  fireEvent.keyDown(box, { key: 'Enter' });
+  expect(screen.queryByRole('listbox')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  expect((onSave.mock.calls[0] as unknown as [Model])[0].metrics[0]!.forecast).toEqual(m.metrics[0]!.forecast);
+});

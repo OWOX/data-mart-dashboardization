@@ -1,4 +1,5 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
+import { useBelow } from './anchor';
 import type { Option } from './FieldPicker';
 
 export interface FieldGroup {
@@ -52,7 +53,10 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
   // the order the arrow keys walk: Extrapolated first, then each group's fields
   const flat: Pick[] = [null, ...shown.flatMap((g) => g.options.map((o) => ({ martId: g.martId, field: o.value })))];
   const keys = flat.map(keyOf);
-  const active = Math.max(keys.indexOf(activeKey), 0);
+  // -1: the current choice isn't listed (its schema is loading, or it no longer exists); Enter then changes nothing
+  const active = keys.indexOf(activeKey);
+  const anchor = useRef<HTMLInputElement>(null);
+  const style = useBelow(anchor, open);
   const optId = (i: number) => `${id}-o${i}`;
 
   const show = () => { if (!open) { setOpen(true); setActiveKey(keyOf(martId === null ? null : { martId, field })); onOpen(); } };
@@ -64,9 +68,9 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
   return (
     <span className="gy-combo">
       <input
-        className={`gy-input gy-onto-pick${missing ? ' gy-bad' : ''}`} role="combobox" aria-label="Forecast source"
+        ref={anchor} className={`gy-input gy-onto-pick${missing ? ' gy-bad' : ''}`} role="combobox" aria-label="Forecast source"
         aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-invalid={missing || undefined}
-        aria-activedescendant={open ? optId(active) : undefined} title={missing ? `${current} no longer exists` : undefined}
+        aria-activedescendant={open && active >= 0 ? optId(active) : undefined} title={missing ? `${current} no longer exists` : undefined}
         value={query ?? current} onClick={show} onBlur={close}
         onChange={(e) => {
           show();
@@ -78,13 +82,13 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') { e.preventDefault(); if (open) step(1); else show(); }
           else if (e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
-          else if (e.key === 'Enter' && open) { e.preventDefault(); pick(flat[active] ?? null); }
+          else if (e.key === 'Enter' && open) { e.preventDefault(); if (active >= 0) pick(flat[active] ?? null); else close(); }
           else if (e.key === 'Escape') close();
         }}
       />
       {open && (
         // mousedown would blur the input before the click lands
-        <div id={`${id}-list`} role="listbox" aria-label="Forecast source" className="gy-combo-list" onMouseDown={(e) => e.preventDefault()}>
+        <div id={`${id}-list`} role="listbox" aria-label="Forecast source" className="gy-combo-list" style={style} onMouseDown={(e) => e.preventDefault()}>
           <div id={optId(0)} role="option" aria-selected={martId === null} className={`gy-combo-opt${active === 0 ? ' gy-combo-active' : ''}`} onClick={() => pick(null)}>Extrapolated</div>
           {shown.map((g) => (
             <div key={g.martId} role="group" aria-label={g.title}>
