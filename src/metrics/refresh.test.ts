@@ -23,7 +23,7 @@ test('refresh fills every card and reports progress', async () => {
   expect(doc.anchor).toBe('2026-10-23');
   expect(doc.cards.a!.metrics['a:id:COUNT_DISTINCT']!.fact).toBe(5);
   expect(doc.cards.b).toEqual({ metrics: {}, spark: null });
-  expect(progress).toEqual([1]);
+  expect(progress).toEqual([0, 1]);
   expect(doc.key).toBe('k');
 });
 
