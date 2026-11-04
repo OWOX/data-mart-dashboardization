@@ -1,7 +1,7 @@
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react';
 
 /**
- * A fixed position just below `anchor` while `open`, so a popup escapes the table's scroll box instead of being
+ * A fixed position just below `anchor` (above it near the viewport's bottom) while `open`, so a popup escapes the table's scroll box instead of being
  * clipped by it. It follows the anchor on any scroll or resize.
  */
 export function useBelow(anchor: RefObject<HTMLElement | null>, open: boolean): CSSProperties | undefined {
@@ -10,7 +10,14 @@ export function useBelow(anchor: RefObject<HTMLElement | null>, open: boolean): 
     if (!open) return;
     const place = () => {
       const r = anchor.current?.getBoundingClientRect();
-      if (r) setStyle({ position: 'fixed', top: r.bottom, left: r.left, minWidth: r.width });
+      if (!r) return;
+      // near the bottom of the viewport it opens upward; either way it fits the space it has
+      const below = window.innerHeight - r.bottom;
+      const up = below < 240 && r.top > below;
+      const room = `min(18rem, ${Math.max((up ? r.top : below) - 8, 0)}px)`;
+      setStyle(up
+        ? { position: 'fixed', bottom: window.innerHeight - r.top, left: r.left, minWidth: r.width, maxHeight: room, overflowY: 'auto' }
+        : { position: 'fixed', top: r.bottom, left: r.left, minWidth: r.width, maxHeight: room, overflowY: 'auto' });
     };
     place();
     window.addEventListener('scroll', place, true);

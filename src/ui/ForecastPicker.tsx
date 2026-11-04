@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useBelow } from './anchor';
 import type { Option } from './FieldPicker';
 
@@ -57,6 +57,8 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
   const active = keys.indexOf(activeKey);
   const anchor = useRef<HTMLInputElement>(null);
   const style = useBelow(anchor, open);
+  // the arrow keys keep the highlighted option in view inside the scrolling list
+  useEffect(() => { if (open && active >= 0) document.getElementById(`${id}-o${active}`)?.scrollIntoView?.({ block: 'nearest' }); }, [open, active, id]);
   const optId = (i: number) => `${id}-o${i}`;
 
   const show = () => { if (!open) { setOpen(true); setActiveKey(keyOf(martId === null ? null : { martId, field })); onOpen(); } };
