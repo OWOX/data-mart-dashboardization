@@ -1,3 +1,4 @@
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { Info } from 'lucide-react';
 import type { CardCache, ClassNode, MetricDef } from '../types';
 import { diffPct } from '../lib/stats';
@@ -23,6 +24,32 @@ interface Props {
   absolute?: boolean;
   onToggleDiff?: () => void;
   onRetry: () => void;
+}
+
+const SHOWN = 3;
+
+/** The first three secondary metrics; the rest open in place, scrolling inside the height the card already had. */
+function Badges({ items }: { items: ReactNode[] }) {
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState<number | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const more = items.length - SHOWN;
+  const toggle = () => {
+    const h = ref.current?.offsetHeight ?? 0;
+    setPinned(!open && h > 0 ? h : null);
+    setOpen(!open);
+  };
+  return (
+    <div className="gy-badges" id={id} ref={ref} data-open={open || undefined} style={open && pinned ? { height: pinned } : undefined}>
+      {open || more <= 0 ? items : items.slice(0, SHOWN)}
+      {more > 0 && (
+        <button type="button" className="gy-more" aria-expanded={open} aria-controls={id} onClick={(e) => { e.stopPropagation(); toggle(); }}>
+          {open ? 'Show less' : `Show +${more} more`}
+        </button>
+      )}
+    </div>
+  );
 }
 
 /** The mart's icon, then two lines: the class in grey and the metric under it. */
@@ -154,7 +181,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       <div className="gy-card-body">
         <span className="gy-trend" data-sign={sign}><TrendArrow sign={sign} /></span>
         <span className="num gy-big" title={detail || undefined}>{big}</span>
-        {badges.length > 0 && <div className="gy-badges">{badges}</div>}
+        {badges.length > 0 && <Badges items={badges} />}
       </div>
       {/* An all-time metric has no period to compare against. */}
       {canCompare && (

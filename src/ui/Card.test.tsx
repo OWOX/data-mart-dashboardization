@@ -124,3 +124,29 @@ test('a failed recount (comparison null) shows a dash, never a mismatched diff',
   const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ compareFact: null, comparison: null, diffPct: null })} comparisonOn compareLabel="Previous 10 Days" onToggleDiff={() => {}} refreshing={false} onRetry={() => {}} />);
   expect(container.querySelector('.gy-delta')!.textContent).toBe('—');
 });
+
+const extra = (n: number): MetricDef[] => Array.from({ length: n }, (_, i) => ({ ...uc, id: `m${i}`, alias: `Extra ${i}` }));
+const many = (n: number) => {
+  const ms = extra(n);
+  const c: CardCache = { ...cache(), metrics: { ...cache().metrics, ...Object.fromEntries(ms.map((m) => [m.id, res({ fact: 5, plan: null })])) } };
+  return render(<Card cls={{ ...cls, metricIds: ['arr', ...ms.map((m) => m.id)] }} metrics={[arr, ...ms]} cache={c} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+};
+
+test('more than three secondary metrics collapse behind Show +N more', () => {
+  const { container } = many(5);
+  expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
+  const btn = screen.getByRole('button', { name: 'Show +2 more' });
+  expect(btn.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(btn);
+  expect(container.querySelectorAll('.gy-badge')).toHaveLength(5);
+  const less = screen.getByRole('button', { name: 'Show less' });
+  expect(less.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.click(less);
+  expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
+});
+
+test('three secondary metrics need no button', () => {
+  const { container } = many(3);
+  expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
+  expect(screen.queryByRole('button', { name: /Show/ })).toBeNull();
+});
