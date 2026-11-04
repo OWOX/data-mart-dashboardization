@@ -61,7 +61,8 @@ export async function computeMetric(args: {
       comparison: spec.compareFact && compareFact === null ? null : comparison,
       diffPct: diffPct(spec.compareFact ? compareFact : fact, comparison), plan, forecast,
       forecastApprox: forecast !== null && (measure.fn === 'COUNT_DISTINCT' || measure.fn === null),
-      status: statusOf(forecast ?? fact, plan, thresholdPct),
+      // a range still running is judged by its forecast; without one there is nothing fair to judge yet
+      status: statusOf(spec.endsInFuture ? forecast : fact, plan, thresholdPct),
       trend: trendOf(daily, factWindow ?? historyWindow),
       note, error: null,
     };

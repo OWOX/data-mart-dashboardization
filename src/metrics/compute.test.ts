@@ -113,3 +113,27 @@ test('compareFact whose recount is null gives no diff rather than a mismatched o
   expect(result.comparison).toBeNull();
   expect(result.diffPct).toBeNull();
 });
+
+test('a running range with too little history to forecast is not judged against the whole-range plan', async () => {
+  // only the last 5 days have daily rows, so there is no forecast; the fact to date is far below the quarter's plan
+  const young = fakeOwox({
+    projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+    rows: (id, o) => {
+      const f = o.filter as { value: string }[];
+      const from = f[0]!.value, to = addDays(f[1]!.value, -1);
+      const per = id === 'p' ? 12 : 10;
+      if (o.dateTrunc) {
+        const out = [];
+        for (let d = from; d <= to; d = addDays(d, 1)) if (id === 'p' || d >= '2026-10-19') out.push({ date: d, 'revenue | SUM': String(per) });
+        return out;
+      }
+      return [{ 'revenue | SUM': 50 }];
+    },
+  });
+  const spec = rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
+  const { result } = await computeMetric({ owox: young, metric, spec, thresholdPct: 20, withSpark: false });
+  expect(result.note).toBe('short_history');
+  expect(result.forecast).toBeNull();
+  expect(result.plan).toBe(12 * 92);
+  expect(result.status).toBe('neutral');
+});

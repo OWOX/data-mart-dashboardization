@@ -126,7 +126,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   }, [owox, generate, userId, now, store]);
 
   const visible = useMemo<ReadonlySet<string> | null>(
-    () => (inputs && inputs.model === model && inputs.data ? new Set(inputs.data.marts.map((m) => m.id)) : null),
+    // a failed access check shows nothing rather than everything
+    () => (inputs && inputs.model === model ? new Set(inputs.data?.marts.map((m) => m.id) ?? []) : null),
     [inputs, model],
   );
 
@@ -274,6 +275,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <main className="gy-main">
           <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} status={status} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
+          {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
           {outdated && (
             <div className="gy-banner">
               <span>Descriptions or schemas changed since this model was built.</span>

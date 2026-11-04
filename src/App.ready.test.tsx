@@ -521,3 +521,13 @@ test('a custom range already on screen is not blanked by Settings and Back', asy
   await new Promise((r) => setTimeout(r, 30));
   expect(line()).toBeNull();
 });
+
+test('a failed access check shows no class rather than every class', async () => {
+  const s = await setup({ withCustomers: true });
+  const o = s.deps.owox;
+  const owox = { ...o, dataMarts: { ...o.dataMarts, list: async () => { throw new Error('boom'); } } } as AppDeps['owox'];
+  render(<App ctx={ctxWith().ctx} deps={{ ...s.deps, owox }} />);
+  expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't check which Data Marts you can access");
+  expect(screen.queryByText('Customers', { selector: '.gy-card-title' })).toBeNull();
+  expect(screen.getAllByText("You don't have access to this Data Mart").length).toBeGreaterThan(0);
+});
