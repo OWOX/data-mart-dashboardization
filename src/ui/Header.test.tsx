@@ -55,3 +55,16 @@ test('the windows and the update time sit next to the title', () => {
   rerender(<Header title="Customers" cache={null} now={now} period={{ ...period, comparison: null }} />);
   expect(line.querySelector('.gy-header-sub')!.textContent).toBe('Oct 1 – Nov 2, 2026 · Not loaded yet');
 });
+
+test('the loading step replaces the update time after the period', () => {
+  const win = (from: string, to: string) => ({ from, to });
+  const period = { range: win('2026-10-01', '2026-11-01'), comparison: win('2026-07-01', '2026-08-01') };
+  const cache = { refreshedAt: '2026-10-24T09:00:00Z' } as never;
+  const { rerender } = render(<Header title="T" cache={cache} now={new Date('2026-10-24T10:00:00Z')} period={period} status="Loading metrics 12 of 31" />);
+  const sub = document.querySelector('.gy-header-sub')!;
+  expect(sub).toHaveAttribute('aria-live', 'polite');
+  expect(sub.textContent).toMatch(/ · Loading metrics 12 of 31$/);
+  expect(sub.textContent).not.toMatch(/Updated/);
+  rerender(<Header title="T" cache={cache} now={new Date('2026-10-24T10:00:00Z')} period={period} status={null} />);
+  expect(sub.textContent).toMatch(/ · Updated 1 h ago$/);
+});

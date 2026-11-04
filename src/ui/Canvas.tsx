@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'reac
 import { Network, Target } from 'lucide-react';
 import type { CacheDoc, ClassNode, Model, Status } from '../types';
 import { Card, type MartInfo } from './Card';
-import { Preloader, type PreloaderState } from './Preloader';
+import { LoadingLine, type LoadingProgress } from './LoadingLine';
 import { contextsOf, layoutFor, type Connector } from './layout';
 
 interface Props {
@@ -18,8 +18,8 @@ interface Props {
   compareLabel?: string;
   /** Controls shown at the end of the toolbar, level with the context chips. */
   tools?: ReactNode;
-  /** Covers the bands while the plugin gathers its data. */
-  preloader?: PreloaderState | null;
+  /** Metrics done of total, once known; the line above the bands fills to it. */
+  progress?: LoadingProgress | null;
   onRetry: () => void;
 }
 
@@ -69,7 +69,7 @@ export function curve(a: Box, b: Box): string {
   return `M${x1} ${y1} C${right ? x1 + pull : x1 - pull} ${y1} ${right ? x2 - pull : x2 + pull} ${y2} ${x2} ${y2}`;
 }
 
-export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, marts, compareLabel, tools, preloader = null, onRetry }: Props) {
+export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, marts, compareLabel, tools, progress = null, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const [hover, setHover] = useState<string | null>(null);
@@ -133,7 +133,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         metrics={cls.metricIds.flatMap((id) => metricsById.get(id) ?? [])}
         cache={cache?.cards[cls.id]}
         comparisonOn={comparisonOn}
-        refreshing={refreshing && !preloader}
+        refreshing={refreshing}
         noAccess={!!visibleIds && !visibleIds.has(cls.id)}
         compareLabel={compareLabel}
         absolute={absolute}
@@ -155,7 +155,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         {tools && <div className="gy-toolbar-end">{tools}</div>}
       </div>
       <div className="gy-canvas" ref={ref} data-hover={hover ?? undefined}>
-        {refreshing && !preloader && <div className="gy-progress" role="progressbar" aria-label="Refreshing" />}
+        {refreshing && <LoadingLine progress={progress} />}
         <svg className="gy-wires" aria-hidden="true">
           <defs>
             {/* One marker per line colour: a marker does not inherit the stroke of the path it ends. */}
@@ -177,7 +177,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
             />
           ))}
         </svg>
-        <div className="gy-bands" inert={!!preloader}>
+        <div className="gy-bands">
           <section className="gy-band">
             <header className="gy-band-head">
               <span className="gy-band-icon"><Target size={16} /></span>
@@ -195,7 +195,6 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
               : <p className="gy-muted gy-empty">No class feeds the goal in this filter.</p>}
           </section>
         </div>
-        {preloader && <div className="gy-overlay"><Preloader {...preloader} /></div>}
       </div>
     </div>
   );

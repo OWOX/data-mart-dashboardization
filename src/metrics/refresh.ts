@@ -28,8 +28,10 @@ export const persistable = (range: RangeChoice, compare: CompareChoice): boolean
 export async function refreshCanvas(args: {
   owox: OwoxLike; model: Model; spec: RangeSpec; key: string; thresholdPct: number;
   visibleIds?: ReadonlySet<string> | null; onProgress?: (done: number, total: number) => void;
+  /** Called after each metric with the cards built so far. */
+  onPartial?: (cards: Record<string, CardCache>) => void;
 }): Promise<CacheDoc> {
-  const { owox, model, spec, key, thresholdPct, visibleIds, onProgress } = args;
+  const { owox, model, spec, key, thresholdPct, visibleIds, onProgress, onPartial } = args;
   const classes = model.classes.filter((c) => !visibleIds || visibleIds.has(c.id));
   const byId = new Map(model.metrics.map((m) => [m.id, m]));
   const keyIds = new Set(classes.map((c) => c.keyMetricId).filter((id): id is string => !!id));
@@ -40,20 +42,29 @@ export async function refreshCanvas(args: {
   const sparks = new Map<string, SeriesPack | null>();
   let done = 0;
 
+  // A partial card appears once any of its metrics is done; its spark once the key metric is.
+  const build = (partial: boolean): Record<string, CardCache> => {
+    const cards: Record<string, CardCache> = {};
+    for (const c of classes) {
+      const metrics: Record<string, MetricResult> = {};
+      for (const id of c.metricIds) { const r = results.get(id); if (r) metrics[id] = r; }
+      if (partial && Object.keys(metrics).length === 0) continue;
+      const spark = (c.keyMetricId && sparks.get(c.keyMetricId)) || null;
+      cards[c.id] = { metrics, spark: spark && round(spark) };
+    }
+    return cards;
+  };
+
+  onProgress?.(0, ids.size);
   await runPool([...ids].map((id) => async () => {
     const out = await computeMetric({ owox, metric: byId.get(id)!, spec, thresholdPct, withSpark: keyIds.has(id) });
     results.set(id, out.result);
     sparks.set(id, out.spark);
     onProgress?.(++done, ids.size);
+    onPartial?.(build(true));
   }), 6);
 
-  const cards: Record<string, CardCache> = {};
-  for (const c of classes) {
-    const metrics: Record<string, MetricResult> = {};
-    for (const id of c.metricIds) { const r = results.get(id); if (r) metrics[id] = r; }
-    const spark = (c.keyMetricId && sparks.get(c.keyMetricId)) || null;
-    cards[c.id] = { metrics, spark: spark && round(spark) };
-  }
+  const cards = build(false);
   return trimToSize({
     modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct, anchor: spec.anchor,
     refreshedAt: new Date().toISOString(), key, comparison: spec.comparison !== null, cards,

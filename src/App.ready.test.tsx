@@ -335,58 +335,130 @@ function gated(deps: AppDeps) {
   return { deps: { ...deps, owox }, openList, open };
 }
 
-test('without a cache the preloader walks through its steps and goes away', async () => {
+const line = () => screen.queryByRole('progressbar', { name: 'Loading data' });
+
+test('the initial page is the line with the label under it', async () => {
   const s = await setup({ cache: 'none' });
   const g = gated(s.deps);
   render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  expect(line()).not.toBeNull();
   expect(screen.getByText('Loading settings and model…')).toBeInTheDocument();
-  expect(await screen.findByText('Reading Data Marts…')).toBeInTheDocument();
   g.openList();
-  expect(await screen.findByText('Loading metrics…')).toBeInTheDocument();
   g.open();
-  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
 });
 
-test('a fresh cache shows no preloader', async () => {
+test('without a cache the line and step text walk through the steps and go away', async () => {
+  const s = await setup({ cache: 'none' });
+  const g = gated(s.deps);
+  const { container } = render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  expect(await screen.findByText(/Reading Data Marts…/)).toBeInTheDocument();
+  expect(line()).not.toHaveAttribute('aria-valuenow');
+  g.openList();
+  expect(await screen.findByText(/Loading metrics 0 of \d+/)).toBeInTheDocument();
+  expect(container.querySelector('.gy-overlay')).toBeNull();
+  g.open();
+  await waitFor(() => expect(line()).toBeNull());
+  expect(screen.getByText(/Updated just now/)).toBeInTheDocument();
+});
+
+test('a fresh cache shows no line', async () => {
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await screen.findByText(/Updated 1 h ago/);
-  expect(screen.queryByRole('status')).toBeNull();
+  expect(line()).toBeNull();
 });
 
-test('a stale cache refreshes behind the thin bar, not the overlay', async () => {
+test('a stale cache refreshes behind the line, cards stay interactive', async () => {
   const s = await setup({ cache: 'stale' });
   const g = gated(s.deps);
-  render(<App ctx={ctxWith().ctx} deps={g.deps} />);
+  const { container } = render(<App ctx={ctxWith().ctx} deps={g.deps} />);
   g.openList();
-  await screen.findByRole('progressbar', { name: 'Refreshing' });
-  expect(screen.queryByRole('status')).toBeNull();
+  await waitFor(() => expect(line()).not.toBeNull());
+  expect(container.querySelector('.gy-bands')).not.toHaveAttribute('inert');
   g.open();
-  await waitFor(() => expect(screen.queryByRole('progressbar', { name: 'Refreshing' })).toBeNull());
+  await waitFor(() => expect(line()).toBeNull());
 });
 
-test('the refresh icon shows the overlay', async () => {
+test('the refresh icon shows the line', async () => {
   const s = await setup();
   const g = gated(s.deps);
   g.openList();
   render(<App ctx={ctxWith().ctx} deps={g.deps} />);
   await screen.findByText(/Updated 1 h ago/);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-  expect(await screen.findByText('Loading metrics…')).toBeInTheDocument();
+  expect(await screen.findByText(/Loading metrics 0 of \d+/)).toBeInTheDocument();
+  expect(line()).toHaveAttribute('aria-valuenow', '0');
   g.open();
-  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+  await waitFor(() => expect(line()).toBeNull());
 });
 
-test('the bands are inert while the overlay shows', async () => {
+// traversals of a held mart wait until it is released; the value each mart returns can be changed
+function perMart(deps: AppDeps, initial: Record<string, number>) {
+  const gates = new Map<string, Promise<void>>();
+  const opens = new Map<string, () => void>();
+  const values = { ...initial };
+  const o = deps.owox;
+  const owox = {
+    ...o,
+    dataMarts: {
+      list: o.dataMarts.list,
+      traverseData: async (...a: Parameters<typeof o.dataMarts.traverseData>) => {
+        await gates.get(a[0]);
+        const v = values[a[0]] ?? 1;
+        return { async *rowChunks() { yield [{ 'revenue | SUM': v, 'id | COUNTUNIQUE': v, date: '2026-10-20' }]; } };
+      },
+    },
+  } as AppDeps['owox'];
+  const hold = (id: string) => { gates.set(id, new Promise<void>((r) => opens.set(id, r))); };
+  const release = (id: string) => { opens.get(id)?.(); gates.delete(id); };
+  return { deps: { ...deps, owox }, hold, release, values };
+}
+
+test('a card shows its number before the refresh finishes', async () => {
+  const s = await setup({ cache: 'none', withCustomers: true });
+  const p = perMart(s.deps, { [GID]: 4242, [CID]: 7 });
+  p.hold(CID);
+  const { container } = render(<App ctx={ctxWith().ctx} deps={p.deps} />);
+  await waitFor(() => expect(container.querySelector(`[data-class-id="${GID}"]`)).toHaveTextContent('4.24K'));
+  expect(line()).not.toBeNull();
+  expect(container.querySelector(`[data-class-id="${CID}"]`)).toHaveTextContent('—');
+  p.release(CID);
+  await waitFor(() => expect(line()).toBeNull());
+});
+
+test('old numbers stay until a new one replaces them', async () => {
+  const s = await setup({ cache: 'none', withCustomers: true });
+  const p = perMart(s.deps, { [GID]: 4242, [CID]: 7 });
+  const { container } = render(<App ctx={ctxWith().ctx} deps={p.deps} />);
+  await screen.findByText(/Updated just now/);
+  const card = () => container.querySelector(`[data-class-id="${GID}"]`)!;
+  expect(card()).toHaveTextContent('4.24K');
+  p.values[GID] = 9999;
+  p.hold(GID);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(line()).not.toBeNull());
+  await new Promise((r) => setTimeout(r, 30));
+  expect(card()).toHaveTextContent('4.24K');
+  p.release(GID);
+  await waitFor(() => expect(line()).toBeNull());
+  expect(card()).toHaveTextContent('10K');
+});
+
+test('a superseded refresh does not apply its partials', async () => {
   const s = await setup({ cache: 'none' });
-  const g = gated(s.deps);
-  const { container } = render(<App ctx={ctxWith().ctx} deps={g.deps} />);
-  await screen.findByText('Reading Data Marts…');
-  expect(container.querySelector('.gy-bands')).toHaveAttribute('inert');
-  g.openList();
-  g.open();
-  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-  expect(container.querySelector('.gy-bands')).not.toHaveAttribute('inert');
+  const p = perMart(s.deps, { [GID]: 1111 });
+  p.hold(GID);
+  const { container } = render(<App ctx={ctxWith().ctx} deps={p.deps} />);
+  await waitFor(() => expect(line()).not.toBeNull());
+  fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  p.values[GID] = 2222;
+  p.release(GID);
+  await waitFor(() => expect(line()).toBeNull());
+  const card = container.querySelector(`[data-class-id="${GID}"]`)!;
+  expect(card).toHaveTextContent('2.22K');
+  expect(card).not.toHaveTextContent('1.11K');
 });
 
 test('a custom range already on screen gets no overlay after Settings and Back', async () => {
@@ -406,8 +478,8 @@ test('a custom range already on screen gets no overlay after Settings and Back',
   const again = traversals();
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await screen.findByRole('button', { name: 'Date range' });
-  expect(screen.queryByRole('status')).toBeNull();
+  expect(line()).toBeNull();
   await waitFor(() => expect(traversals()).toBeGreaterThan(again));
   await new Promise((r) => setTimeout(r, 30));
-  expect(screen.queryByRole('status')).toBeNull();
+  expect(line()).toBeNull();
 });

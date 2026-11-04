@@ -127,7 +127,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
     return (
       <article className="gy-card" data-class-id={cls.id} data-status="empty" aria-busy={refreshing}>
         {header}
-        <p className="gy-muted">{refreshing ? 'Loading…' : '—'}</p>
+        <p className="gy-muted">—</p>
       </article>
     );
   }

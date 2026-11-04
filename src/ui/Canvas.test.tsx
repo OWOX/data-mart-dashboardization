@@ -52,11 +52,15 @@ test('bridged connector is dashed', () => {
   expect(lines[0]).toHaveAttribute('data-dashed', 'true');
 });
 
-test('progress bar only while refreshing', () => {
+test('loading line only while refreshing, determinate once the total is known', () => {
   const { container, rerender } = render(<Canvas model={rich} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
-  expect(container.querySelector('.gy-progress')).toBeNull();
+  expect(screen.queryByRole('progressbar')).toBeNull();
   rerender(<Canvas model={rich} cache={null} comparisonOn refreshing onRetry={() => {}} />);
-  expect(container.querySelector('.gy-progress')).not.toBeNull();
+  expect(screen.getByRole('progressbar', { name: 'Loading data' })).not.toHaveAttribute('aria-valuenow');
+  rerender(<Canvas model={rich} cache={null} comparisonOn refreshing progress={{ done: 2, total: 8 }} onRetry={() => {}} />);
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '2');
+  expect(container.querySelector('.gy-bands')).not.toHaveAttribute('inert');
+  expect(container.querySelector('.gy-overlay')).toBeNull();
 });
 
 test('retry on error card calls onRetry', () => {

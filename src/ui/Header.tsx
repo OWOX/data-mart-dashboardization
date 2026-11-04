@@ -19,17 +19,19 @@ interface Props {
   now: Date;
   /** The selected range and, when comparison is on, the window it is compared with. */
   period?: { range: DateWindow; comparison: DateWindow | null };
+  /** The loading step; replaces the update time while it is set. */
+  status?: string | null;
 }
 
-export function Header({ title, cache, now, period }: Props) {
-  const updated = cache ? `Updated ${relativeTime(cache.refreshedAt, now)}` : 'Not loaded yet';
+export function Header({ title, cache, now, period, status = null }: Props) {
+  const updated = status ?? (cache ? `Updated ${relativeTime(cache.refreshedAt, now)}` : 'Not loaded yet');
   const windows = period ? formatPeriod(period.range, period.comparison) : null;
   return (
     <header className="gy-header">
       <div className="label">GYROSCOPE</div>
       <div className="gy-header-line">
         <h1 className="gy-header-title">{title}</h1>
-        <span className="gy-header-sub num">{windows ? `${windows} · ${updated}` : updated}</span>
+        <span className="gy-header-sub num" aria-live="polite">{windows ? `${windows} · ${updated}` : updated}</span>
       </div>
     </header>
   );

@@ -100,3 +100,34 @@ test('cacheKey carries a Sunday week start for week presets only', () => {
   expect(cacheKey(w, off, 'sunday')).toBe('last_week:off:sun');
   expect(cacheKey(q, off, 'sunday')).toBe('this_quarter:off');
 });
+
+test('onPartial reports growing card sets; the spark arrives with the key metric', async () => {
+  const owox = fakeOwox({
+    projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+    rows: (_id, o) => (o.dateTrunc ? [{ date: '2026-10-20', 'id | COUNTUNIQUE': 5 }] : [{ 'id | COUNTUNIQUE': 5 }]),
+  });
+  const metric = (id: string, martId: string) => ({ id, martId, alias: id, measure: { field: 'id', fn: 'COUNT_DISTINCT' as const }, kind: 'flow' as const, dateField: 'date', role: 'unique' as const, source: 'schema', isUniqueCount: true, plan: null });
+  const model: Model = {
+    version: 1, inputHash: 'h1', builtAt: '', builtBy: 'u',
+    goal: { classId: 'a', metricId: null, goalMartId: 'a', viaFallback: false },
+    classes: [
+      { id: 'a', martId: 'a', title: 'A', contexts: [], depth: 0, keyMetricId: 'k', metricIds: ['k', 'x'] },
+      { id: 'b', martId: 'b', title: 'B', contexts: [], depth: 1, keyMetricId: null, metricIds: ['y'] },
+    ],
+    edges: [{ from: 'a', to: 'b' }],
+    metrics: [metric('k', 'a'), metric('x', 'a'), metric('y', 'b')],
+  };
+  const seen: Record<string, import('../types').CardCache>[] = [];
+  await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', thresholdPct: 20, onPartial: (c) => seen.push(structuredClone(c)) });
+  expect(seen).toHaveLength(3);
+  expect(seen.map((c) => Object.keys(c).length)).toEqual([...seen.map((c) => Object.keys(c).length)].sort());
+  expect(Object.keys(seen[2]!).sort()).toEqual(['a', 'b']);
+  const first = seen[0]!;
+  const id = Object.keys(first)[0]!;
+  expect(Object.keys(first[id]!.metrics)).toHaveLength(1);
+  // a card with only its non-key metric done has no spark yet
+  const withoutKey = seen.find((c) => c.a && !c.a.metrics.k);
+  if (withoutKey) expect(withoutKey.a!.spark).toBeNull();
+  const withKey = seen.find((c) => c.a?.metrics.k)!;
+  expect(withKey.a!.spark).not.toBeNull();
+});

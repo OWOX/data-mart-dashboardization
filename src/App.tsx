@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PluginContext } from '@owox/plugin-sdk';
-import type { Blocked as BlockedInfo, CacheDoc, CompareChoice, Model, RangeChoice, Settings } from './types';
+import type { Blocked as BlockedInfo, CacheDoc, CardCache, CompareChoice, Model, RangeChoice, Settings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { compareLabel, resolveRange } from './lib/dates';
 import { describeError } from './lib/errors';
@@ -13,7 +13,7 @@ import {
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { Canvas } from './ui/Canvas';
-import { Preloader } from './ui/Preloader';
+import { LoadingLine } from './ui/LoadingLine';
 import { Header, RangeControls } from './ui/Header';
 import { SettingsPage } from './ui/SettingsPage';
 
@@ -48,6 +48,19 @@ function depsFrom(ctx: PluginContext): AppDeps {
 const rangeOf = (s: Settings): RangeChoice => ({ kind: 'preset', preset: s.defaultPreset });
 const compareOf = (s: Settings): CompareChoice => (s.comparisonDefault ? { kind: 'preset', preset: 'previous_period' } : { kind: 'off' });
 
+/** The previous doc for the key with the new cards laid over it, metric by metric; a spark is replaced once its new one arrives. */
+function mergePartial(base: CacheDoc | null, cards: Record<string, CardCache>, model: Model, anchor: string, thresholdPct: number, key: string, comparison: boolean): CacheDoc {
+  const merged: Record<string, CardCache> = { ...base?.cards };
+  for (const [id, c] of Object.entries(cards)) {
+    const old = base?.cards[id];
+    merged[id] = { metrics: { ...old?.metrics, ...c.metrics }, spark: c.spark ?? old?.spark ?? null };
+  }
+  return {
+    modelHash: model.inputHash, builtAt: model.builtAt, thresholdPct, anchor,
+    refreshedAt: base?.refreshedAt ?? new Date().toISOString(), key, comparison, cards: merged,
+  };
+}
+
 export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDeps }) {
   const [deps] = useState(() => injected ?? depsFrom(ctx));
   const { owox, store, generate, userId, now } = deps;
@@ -59,8 +72,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [compare, setCompare] = useState<CompareChoice>(() => compareOf(DEFAULT_SETTINGS));
   const [cache, setCache] = useState<CacheDoc | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  // overlay: the preloader covers the canvas; progress: metrics done of total, once known
-  const [overlay, setOverlay] = useState(false);
+  // loading: the line and step text show, from the first screen until the refresh ends; progress: metrics done of total, once known
+  const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [outdated, setOutdated] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -94,7 +107,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const build = useCallback(async () => {
     refreshId.current++;
     setRefreshing(false);
-    setOverlay(false);
+    setLoading(false);
     setView({ name: 'building' });
     setOutdated(false);
     try {
@@ -140,16 +153,16 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (!current()) return false;
       if (keep) setCache(saved);
       else setCache((c) => (c?.key === key ? c : null));
-      if (!force && keep && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); setOverlay(false); return true; }
-      // overlay for the refresh icon or when there is nothing cached to show; a stale cache gets the thin bar
-      // a custom range has no saved doc, so judge by the doc on screen
+      if (!force && keep && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); setLoading(false); return true; }
+      // the doc on screen (a custom range has no saved one) keeps its numbers until a new result replaces them
       const shown = keep ? saved : cacheNow.current?.key === key ? cacheNow.current : null;
-      setOverlay(force || !shown);
+      setLoading(true);
       setProgress(null);
       setRefreshing(true);
       const doc = await refreshCanvas({
         owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible,
         onProgress: (done, total) => { if (current()) setProgress({ done, total }); },
+        onPartial: (cards) => { if (current()) setCache(mergePartial(shown, cards, model, spec.anchor, settings.thresholdPct, key, spec.comparison !== null)); },
       });
       if (!current()) return false;
       setCache(doc);
@@ -164,7 +177,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     } catch {
       // cards keep their last cached values
     } finally {
-      if (current()) { setRefreshing(false); setOverlay(false); setProgress(null); }
+      if (current()) { setRefreshing(false); setLoading(false); setProgress(null); }
     }
     return current();
   }, [model, range, compare, owox, store, now, settings.thresholdPct, settings.weekStart, visible]);
@@ -177,7 +190,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     const probe = refreshId.current;
     const probeKey = cacheKey(range, compare, settings.weekStart);
     void (persistable(range, compare) ? loadCache(store, probeKey).catch(() => null) : Promise.resolve(null)).then((saved) => {
-      if (!saved && refreshId.current === probe) setOverlay(true);
+      if (!saved && refreshId.current === probe) setLoading(true);
     });
     fetchInputs(owox).catch(() => null).then((data) => setInputs({ model, data }));
   }, [inReady, model, owox]);
@@ -216,7 +229,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
 
   switch (view.name) {
     case 'loading':
-      return <main className="gy-main"><div className="gy-preloader-page"><Preloader label="Loading settings and model…" /></div></main>;
+      return <main className="gy-main"><LoadingLine /><p className="gy-muted gy-loadnote">Loading settings and model…</p></main>;
     case 'intro':
       return (
         <main className="gy-main">
@@ -252,10 +265,11 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       );
     case 'ready': {
       if (!model) return null;
+      const status = loading || refreshing ? (progress ? `Loading metrics ${progress.done} of ${progress.total}` : 'Reading Data Marts…') : null;
       const main = model.classes.find((c) => c.id === model.goal.classId) ?? model.classes[0];
       return (
         <main className="gy-main">
-          <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} />
+          <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} status={status} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
           {outdated && (
             <div className="gy-banner">
@@ -267,8 +281,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={openSettings} />}
             model={model} cache={cache} visibleIds={visible} marts={marts}
             compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
-            preloader={overlay ? (refreshing && progress ? { label: 'Loading metrics…', ...progress } : { label: refreshing ? 'Loading metrics…' : 'Reading Data Marts…' }) : null}
-            comparisonOn={compare.kind !== 'off'} refreshing={refreshing} onRetry={() => void refresh(true)}
+            progress={progress}
+            comparisonOn={compare.kind !== 'off'} refreshing={refreshing || loading} onRetry={() => void refresh(true)}
           />
         </main>
       );
