@@ -217,3 +217,54 @@ test('a blocked build marks the matching required point failed with the blocked 
   expect(checks.find((c) => c.id === 'project.description')).toMatchObject({ state: 'missing' });
   expect(checks.at(-1)).toMatchObject({ id: 'project.fact', state: 'failed', detail: 'The project description has no Critical number in its metrics table.' });
 });
+
+const ctxData = () => ({ ...data(), contexts: [{ id: 'ctx', name: 'Sales', description: 'Sales team' }] });
+const lastChecks = (steps: BuildStep[]) => {
+  const m = new Map<string, unknown>();
+  for (const s of steps) if (s.kind === 'check') m.set(s.id, s);
+  return m;
+};
+const metric = (o: object) => ({ ref: 'm1', role: 'critical', source: 'project', alias: 'Revenue', factLink: 0, planLink: null, kind: 'flow', planShape: null, factDateField: 'date', planDateField: null, aggregation: null, ...o });
+
+test('project points follow the goal metric, not the first critical project metric', async () => {
+  const steps: BuildStep[] = [];
+  const ai = {
+    goal: { status: 'ok', metricRef: 'm2', note: '' },
+    metrics: [metric({ ref: 'm1', alias: 'Other', factLink: null }), metric({ ref: 'm2' })],
+  };
+  const r = await buildModel({ owox: fakeOwox(data()), generate: async () => ai, userId: 'u1', now, onStep: (s) => steps.push(s) });
+  expect(r.ok).toBe(true);
+  expect(lastChecks(steps).get('project.fact')).toMatchObject({ state: 'done' });
+});
+
+test('forecast is missing when the fact has no date field', async () => {
+  const steps: BuildStep[] = [];
+  const ai = { goal: { status: 'ok', metricRef: 'm1', note: '' }, metrics: [metric({ factDateField: null })] };
+  await buildModel({ owox: fakeOwox(data()), generate: async () => ai, userId: 'u1', now, onStep: (s) => steps.push(s) });
+  expect(lastChecks(steps).get('project.forecast')).toMatchObject({ state: 'missing' });
+});
+
+test('a context with a critical metric gets fact and plan done, and stays pending until the AI answers', async () => {
+  const steps: BuildStep[] = [];
+  const d = ctxData();
+  d.projectDescription += ' [Plan](https://app.owox.com/ui/p/data-marts/11111111-1111-1111-1111-111111111111/data-setup?field=revenue)';
+  const ai = {
+    goal: { status: 'ok', metricRef: 'm1', note: '' },
+    metrics: [metric({}), metric({ ref: 'm2', source: 'ctx', alias: 'Ctx', factLink: 0, planLink: 1 })],
+  };
+  await buildModel({ owox: fakeOwox(d), generate: async () => ai, userId: 'u1', now, onStep: (s) => steps.push(s) });
+  const ctxChecks = steps.flatMap((s) => (s.kind === 'check' && s.id.startsWith('context:ctx.') && s.id !== 'context:ctx.description' ? [s] : []));
+  expect(ctxChecks.map((c) => c.state)).not.toContain('running');
+  const l = lastChecks(steps);
+  expect(l.get('context:ctx.fact')).toMatchObject({ state: 'done' });
+  expect(l.get('context:ctx.plan')).toMatchObject({ state: 'done' });
+});
+
+test('unreadable contexts are reported as failed', async () => {
+  const steps: BuildStep[] = [];
+  const owox = fakeOwox(data());
+  const getJson = owox.getJson.bind(owox);
+  owox.getJson = (async (path: string, ...a: unknown[]) => { if (path === '/api/contexts') throw new Error('403'); return (getJson as (p: string, ...r: unknown[]) => unknown)(path, ...a); }) as typeof owox.getJson;
+  await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now, onStep: (s) => steps.push(s) });
+  expect(steps.find((s) => s.kind === 'contexts')).toMatchObject({ list: [], failed: true });
+});

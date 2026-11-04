@@ -59,7 +59,7 @@ test('an optional missing point shows Not set, a required one shows a red cross 
   expect(mark(screen.getByText("Project description isn't empty"))).toHaveTextContent('✗');
   expect(screen.getByText('The Critical number has no link to a Data Mart field.')).toBeInTheDocument();
   expect(screen.getByText('The project description is empty.')).toBeInTheDocument();
-  expect(mark(screen.getAllByText('Critical number has a plan')[0]!)).toBeEmptyDOMElement();
+  expect(mark(screen.getAllByText('Critical number has a plan')[0]!)).toHaveTextContent('–');
   expect(screen.getAllByText(', failed')).toHaveLength(2);
   expect(screen.getAllByText(', not set')).toHaveLength(2);
   });
@@ -96,4 +96,16 @@ test('the line is indeterminate while the AI reads, and the row flips when it fi
   rerender(<BuildProgress steps={[m, { kind: 'read', what: 'ai', done: 1, total: 1, finished: true }]} />);
   expect(screen.getByRole('progressbar')).toHaveAttribute('data-determinate', 'true');
   expect(screen.getByText('AI read the descriptions')).toBeInTheDocument();
+});
+
+test('unreadable contexts say so instead of No contexts, and the Found heading waits for content', () => {
+  render(<BuildProgress steps={[{ kind: 'contexts', list: [], failed: true }]} />);
+  expect(screen.getByText("Contexts couldn't be read")).toBeInTheDocument();
+  expect(screen.queryByText('No contexts')).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Found' })).toBeNull();
+});
+
+test('a missing optional point shows a dash, distinct from pending', () => {
+  render(<BuildProgress steps={[ck('project.plan', 'missing')]} />);
+  expect(mark(screen.getByText('Critical number has a plan'))).toHaveTextContent('–');
 });

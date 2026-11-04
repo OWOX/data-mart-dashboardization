@@ -32,7 +32,7 @@ function Item({ row, seen, text }: { row: Row; seen: Seen | undefined; text?: st
   const notSet = state === 'missing' && !row.required;
   return (
     <li className="gy-chk" data-state={state} data-bad={bad}>
-      <span className="gy-chk-mark" aria-hidden="true">{state === 'done' ? '✓' : bad ? '✗' : ''}</span>
+      <span className="gy-chk-mark" aria-hidden="true">{state === 'done' ? '✓' : bad ? '✗' : notSet ? '–' : ''}</span>
       <span className="gy-chk-label">{text ?? row.label}</span>
       <span className="gy-chk-tag">{row.required ? 'Required' : 'Optional'}</span>
       {notSet && <span className="gy-chk-note" aria-hidden="true">Not set</span>}
@@ -48,11 +48,12 @@ export function BuildProgress({ steps, embedded = false }: { steps: BuildStep[];
   const latest = new Map<Read['what'], Read>();
   const checks = new Map<CheckId, Seen>();
   let contexts: { id: string; name: string }[] | null = null;
+  let contextsFailed = false;
   let found: Found | null = null;
   let changed: { id: CheckId; state: CheckState } | null = null;
   for (const s of steps) {
     if (s.kind === 'read') latest.set(s.what, s);
-    else if (s.kind === 'contexts') contexts = s.list;
+    else if (s.kind === 'contexts') { contexts = s.list; contextsFailed = !!s.failed; }
     else if (s.kind === 'check') {
       checks.set(s.id, { state: s.state, detail: s.detail });
       if (s.state !== 'pending') changed = { id: s.id, state: s.state };
@@ -89,7 +90,8 @@ export function BuildProgress({ steps, embedded = false }: { steps: BuildStep[];
             {PROJECT_ROWS.map((r) => <Item key={r.id} row={r} seen={checks.get(r.id)} text={labelOf(r)} />)}
           </ul>
           <h2 className="gy-build-h">Contexts</h2>
-          {contexts && contexts.length === 0 && <p className="gy-muted">No contexts</p>}
+          {contextsFailed && <p className="gy-muted">Contexts couldn't be read</p>}
+          {!contextsFailed && contexts && contexts.length === 0 && <p className="gy-muted">No contexts</p>}
           {contexts?.map((c) => (
             <div key={c.id} className="gy-chk-group" role="group" aria-label={c.name}>
               <h3 className="gy-build-sub">{c.name}</h3>
@@ -103,7 +105,7 @@ export function BuildProgress({ steps, embedded = false }: { steps: BuildStep[];
           ))}
         </section>
         <section aria-label="Found" aria-live="polite">
-          <h2 className="gy-build-h">Found</h2>
+          {found && <h2 className="gy-build-h">Found</h2>}
           {found && (
             <ul className="gy-build-list">
               {found.goal && <li>Goal: {found.goal}</li>}

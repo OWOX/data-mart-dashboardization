@@ -27,9 +27,16 @@ export function IssuesLayer({ notices, layerRef, triggerRef, onClose }: {
     const el = layerRef.current;
     const box = el?.offsetParent as HTMLElement | null;
     const btn = triggerRef.current;
-    if (!el || !box || !btn || window.matchMedia?.('(max-width: 640px)').matches) return;
-    const at = btn.getBoundingClientRect().left - box.getBoundingClientRect().left;
-    el.style.left = `${Math.max(0, Math.min(at, box.clientWidth - el.offsetWidth))}px`;
+    if (!el || !box || !btn) return;
+    const place = () => {
+      el.style.left = '';
+      if (window.matchMedia?.('(max-width: 640px)').matches) return;
+      const at = btn.getBoundingClientRect().left - box.getBoundingClientRect().left;
+      el.style.left = `${Math.max(0, Math.min(at, box.clientWidth - el.offsetWidth))}px`;
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
   }, [layerRef, triggerRef]);
 
   return (

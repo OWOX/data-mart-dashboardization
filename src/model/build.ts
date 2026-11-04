@@ -9,7 +9,7 @@ import type { Blendable, Inputs, MartDetail, OwoxLike } from '../owox/sources';
 import { buildEdges, chooseMain, classDepths, hasPrimaryKey } from './graph';
 import type { MartNode } from './graph';
 import { interpret } from './interpret';
-import type { Generate } from './interpret';
+import type { AiMetric, Generate } from './interpret';
 import { uniqueCountMetric, validate } from './validate';
 
 export interface HashMart { id: string; detail: MartDetail; blendable: Blendable }
@@ -69,7 +69,7 @@ const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'GOAL_NOT_CONNECTED', d
 /** What the build is doing, for the progress page. Mart counts run over both detail-loading phases against all visible marts. */
 export type BuildStep =
   | { kind: 'read'; what: 'project' | 'contexts' | 'marts' | 'ai'; done: number; total: number | null; finished: boolean; failed?: boolean }
-  | { kind: 'contexts'; list: { id: string; name: string }[] }
+  | { kind: 'contexts'; list: { id: string; name: string }[]; failed?: boolean }
   | { kind: 'check'; id: CheckId; state: CheckState; detail?: string }
   | { kind: 'found'; goal: string | null; classes: string[]; metrics: number };
 
@@ -104,7 +104,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     throw new Error(`Couldn't read the project description and Data Marts: ${describeError(e)}`);
   }
   step({ kind: 'read', what: 'project', done: 1, total: 1, finished: true });
-  step({ kind: 'contexts', list: inputs.contexts.map((c) => ({ id: c.id, name: c.name })) });
+  step({ kind: 'contexts', list: inputs.contexts.map((c) => ({ id: c.id, name: c.name })), ...(inputs.contextsOk ? {} : { failed: true }) });
   if (hasText(inputs.projectDescription)) check('project.description', 'done');
   else check('project.description', 'missing', 'The project description is empty.');
   for (const c of inputs.contexts) check(`context:${c.id}.description`, hasText(c.description) ? 'done' : 'missing');
@@ -140,7 +140,6 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   step({ kind: 'read', what: 'ai', done: 0, total: null, finished: false });
   check('ai', 'running');
   for (const id of ['project.fact', 'project.plan', 'project.forecast'] as const) check(id, 'running');
-  for (const c of inputs.contexts) for (const p of ['fact', 'plan', 'forecast'] as const) check(`context:${c.id}.${p}`, 'running');
   try {
     ai = await interpret(generate, { projectDescription: inputs.projectDescription, contexts: inputs.contexts, links, dateFields });
   } catch (e) {
@@ -150,8 +149,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   check('ai', 'done');
   // the critical metric of the project and of each context decides its fact, plan and forecast points
   const linkOk = (i: number | null) => { const l = i === null ? undefined : links[i]; return !!l && !l.placeholder && !!l.martId && !!l.field; };
-  const resolve = (source: string, id: (p: 'fact' | 'plan' | 'forecast') => CheckId) => {
-    const m = ai.metrics.find((x) => x.role === 'critical' && x.source === source);
+  const resolve = (m: AiMetric | undefined, id: (p: 'fact' | 'plan' | 'forecast') => CheckId) => {
     const fact = linkOk(m?.factLink ?? null);
     check(id('fact'), fact ? 'done' : 'missing', m ? 'The Critical number has no link to a Data Mart field.' : 'There is no Critical number row.');
     check(id('plan'), linkOk(m?.planLink ?? null) ? 'done' : 'missing');
@@ -159,8 +157,9 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     if (fact && m?.factDateField) check(id('forecast'), 'done', 'Extrapolated from the fact');
     else check(id('forecast'), 'missing');
   };
-  resolve('project', (p) => `project.${p}`);
-  for (const c of inputs.contexts) resolve(c.id, (p) => `context:${c.id}.${p}`);
+  // the project's points follow the goal metric, as validate does; a context's follow its critical metric
+  resolve(ai.metrics.find((m) => m.ref === ai.goal.metricRef), (p) => `project.${p}`);
+  for (const c of inputs.contexts) resolve(ai.metrics.find((x) => x.role === 'critical' && x.source === c.id), (p) => `context:${c.id}.${p}`);
 
   const goalMetric = ai.metrics.find((m) => m.ref === ai.goal.metricRef);
   const gl = goalMetric && goalMetric.factLink !== null ? links[goalMetric.factLink] : undefined;

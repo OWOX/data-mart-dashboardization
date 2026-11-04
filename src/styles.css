@@ -110,6 +110,7 @@ h2 { margin: 0; }
 .gy-chk[data-state='running'] .gy-chk-mark { border-color: var(--primary); animation: gy-chk-pulse 1.2s ease-in-out infinite; }
 @keyframes gy-chk-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .gy-chk[data-state='running'] .gy-chk-mark { animation: none; } }
+.gy-chk[data-state='missing']:not([data-bad='true']) .gy-chk-mark { border-color: transparent; color: var(--muted-foreground); }
 .gy-chk-tag, .gy-chk-note { font-size: 0.6875rem; color: var(--muted-foreground); }
 .gy-chk-tag { border: 1px solid var(--border); border-radius: 0.25rem; padding: 0 0.25rem; }
 .gy-chk-detail { flex-basis: 100%; margin-left: 1.5rem; font-size: 0.75rem; color: var(--destructive, #dc2626); }
