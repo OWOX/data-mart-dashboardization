@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { Info, TriangleAlert } from 'lucide-react';
+import { ExternalLink, Info, TriangleAlert } from 'lucide-react';
 import type { CardCache, ClassNode, MetricDef } from '../types';
 import { diffPct } from '../lib/stats';
 import { formatDeltaFor, formatPct, formatValue } from '../lib/format';
@@ -25,46 +25,57 @@ interface Props {
   /** The diff chip shows an absolute difference instead of a relative one. */
   absolute?: boolean;
   onToggleDiff?: () => void;
+  projectId?: string;
+  /** Opens an OWOX page by path; without it the card has no link to its Data Mart. */
+  onOpen?: (path: string) => void;
   onRetry: () => void;
 }
 
 const SHOWN = 3;
 
-/** The first three secondary metrics; the rest open in place, scrolling inside the height the card already had. */
-function Badges({ items }: { items: ReactNode[] }) {
+/** The first three secondary metrics; the rest open as a panel over whatever is under the card, so the card keeps its height. */
+function Badges({ items, cache, onPick }: { items: MetricDef[]; cache: CardCache | undefined; onPick: (id: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [pinned, setPinned] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
   const id = useId();
-  const more = items.length - SHOWN;
-  const toggle = () => {
-    const h = ref.current?.offsetHeight ?? 0;
-    setPinned(!open && h > 0 ? h : null);
-    setOpen(!open);
-  };
-  // opening scrolls to the first badge that was hidden, so the click visibly shows something new
+  const rest = items.slice(SHOWN);
   useEffect(() => {
-    const list = ref.current;
-    const first = list?.querySelectorAll<HTMLElement>('.gy-badge')[SHOWN];
-    if (open && list && first) list.scrollTop = first.offsetTop - list.offsetTop;
-    else if (list) list.scrollTop = 0;
+    if (!open) return;
+    const down = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); toggle.current?.focus(); } };
+    document.addEventListener('pointerdown', down);
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key); };
   }, [open]);
+  const badge = (m: MetricDef) => (
+    <Badge key={m.id} metric={m} result={cache?.metrics[m.id]} onPick={() => { setOpen(false); onPick(m.id); }} />
+  );
   return (
-    <div className="gy-badges" id={id} ref={ref} data-open={open || undefined} style={open && pinned ? { height: pinned } : undefined}>
-      {open || more <= 0 ? items : items.slice(0, SHOWN)}
-      {more > 0 && (
-        <button type="button" className="gy-more" aria-expanded={open} aria-controls={id} onClick={(e) => { e.stopPropagation(); toggle(); }}>
-          {open ? 'Show less' : `Show +${more} more`}
+    <div className="gy-badges" ref={ref}>
+      {items.slice(0, SHOWN).map(badge)}
+      {rest.length > 0 && (
+        <button ref={toggle} type="button" className="gy-more" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+          {open ? 'Show less' : `Show +${rest.length} more`}
         </button>
       )}
+      {open && rest.length > 0 && <div className="gy-badges-panel" id={id}>{rest.map(badge)}</div>}
     </div>
   );
 }
 
+/** The corner's icons, shown while the card is pointed at or holds focus; more can be passed as children, first in the row. */
+export function CardTools({ children }: { children?: ReactNode }) {
+  return <span className="gy-card-tools">{children}</span>;
+}
+
 /** The mart's icon, then two lines: the class in grey and the metric under it. */
-function CardHead({ title, metric, mart, metrics }: { title: string; metric?: string; mart?: MartInfo; metrics: MetricDef[] }) {
+function CardHead({ title, metric, mart, metrics, openPath, onOpen, tools }: {
+  title: string; metric?: string; mart?: MartInfo; metrics: MetricDef[]; openPath?: string; onOpen?: (path: string) => void; tools?: ReactNode;
+}) {
   const about = mart?.description?.trim() || null;
   const described = metrics.filter((m) => m.description);
+  const link = onOpen && openPath;
   return (
     <header className="gy-card-head">
       <span className="gy-logo"><MartIcon icon={mart?.icon} size={20} /></span>
@@ -72,16 +83,26 @@ function CardHead({ title, metric, mart, metrics }: { title: string; metric?: st
         <span className="gy-card-title">{title}</span>
         {metric && <span className="gy-card-metric">{metric}</span>}
       </span>
-      {(about || described.length > 0) && (
-        <span className="gy-hint" tabIndex={0} aria-label={`About ${title}`}>
-          <Info size={14} />
-          <span className="gy-hint-body" role="tooltip">
-            {about && <span className="gy-hint-about">{about}</span>}
-            {described.map((m) => (
-              <span key={m.id}><b>{m.alias}</b> · {m.description}</span>
-            ))}
-          </span>
-        </span>
+      {(about || described.length > 0 || link || tools) && (
+        <CardTools>
+          {tools}
+          {link && (
+            <button type="button" className="gy-tool" aria-label={`Open ${title} in OWOX`} onClick={() => onOpen(openPath)}>
+              <ExternalLink size={14} />
+            </button>
+          )}
+          {(about || described.length > 0) && (
+            <span className="gy-hint" tabIndex={0} aria-label={`About ${title}`}>
+              <Info size={14} />
+              <span className="gy-hint-body" role="tooltip">
+                {about && <span className="gy-hint-about">{about}</span>}
+                {described.map((m) => (
+                  <span key={m.id}><b>{m.alias}</b> · {m.description}</span>
+                ))}
+              </span>
+            </span>
+          )}
+        </CardTools>
       )}
     </header>
   );
@@ -139,10 +160,19 @@ function TrendArrow({ sign }: { sign: Sign }) {
   );
 }
 
-export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, onRetry }: Props) {
-  const key = metrics.find((m) => m.id === cls.keyMetricId);
+export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', onOpen, onRetry }: Props) {
+  // The metric the reader swapped in for this session, with the secondary order it leaves behind.
+  const [swap, setSwap] = useState<{ main: string; rest: string[] } | null>(null);
+  const home = metrics.find((m) => m.id === cls.keyMetricId);
+  const ids = metrics.map((m) => m.id).sort().join();
+  const swapped = swap && [swap.main, ...swap.rest].sort().join() === ids ? swap : null;
+  const key = swapped ? metrics.find((m) => m.id === swapped.main) : home;
+  const secondary = swapped
+    ? swapped.rest.flatMap((id) => metrics.find((m) => m.id === id) ?? [])
+    : metrics.filter((m) => m.id !== key?.id);
+  const pick = (id: string) => { if (key) setSwap({ main: id, rest: secondary.map((m) => (m.id === id ? key.id : m.id)) }); };
   const res = key ? cache?.metrics[key.id] : undefined;
-  const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} />;
+  const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} />;
 
   if (missing) {
     return (
@@ -188,7 +218,6 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   // a failed query shows no number; the error rides in the tooltip and the card offers a retry
   const warning = res.warning ?? res.error;
   const big = failed ? formatValue(null, key) : fact !== null ? formatValue(fact, key) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${formatValue(res.forecast, key)}` : formatValue(null, key);
-  const badges = metrics.filter((m) => m.id !== key.id).map((m) => <Badge key={m.id} metric={m} result={cache?.metrics[m.id]} />);
   // Plan and forecast stay off the face of the card; the number names them on hover.
   const detail = [
     res.plan !== null ? `Plan ${formatValue(res.plan, key)}` : null,
@@ -203,7 +232,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
         <span className="gy-trend" data-sign={sign}><TrendArrow sign={sign} /></span>
         <span className="num gy-big" title={detail || undefined}>{big}</span>
         {warning && <WarningHint text={warning} />}
-        {badges.length > 0 && <Badges items={badges} />}
+        {secondary.length > 0 && <Badges items={secondary} cache={cache} onPick={pick} />}
       </div>
       {failed && <button type="button" className="gy-link" onClick={onRetry}>Retry</button>}
       {/* An all-time metric has no period to compare against. */}
@@ -218,7 +247,8 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
           {res.note === 'short_history' ? 'Not enough history to forecast' : 'All time'}
         </footer>
       )}
-      {cache?.spark && <Sparkline spark={cache.spark} trend={res.trend} />}
+      {/* Only the class's own key metric has a series. */}
+      {cache?.spark && key.id === home?.id && <Sparkline spark={cache.spark} trend={res.trend} />}
     </article>
   );
 }

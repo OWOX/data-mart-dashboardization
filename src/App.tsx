@@ -370,6 +370,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             model={model} cache={cache} visibleIds={visible} details={detailsNow} missingIds={missingIds} marts={marts}
             compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
             progress={progress}
+            projectId={ctx.projectId}
+            onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}
             comparisonOn={compare.kind !== 'off'} refreshing={refreshing || loading} onRetry={() => void refresh(true)}
           />
         </main>

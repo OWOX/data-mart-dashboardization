@@ -149,40 +149,75 @@ const many = (n: number) => {
   return render(<Card cls={{ ...cls, metricIds: ['arr', ...ms.map((m) => m.id)] }} metrics={[arr, ...ms]} cache={c} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
 };
 
-test('more than three secondary metrics collapse behind Show +N more', () => {
+test('more than three secondary metrics: the rest open in a panel, and Show less, Escape or an outside click close it', () => {
   const { container } = many(5);
+  const card = container.querySelector('.gy-card') as HTMLElement;
   expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
+  expect(container.querySelector('.gy-badges-panel')).toBeNull();
   const btn = screen.getByRole('button', { name: 'Show +2 more' });
   expect(btn.getAttribute('aria-expanded')).toBe('false');
-  expect(btn.getAttribute('aria-controls')).toBe(container.querySelector('.gy-badges')!.id);
   fireEvent.click(btn);
+  const panel = container.querySelector('.gy-badges-panel') as HTMLElement;
+  expect(btn.getAttribute('aria-controls')).toBe(panel.id);
+  expect(card.style.height).toBe('');
+  expect(container.querySelector('.gy-badges')!.getAttribute('style')).toBeNull();
+  // the three beside the number plus the panel are every secondary metric
   expect(container.querySelectorAll('.gy-badge')).toHaveLength(5);
-  const less = screen.getByRole('button', { name: 'Show less' });
-  expect(less.getAttribute('aria-expanded')).toBe('true');
-  fireEvent.click(less);
-  expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
+  expect(panel.querySelectorAll('.gy-badge')).toHaveLength(2);
+  for (let i = 0; i < 5; i++) expect(screen.getByRole('button', { name: `Show Extra ${i}` })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+  expect(container.querySelector('.gy-badges-panel')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Show +2 more' }));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(container.querySelector('.gy-badges-panel')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Show +2 more' }));
+  fireEvent.pointerDown(panel);
+  expect(container.querySelector('.gy-badges-panel')).not.toBeNull();
+  fireEvent.pointerDown(document.body);
+  expect(container.querySelector('.gy-badges-panel')).toBeNull();
 });
 
 test('three secondary metrics need no button', () => {
   const { container } = many(3);
   expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
-  expect(screen.queryByRole('button', { name: /Show/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Show (\+\d+ more|less)$/ })).toBeNull();
 });
 
-test('expanding pins the collapsed height and collapsing releases it', () => {
-  const orig = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
-  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 80 });
-  try {
-    const { container } = many(5);
-    const list = container.querySelector('.gy-badges') as HTMLElement;
-    fireEvent.click(screen.getByRole('button', { name: 'Show +2 more' }));
-    expect(list.style.height).toBe('80px');
-    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
-    expect(list.style.height).toBe('');
-  } finally {
-    if (orig) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', orig);
-    else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
-  }
+test('clicking a secondary metric makes it the main one and the old main takes its place', () => {
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-card-metric')!.textContent).toBe('ARR');
+  fireEvent.click(screen.getByRole('button', { name: 'Show Customers' }));
+  expect(container.querySelector('.gy-card-metric')!.textContent).toBe('Count');
+  expect(container.querySelector('.gy-big')!.textContent).toBe('7.15K');
+  expect(container.querySelector('.gy-card')!.getAttribute('data-status')).toBe('above');
+  expect(container.querySelector('.gy-spark')).toBeNull();
+  const badge = container.querySelector('.gy-badge')!;
+  expect(badge.textContent).toMatch(/^1\.24M ARR/);
+  fireEvent.click(screen.getByRole('button', { name: 'Show ARR' }));
+  expect(container.querySelector('.gy-big')!.textContent).toBe('1.24M');
+  expect(container.querySelector('.gy-spark')).not.toBeNull();
+});
+
+test('a swap keeps the picked metric in the list slot it came from', () => {
+  const { container } = many(3);
+  fireEvent.click(screen.getByRole('button', { name: 'Show Extra 1' }));
+  expect([...container.querySelectorAll('.gy-badge-name')].map((n) => n.textContent)).toEqual(['Extra 0', 'ARR', 'Extra 2']);
+});
+
+test('the external link opens the Data Mart overview; with no onOpen there is none', () => {
+  const onOpen = vi.fn();
+  const { rerender } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} projectId="p1" onOpen={onOpen} onRetry={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Open Customers in OWOX' }));
+  expect(onOpen).toHaveBeenCalledWith('/ui/p1/data-marts/c/overview');
+  rerender(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} projectId="p1" onRetry={() => {}} />);
+  expect(screen.queryByRole('button', { name: /in OWOX/ })).toBeNull();
+});
+
+test('the corner icons sit in one group the stylesheet shows on hover and focus', () => {
+  const { container } = render(<Card cls={cls} mart={{ description: 'About', icon: null }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onOpen={() => {}} onRetry={() => {}} />);
+  const tools = container.querySelector('.gy-card-tools')!;
+  expect(tools.querySelector('.gy-hint')).not.toBeNull();
+  expect(tools.querySelector('[aria-label="Open Customers in OWOX"]')).not.toBeNull();
 });
 
 test('a warning on the key number shows the icon, with the text in the tooltip', () => {

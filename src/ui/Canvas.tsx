@@ -26,6 +26,8 @@ interface Props {
   tools?: ReactNode;
   /** Metrics done of total, once known; the line above the bands fills to it. */
   progress?: LoadingProgress | null;
+  projectId?: string;
+  onOpen?: (path: string) => void;
   onRetry: () => void;
 }
 
@@ -75,7 +77,7 @@ export function curve(a: Box, b: Box): string {
   return `M${x1} ${y1} C${right ? x1 + pull : x1 - pull} ${y1} ${right ? x2 - pull : x2 + pull} ${y2} ${x2} ${y2}`;
 }
 
-export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, details, missingIds, marts, compareLabel, tools, progress = null, onRetry }: Props) {
+export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, details, missingIds, marts, compareLabel, tools, progress = null, projectId, onOpen, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const [hover, setHover] = useState<string | null>(null);
@@ -148,6 +150,8 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         compareLabel={compareLabel}
         absolute={absolute}
         onToggleDiff={() => setAbsolute((a) => !a)}
+        projectId={projectId}
+        onOpen={onOpen}
         onRetry={onRetry}
       />
     </div>
