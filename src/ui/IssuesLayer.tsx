@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 export interface IssueRow { classTitle: string; metricName: string | null; text: string }
 
@@ -22,6 +22,15 @@ export function IssuesLayer({ notices, layerRef, triggerRef, onClose }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => { layerRef.current?.focus(); }, [layerRef]);
+  // opens under the icon, shifted left only as far as it takes to stay inside the header
+  useLayoutEffect(() => {
+    const el = layerRef.current;
+    const box = el?.offsetParent as HTMLElement | null;
+    const btn = triggerRef.current;
+    if (!el || !box || !btn || window.matchMedia?.('(max-width: 640px)').matches) return;
+    const at = btn.getBoundingClientRect().left - box.getBoundingClientRect().left;
+    el.style.left = `${Math.max(0, Math.min(at, box.clientWidth - el.offsetWidth))}px`;
+  }, [layerRef, triggerRef]);
 
   return (
     <div ref={layerRef} className="gy-issues" tabIndex={-1} role="dialog" aria-label="Issues">
