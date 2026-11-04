@@ -16,8 +16,8 @@ export function useBelow(anchor: RefObject<HTMLElement | null>, open: boolean): 
       const up = below < 240 && r.top > below;
       const room = `min(18rem, ${Math.max((up ? r.top : below) - 8, 0)}px)`;
       setStyle(up
-        ? { position: 'fixed', bottom: window.innerHeight - r.top, left: r.left, minWidth: r.width, maxHeight: room, overflowY: 'auto' }
-        : { position: 'fixed', top: r.bottom, left: r.left, minWidth: r.width, maxHeight: room, overflowY: 'auto' });
+        ? { position: 'fixed', top: 'auto', bottom: window.innerHeight - r.top, marginTop: 0, marginBottom: '0.25rem', left: r.left, minWidth: r.width, maxHeight: room, overflowY: 'auto' }
+        : { position: 'fixed', top: r.bottom, bottom: 'auto', left: r.left, minWidth: r.width, maxHeight: room, overflowY: 'auto' });
     };
     place();
     window.addEventListener('scroll', place, true);

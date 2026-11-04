@@ -58,13 +58,15 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
   const anchor = useRef<HTMLInputElement>(null);
   const style = useBelow(anchor, open);
   // the arrow keys keep the highlighted option in view inside the scrolling list
-  useEffect(() => { if (open && active >= 0) document.getElementById(`${id}-o${active}`)?.scrollIntoView?.({ block: 'nearest' }); }, [open, active, id]);
+  // only for the keyboard: scrolling under a hovering pointer would move the next option beneath it
+  const byKeys = useRef(false);
+  useEffect(() => { if (open && active >= 0 && byKeys.current) document.getElementById(`${id}-o${active}`)?.scrollIntoView?.({ block: 'nearest' }); }, [open, active, id]);
   const optId = (i: number) => `${id}-o${i}`;
 
   const show = () => { if (!open) { setOpen(true); setActiveKey(keyOf(martId === null ? null : { martId, field })); onOpen(); } };
   const close = () => { setOpen(false); setQuery(null); };
   const pick = (p: Pick) => { onPick(p); close(); };
-  const step = (d: number) => setActiveKey(keys[Math.min(Math.max(active + d, 0), keys.length - 1)] ?? EXTRAPOLATED);
+  const step = (d: number) => { byKeys.current = true; setActiveKey(keys[Math.min(Math.max(active + d, 0), keys.length - 1)] ?? EXTRAPOLATED); };
 
   let i = 0;
   return (
@@ -103,7 +105,7 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
                   <div
                     key={o.value} id={optId(n)} role="option" aria-selected={martId === g.martId && field === o.value}
                     className={`gy-combo-opt${active === n ? ' gy-combo-active' : ''}`}
-                    onMouseEnter={() => setActiveKey(keys[n] ?? EXTRAPOLATED)} onClick={() => pick({ martId: g.martId, field: o.value })}
+                    onMouseEnter={() => { byKeys.current = false; setActiveKey(keys[n] ?? EXTRAPOLATED); }} onClick={() => pick({ martId: g.martId, field: o.value })}
                   >
                     {o.label}
                   </div>
