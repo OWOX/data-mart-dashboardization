@@ -13,6 +13,8 @@ export interface FieldGroup {
 type Pick = { martId: string; field: string } | null;
 const EXTRAPOLATED = '';
 const keyOf = (p: Pick): string => (p ? `${p.martId}\n${p.field}` : EXTRAPOLATED);
+// matches no option, so a filter with no match leaves nothing highlighted and Enter only closes
+const NONE = '\n';
 
 /**
  * A combobox for the forecast source: "Extrapolated", then fields grouped by Data Mart. Typing filters by field
@@ -81,7 +83,7 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
           setQuery(e.target.value);
           // a filter highlights its first match, so Enter takes it rather than Extrapolated
           const first = filtered(e.target.value).flatMap((g) => g.options.map((o) => ({ martId: g.martId, field: o.value })))[0];
-          setActiveKey(e.target.value.trim() !== '' && first ? keyOf(first) : EXTRAPOLATED);
+          setActiveKey(e.target.value.trim() === '' ? EXTRAPOLATED : first ? keyOf(first) : NONE);
         }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') { e.preventDefault(); if (open) step(1); else show(); }
