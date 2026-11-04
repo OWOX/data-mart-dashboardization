@@ -137,6 +137,7 @@ test('more than three secondary metrics collapse behind Show +N more', () => {
   expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
   const btn = screen.getByRole('button', { name: 'Show +2 more' });
   expect(btn.getAttribute('aria-expanded')).toBe('false');
+  expect(btn.getAttribute('aria-controls')).toBe(container.querySelector('.gy-badges')!.id);
   fireEvent.click(btn);
   expect(container.querySelectorAll('.gy-badge')).toHaveLength(5);
   const less = screen.getByRole('button', { name: 'Show less' });
@@ -149,4 +150,20 @@ test('three secondary metrics need no button', () => {
   const { container } = many(3);
   expect(container.querySelectorAll('.gy-badge')).toHaveLength(3);
   expect(screen.queryByRole('button', { name: /Show/ })).toBeNull();
+});
+
+test('expanding pins the collapsed height and collapsing releases it', () => {
+  const orig = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 80 });
+  try {
+    const { container } = many(5);
+    const list = container.querySelector('.gy-badges') as HTMLElement;
+    fireEvent.click(screen.getByRole('button', { name: 'Show +2 more' }));
+    expect(list.style.height).toBe('80px');
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(list.style.height).toBe('');
+  } finally {
+    if (orig) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', orig);
+    else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
+  }
 });
