@@ -9,7 +9,7 @@ import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, Metri
 import { Blocked } from './Blocked';
 import { BuildProgress } from './BuildProgress';
 import { RebuildProposal } from './RebuildProposal';
-import { AGGS, FieldPicker, dateFields, fieldOption, martFields, valueFields, type Option } from './FieldPicker';
+import { AGGS, FieldPicker, dateFields, fieldOptions, martFields, valueFields, type Option } from './FieldPicker';
 import { ForecastPicker, type FieldGroup } from './ForecastPicker';
 
 const ROLES: MetricRole[] = ['critical', 'leading', 'lagging', 'unique'];
@@ -92,7 +92,7 @@ function Source({ label, detail, status, measure, dateField, noDate, noField = f
       {!noField && (
         <td>
           <span className="gy-onto-cell">
-            <FieldPicker label={`${label} field`} value={measure.field} options={infos.map(fieldOption)} unverified={unverified} note={status === 'unreadable' ? "Couldn't read the schema" : undefined} onChange={pick} />
+            <FieldPicker label={`${label} field`} value={measure.field} options={fieldOptions(infos)} unverified={unverified} note={status === 'unreadable' ? "Couldn't read the schema" : undefined} onChange={pick} />
             {fieldNote && <InfoTip name={measure.field} text={fieldNote} />}
           </span>
         </td>
@@ -104,7 +104,7 @@ function Source({ label, detail, status, measure, dateField, noDate, noField = f
           onChange={(v) => onMeasure({ ...measure, fn: v === CALCULATED ? null : (v as Measure['fn']) })}
         />
       </td>
-      <td><FieldPicker label={`${label} date field`} value={dateField} options={dateFields(infos).map(fieldOption)} none={noDate} unverified={unverified} onChange={onDate} /></td>
+      <td><FieldPicker label={`${label} date field`} value={dateField} options={fieldOptions(dateFields(infos))} none={noDate} unverified={unverified} onChange={onDate} /></td>
       {children ?? <td />}
     </>
   );
@@ -268,7 +268,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   const forecastGroups: FieldGroup[] = martOptions.flatMap((o) => {
     const { detail, status } = detailOf(o.value);
     if (status === 'gone') return [];
-    return [{ martId: o.value, title: o.label, status, options: valueFields(martFields(detail?.fields ?? [])).map(fieldOption) }];
+    return [{ martId: o.value, title: o.label, status, options: fieldOptions(valueFields(martFields(detail?.fields ?? []))) }];
   });
 
   const emptyMeasure = (): Measure => ({ field: '', fn: 'SUM' });
@@ -378,7 +378,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                       />
                     );
                     return (
-                      <tbody key={m.id} role="group" aria-label={`Metric ${label}`} className="gy-onto-metric">
+                      <tbody key={m.id} aria-label={`Metric ${label}`} className="gy-onto-metric">
                         <tr>
                           <td rowSpan={3}><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => toggleMetric(c, m, e.target.checked)} /></td>
                           <td rowSpan={3}>

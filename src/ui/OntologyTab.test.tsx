@@ -33,7 +33,7 @@ function setup(m: Model = model(), details = DETAILS, marts: typeof MARTS | null
   if (open) openAll();
   return { onSave, onCancel };
 }
-const row = (name: string) => within(screen.getByRole('group', { name: `Metric ${name}` }));
+const row = (name: string) => within(screen.getByRole('rowgroup', { name: `Metric ${name}` }));
 
 test('says the changes are the member\'s own, lists the goal first and locks its checkbox', () => {
   setup();
@@ -58,7 +58,7 @@ test('editing name, role, fact, plan and forecast, then Save, writes the doc wit
   fireEvent.change(r.getByLabelText('Plan field'), { target: { value: 'goal' } });
   fireEvent.change(r.getByLabelText('Plan date field'), { target: { value: 'stat_day' } });
   fireEvent.change(r.getByLabelText('Plan shape'), { target: { value: 'cumulative' } });
-  fireEvent.focus(r.getByRole('combobox', { name: 'Forecast source' }));
+  fireEvent.click(r.getByRole('combobox', { name: 'Forecast source' }));
   fireEvent.click(within(r.getByRole('group', { name: 'Targets' })).getByRole('option', { name: 'goal' }));
   fireEvent.change(r.getByLabelText('Forecast aggregation'), { target: { value: 'MAX' } });
   fireEvent.change(r.getByLabelText('Forecast date field'), { target: { value: 'stat_day' } });
@@ -198,15 +198,15 @@ test('class blocks are folded by default and open and close on click', () => {
   setup(model(), DETAILS, MARTS, false);
   const h = header('Orders');
   expect(h).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.queryByRole('group', { name: 'Metric Revenue' })).toBeNull();
+  expect(screen.queryByRole('rowgroup', { name: 'Metric Revenue' })).toBeNull();
   fireEvent.click(h);
   expect(h).toHaveAttribute('aria-expanded', 'true');
   expect(h.getAttribute('aria-controls')).toBe(document.getElementById(h.getAttribute('aria-controls')!)?.id);
-  expect(screen.getByRole('group', { name: 'Metric Revenue' })).toBeInTheDocument();
-  expect(screen.queryByRole('group', { name: 'Metric Customers' })).toBeNull();
+  expect(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).toBeInTheDocument();
+  expect(screen.queryByRole('rowgroup', { name: 'Metric Customers' })).toBeNull();
   fireEvent.click(h);
   expect(h).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.queryByRole('group', { name: 'Metric Revenue' })).toBeNull();
+  expect(screen.queryByRole('rowgroup', { name: 'Metric Revenue' })).toBeNull();
 });
 
 test('the folded header shows the shown count and a broken count, and no input sits inside the button', () => {
@@ -227,7 +227,7 @@ test('draft edits inside a block survive folding and Save', async () => {
   const { onSave } = setup();
   fireEvent.change(row('Revenue').getByLabelText('Name'), { target: { value: 'Sales' } });
   fireEvent.click(header('Orders'));
-  expect(screen.queryByRole('group', { name: 'Metric Revenue' })).toBeNull();
+  expect(screen.queryByRole('rowgroup', { name: 'Metric Revenue' })).toBeNull();
   fireEvent.click(header('Orders'));
   expect((row('Revenue').getByLabelText('Name') as HTMLInputElement).value).toBe('Sales');
   fireEvent.click(header('Orders'));
@@ -358,6 +358,8 @@ test('the forecast list groups fields by Data Mart, reads the schemas it lacks, 
   const box = row('Units').getByRole('combobox', { name: 'Forecast source' });
   expect(box).toHaveValue('Extrapolated');
   fireEvent.focus(box);
+  expect(screen.queryByRole('listbox')).toBeNull();
+  fireEvent.click(box);
   const list = () => screen.getByRole('listbox', { name: 'Forecast source' });
   await waitFor(() => expect(within(within(list()).getByRole('group', { name: 'Targets' })).getByRole('option', { name: 'goal' })).toBeInTheDocument());
   expect(owox.calls.map((c) => c.path)).toContain('/api/data-marts/p');
@@ -366,12 +368,14 @@ test('the forecast list groups fields by Data Mart, reads the schemas it lacks, 
   expect(within(list()).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Orders', 'Customers', 'Targets']);
   fireEvent.change(box, { target: { value: 'targ' } });
   expect(within(list()).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Targets']);
-  fireEvent.keyDown(box, { key: 'ArrowDown' });
+  // a filter highlights its first match
   fireEvent.keyDown(box, { key: 'Enter' });
   expect(screen.queryByRole('listbox')).toBeNull();
   expect(box).toHaveValue('Targets › goal');
   const rev = row('Revenue').getByRole('combobox', { name: 'Forecast source' });
-  fireEvent.focus(rev);
+  fireEvent.click(rev);
+  // the list opens on the current choice
+  expect(rev).toHaveAttribute('aria-activedescendant', within(list()).getByRole('option', { name: 'goal', selected: true }).id);
   fireEvent.click(within(list()).getByRole('option', { name: 'Extrapolated' }));
   expect(rev).toHaveValue('Extrapolated');
   fireEvent.change(row('Units').getByLabelText('Forecast date field'), { target: { value: 'stat_day' } });
@@ -388,4 +392,12 @@ test('a forecast field that no longer exists turns the box red', () => {
   setup(m);
   expect(row('Revenue').getByRole('combobox', { name: 'Forecast source' })).toHaveClass('gy-bad');
   expect(row('Units').getByRole('combobox', { name: 'Forecast source' })).not.toHaveClass('gy-bad');
+});
+
+test('aliases shared by several fields get the path added', () => {
+  const details = new Map(DETAILS);
+  details.set('a', detail('a', 'Orders', [{ ...field('revenue'), alias: 'Amount' }, { ...field('qty'), alias: 'Amount' }, field('day', 'DATE')]));
+  setup(model(), details);
+  expect(within(row('Revenue').getByLabelText('Fact field')).getAllByRole('option').map((o) => o.textContent))
+    .toEqual(['Amount (revenue)', 'Amount (qty)', 'day']);
 });

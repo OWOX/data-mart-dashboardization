@@ -23,8 +23,16 @@ export const valueFields = (infos: FieldInfo[]): FieldInfo[] =>
 
 export interface Option { value: string; label: string }
 
-/** A field as a choice: its alias when it has one, else its path. */
-export const fieldOption = (x: FieldInfo): Option => ({ value: x.path, label: x.field.alias?.trim() || x.path });
+/** Fields as choices: the alias when there is one, else the path; an alias shared by several fields gets the path added. */
+export function fieldOptions(infos: FieldInfo[]): Option[] {
+  const label = (x: FieldInfo) => x.field.alias?.trim() || x.path;
+  const seen = new Map<string, number>();
+  for (const x of infos) seen.set(label(x), (seen.get(label(x)) ?? 0) + 1);
+  return infos.map((x) => {
+    const l = label(x);
+    return { value: x.path, label: (seen.get(l) ?? 0) > 1 && l !== x.path ? `${l} (${x.path})` : l };
+  });
+}
 
 /**
  * A select whose current value may no longer exist: the old value stays as a disabled "(missing)" option and the
