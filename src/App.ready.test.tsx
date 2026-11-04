@@ -500,26 +500,32 @@ test('a superseded refresh does not apply its partials or its final doc', async 
 });
 
 test('a custom range already on screen is not blanked by Settings and Back', async () => {
-  const { deps, traversals } = await setup({ cache: 'none' });
-  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  const s = await setup({ cache: 'none' });
+  const p = perMart(s.deps, { [GID]: 4242 });
+  const { container } = render(<App ctx={ctxWith().ctx} deps={p.deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
   const cal = within(screen.getByRole('group', { name: 'Range calendar' }));
-  fireEvent.click(cal.getByRole('button', { name: 'Monday, October 5, 2026' }));
   fireEvent.click(cal.getByRole('button', { name: 'Monday, October 12, 2026' }));
-  const before = traversals();
+  fireEvent.click(cal.getByRole('button', { name: 'Tuesday, October 20, 2026' }));
+  const before = p.started.count;
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  await waitFor(() => expect(traversals()).toBeGreaterThan(before));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled());
+  await waitFor(() => expect(p.started.count).toBeGreaterThan(before));
+  await waitFor(() => expect(line()).toBeNull());
+  const card = () => container.querySelector(`[data-class-id="${GID}"]`)!;
+  expect(card()).toHaveTextContent('4.24K');
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-  // a new threshold re-runs the refresh for the range on screen
+  // a new threshold re-runs the refresh for the range on screen; hold it to look at the canvas meanwhile
   fireEvent.change(await screen.findByLabelText('Red when below plan by more than (%)'), { target: { value: '30' } });
-  const again = traversals();
+  p.values[GID] = 9999;
+  const openG = p.hold(GID);
+  const again = p.started.count;
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await screen.findByRole('button', { name: 'Date range' });
-  expect(line()).toBeNull();
-  await waitFor(() => expect(traversals()).toBeGreaterThan(again));
-  await new Promise((r) => setTimeout(r, 30));
-  expect(line()).toBeNull();
+  await waitFor(() => expect(p.started.count).toBeGreaterThan(again));
+  expect(card()).toHaveTextContent('4.24K');
+  openG();
+  await waitFor(() => expect(line()).toBeNull());
+  expect(card()).toHaveTextContent('10K');
 });
 
 test('a failed access check shows no class rather than every class', async () => {
