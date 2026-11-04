@@ -37,10 +37,14 @@ export interface QualityBadge { kind: 'passed' | 'issues' | 'failed'; tone: 'ok'
 
 /** The icon a summary earns, or null for every state that shows none. */
 export function qualityBadge(s: QualitySummary): QualityBadge | null {
-  if (s.state === 'PASSED') return { kind: 'passed', tone: 'ok', label: `Data quality: all ${s.enabledChecks} checks passed` };
+  const num = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? n : 0);
+  if (s.state === 'PASSED') {
+    const n = num(s.passedChecks);
+    return { kind: 'passed', tone: 'ok', label: `Data quality: all ${n} ${n === 1 ? 'check' : 'checks'} passed` };
+  }
   if (s.state === 'ISSUES') {
-    const n = s.errorFindings + s.warningFindings;
-    return { kind: 'issues', tone: s.highestSeverity === 'error' ? 'bad' : 'warn', label: `Data quality: ${n} issues` };
+    const n = num(s.failedChecks);
+    return { kind: 'issues', tone: s.highestSeverity === 'error' ? 'bad' : 'warn', label: `Data quality: ${n} ${n === 1 ? 'issue' : 'issues'}` };
   }
   if (s.state === 'EXECUTION_FAILED') return { kind: 'failed', tone: 'bad', label: 'Data quality checks failed to run' };
   return null;

@@ -268,7 +268,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   useEffect(() => {
     if (!inReady || !model || qualityFor.current === model) return;
     qualityFor.current = model;
-    void fetchQuality(owox, [...new Set(model.classes.map((c) => c.martId))]).then((data) => setQuality({ model, data }));
+    void fetchQuality(owox, [...new Set(model.classes.map((c) => c.martId))]).then((data) => { if (qualityFor.current === model) setQuality({ model, data }); });
   }, [inReady, model, owox]);
 
   const inputsReady = inReady && !!inputs && inputs.model === model;

@@ -294,13 +294,21 @@ describe('data quality icon', () => {
   };
 
   test.each([
-    [q({}), 'Data quality: all 5 checks passed', 'ok'],
-    [q({ state: 'ISSUES', warningFindings: 2, errorFindings: 1, highestSeverity: 'error' }), 'Data quality: 3 issues', 'bad'],
-    [q({ state: 'ISSUES', warningFindings: 2, highestSeverity: 'warning' }), 'Data quality: 2 issues', 'warn'],
-    [q({ state: 'EXECUTION_FAILED' }), 'Data quality checks failed to run', 'bad'],
-  ])('%#: name and colour', (summary, name, tone) => {
+    [q({}), 'Data quality: all 5 checks passed', 'ok', 'shield-check'],
+    [q({ passedChecks: 1 }), 'Data quality: all 1 check passed', 'ok', 'shield-check'],
+    [q({ state: 'ISSUES', failedChecks: 3, highestSeverity: 'error' }), 'Data quality: 3 issues', 'bad', 'shield-alert'],
+    [q({ state: 'ISSUES', failedChecks: 1, highestSeverity: 'warning' }), 'Data quality: 1 issue', 'warn', 'shield-alert'],
+    [q({ state: 'EXECUTION_FAILED' }), 'Data quality checks failed to run', 'bad', 'shield-x'],
+  ])('%#: name, colour and icon', (summary, name, tone, icon) => {
     show(summary);
-    expect(screen.getByRole('button', { name }).getAttribute('data-tone')).toBe(tone);
+    const b = screen.getByRole('button', { name });
+    expect(b.getAttribute('data-tone')).toBe(tone);
+    expect(b.querySelector(`.lucide-${icon}`)).not.toBeNull();
+  });
+
+  test('missing counts read as 0, never NaN', () => {
+    show({ state: 'ISSUES' } as QualitySummary);
+    expect(screen.getByRole('button', { name: 'Data quality: 0 issues' })).toBeInTheDocument();
   });
 
   test.each(['NEVER_RUN', 'QUEUED', 'RUNNING', 'RESTRICTED', 'CANCELLED', 'ALL_DISABLED'])('%s shows no icon', (state) => {
