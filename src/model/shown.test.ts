@@ -29,3 +29,13 @@ test('an all-shown model is returned as is', () => {
   const m = model([cl('g', true, ['k'])], [mt('k', true)]);
   expect(shownModel(m)).toBe(m);
 });
+
+test('with live schemas, a metric its field refuses is hidden and the key moves on; the stored flag stays', () => {
+  const m = model([cl('g', true, ['k', 'x'])], [{ ...mt('k', true), measure: { field: 'id', fn: 'COUNT_DISTINCT' } }, mt('x', true)]);
+  const details = new Map([['a', { id: 'a', title: 'A', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: true }, { name: 'x', type: 'FLOAT', isPrimaryKey: false }] }]]);
+  const s = shownModel(m, details);
+  expect(s.classes[0]!.metricIds).toEqual(['x']);
+  expect(s.classes[0]!.keyMetricId).toBe('x');
+  expect(m.metrics[0]!.shown).toBe(true);
+  expect(shownModel(m, new Map()).classes[0]!.metricIds).toEqual(['k', 'x']);
+});

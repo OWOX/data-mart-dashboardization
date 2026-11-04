@@ -4,6 +4,7 @@ import { DATE_TYPES, flattenFields } from '../owox/sources';
 import type { Blendable, MartDetail, SchemaField } from '../owox/sources';
 import { hasPrimaryKey } from './graph';
 import type { AiMetric, AiOutput } from './interpret';
+import { allowsAggregation, fieldAt } from './aggregations';
 
 export interface ValidateInput { ai: AiOutput; links: MartLink[]; details: Map<string, MartDetail>; visible: ReadonlySet<string> }
 export type ValidateResult =
@@ -83,7 +84,7 @@ export function validate(input: ValidateInput): ValidateResult {
     }
 
     const m_: MetricDef = {
-      id: metricId(link.martId, measure), martId: link.martId, alias: m.alias, measure, kind: m.kind,
+      id: metricId(link.martId, measure), martId: link.martId, alias: m.alias, measure, kind: measure.fn === null ? 'flow' : m.kind,
       dateField: m.factDateField, role: m.role, source: m.source, isUniqueCount: false, plan, shown: true, forecast: null,
       calculated: !!hit.field.calculated,
       description: hit.field.description?.trim() || null,
@@ -100,6 +101,9 @@ export function uniqueCountMetric(detail: MartDetail, blendable: Blendable): Met
   if (blendable.mainUniqueCountKeyFields.length !== 1) return null;
   const key = blendable.mainUniqueCountKeyFields[0]!;
   const flat = flattenFields(detail.fields);
+  // a number key can't be COUNT_DISTINCTed through the data endpoint until OWOX/owox-data-marts#1829 lands
+  const keyField = fieldAt(detail, key);
+  if (!keyField || !allowsAggregation(keyField, 'COUNT_DISTINCT')) return null;
   const dates = flat.filter((x) => isDateField(x.field));
   const dateField = (dates.find((x) => x.field.isPrimaryKey) ?? dates.find((x) => /creat|date|time/i.test(x.field.name)) ?? dates[0])?.path ?? null;
   const measure: Measure = { field: key, fn: 'COUNT_DISTINCT' };

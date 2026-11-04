@@ -40,44 +40,16 @@ export async function readRows(owox: OwoxLike, martId: string, options: Record<s
   return rows;
 }
 
-// ODM refuses COUNT_DISTINCT on number fields, and its data endpoint has no Unique Count yet
-// (OWOX/owox-data-marts#1829). A unique-count key is counted with COUNT instead: the same number, since a key is unique per row.
-// Only that key: COUNT on any other field would overstate a distinct count.
-const noDistinct = new Set<string>();
-// the refusal reaches a plugin wrapped by the SDK ("Failed to open … data stream"), with the backend's text on a cause
-function refusesDistinct(e: unknown): boolean {
-  for (let x = e, depth = 0; x && depth < 5; x = (x as { cause?: unknown }).cause, depth++) {
-    const message = (x as { message?: unknown }).message;
-    if (typeof message === 'string' && /not (allowed|permitted)/i.test(message) && /COUNT_DISTINCT/.test(message)) return true;
-  }
-  return false;
+export async function queryTotal(owox: OwoxLike, martId: string, m: Measure, dateField: string | null, w: DateWindow | null): Promise<number | null> {
+  const rows = await readRows(owox, martId, totalOptions(m, dateField, w));
+  return toNumber(rows[0]?.[valueKey(m)]);
 }
 
-/** Reads with `m`, or with COUNT when `m` counts a unique key the mart refuses COUNT_DISTINCT on; returns the measure that answered. */
-async function readMeasure(owox: OwoxLike, martId: string, m: Measure, uniqueKey: boolean, options: (m: Measure) => Record<string, unknown>): Promise<{ rows: Record<string, unknown>[]; used: Measure }> {
-  const fallback = uniqueKey && m.fn === 'COUNT_DISTINCT';
-  const key = `${martId}:${m.field}`;
-  const count: Measure = { field: m.field, fn: 'COUNT' };
-  if (fallback && noDistinct.has(key)) return { rows: await readRows(owox, martId, options(count)), used: count };
-  try {
-    return { rows: await readRows(owox, martId, options(m)), used: m };
-  } catch (e) {
-    if (!fallback || !refusesDistinct(e)) throw e;
-    noDistinct.add(key);
-    return { rows: await readRows(owox, martId, options(count)), used: count };
-  }
-}
-
-export async function queryTotal(owox: OwoxLike, martId: string, m: Measure, dateField: string | null, w: DateWindow | null, uniqueKey = false): Promise<number | null> {
-  const { rows, used } = await readMeasure(owox, martId, m, uniqueKey, (x) => totalOptions(x, dateField, w));
-  return toNumber(rows[0]?.[valueKey(used)]);
-}
-
-export async function queryDaily(owox: OwoxLike, martId: string, m: Measure, dateField: string, w: DateWindow, uniqueKey = false): Promise<Map<Day, number>> {
+export async function queryDaily(owox: OwoxLike, martId: string, m: Measure, dateField: string, w: DateWindow): Promise<Map<Day, number>> {
   const out = new Map<Day, number>();
-  const { rows, used } = await readMeasure(owox, martId, m, uniqueKey, (x) => dailyOptions(x, dateField, w));
+  const rows = await readRows(owox, martId, dailyOptions(m, dateField, w));
   for (const row of rows) {
-    const v = toNumber(row[valueKey(used)]);
+    const v = toNumber(row[valueKey(m)]);
     const d = row[dateField];
     if (v !== null && d != null) out.set(String(d).slice(0, 10), v);
   }

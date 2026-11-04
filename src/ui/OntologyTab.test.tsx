@@ -329,3 +329,11 @@ test('broken count: a gone plan Data Mart is 1; a missing field and a non-date d
   expect(header('Orders')).toHaveTextContent('4 broken');
   expect(header('Customers')).not.toHaveTextContent('broken');
 });
+
+test('a metric its field cannot aggregate is listed with a warning, not hidden', () => {
+  const m = model();
+  m.metrics[1] = { ...m.metrics[1]!, measure: { field: 'qty', fn: 'COUNT_DISTINCT' } };
+  setup(m);
+  expect(row('Units').getByText("OWOX can't compute this aggregation for this field")).toBeTruthy();
+  expect(within(screen.getByRole('group', { name: 'Metric Revenue' })).queryByText("OWOX can't compute this aggregation for this field")).toBeNull();
+});

@@ -43,3 +43,12 @@ test('a malformed forecast source becomes null and the model stays', () => {
   expect(upgradeModel(withForecast(good))!.metrics[0]!.forecast).toEqual(good);
   expect(upgradeModel(withForecast({ ...good, measure: { field: 'v', fn: null } }))!.metrics[0]!.forecast).not.toBeNull();
 });
+
+test('a saved level ratio with a null fn loads as flow, on both versions', () => {
+  const ratio = { ...v1.metrics[0], id: 'a:aov:calc', measure: { field: 'aov', fn: null }, kind: 'level' };
+  const col = { ...v1.metrics[0], id: 'a:arr:SUM', measure: { field: 'arr', fn: 'SUM' }, kind: 'level' };
+  const from1 = upgradeModel({ ...v1, metrics: [ratio, col] })!;
+  expect(from1.metrics.map((m) => m.kind)).toEqual(['flow', 'level']);
+  const from2 = upgradeModel({ ...v2, metrics: [{ ...v2.metrics[0], ...ratio, shown: true, forecast: null }] })!;
+  expect(from2.metrics[0]!.kind).toBe('flow');
+});

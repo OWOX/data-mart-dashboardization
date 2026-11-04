@@ -20,6 +20,9 @@ function shaped(m: Record<string, unknown>): boolean {
     && m.edges.every((e) => isObj(e) && isStr(e.from) && isStr(e.to));
 }
 
+// a metric-level calculated field is a ratio: summing its daily values means nothing, so it is never a level
+const fixKind = (x: Record<string, unknown>): Record<string, unknown> => (isObj(x.measure) && x.measure.fn === null && x.kind !== 'flow' ? { ...x, kind: 'flow' } : x);
+
 /** A v1 doc becomes v2 (everything shown, no forecast source, never edited); a valid v2 doc passes; anything else is null. */
 export function upgradeModel(raw: unknown): Model | null {
   if (!isObj(raw) || !shaped(raw)) return null;
@@ -30,7 +33,7 @@ export function upgradeModel(raw: unknown): Model | null {
       && classes.every((c) => typeof c.shown === 'boolean')
       && metrics.every((x) => typeof x.shown === 'boolean');
     // a malformed forecast source falls back to the extrapolated forecast; the rest of the model stays
-    return ok ? ({ ...raw, metrics: metrics.map((x) => (validForecast(x.forecast) ? x : { ...x, forecast: null })) } as unknown as Model) : null;
+    return ok ? ({ ...raw, metrics: metrics.map((x) => fixKind(validForecast(x.forecast) ? x : { ...x, forecast: null })) } as unknown as Model) : null;
   }
   if (raw.version !== 1) return null;
   return {
@@ -38,6 +41,6 @@ export function upgradeModel(raw: unknown): Model | null {
     version: 2,
     editedAt: null,
     classes: (raw.classes as Record<string, unknown>[]).map((c) => ({ ...c, shown: true })),
-    metrics: (raw.metrics as Record<string, unknown>[]).map((x) => ({ ...x, shown: true, forecast: null })),
+    metrics: (raw.metrics as Record<string, unknown>[]).map((x) => fixKind({ ...x, shown: true, forecast: null })),
   } as unknown as Model;
 }

@@ -221,3 +221,20 @@ describe('broken references', () => {
     expect(doc.cards.a!.metrics.m!.warning).toBe('The plan field x no longer exists in p; Forecast source failed: BOOM');
   });
 });
+
+test('a unique count on an INTEGER key is hidden from the canvas and sends no query', async () => {
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'qty | SUM': 5, date: '2026-10-20' }] });
+  const mt = (id: string, field: string, fn: 'SUM' | 'COUNT_DISTINCT') => ({ id, martId: 'a', alias: id, measure: { field, fn }, kind: 'flow' as const, dateField: 'date', role: 'unique' as const, source: 'schema', isUniqueCount: fn === 'COUNT_DISTINCT', plan: null, shown: true, forecast: null });
+  const model: Model = {
+    version: 2, inputHash: 'h1', builtAt: '', builtBy: 'u', editedAt: null,
+    goal: { classId: 'a', metricId: null, goalMartId: 'a', viaFallback: false },
+    classes: [{ id: 'a', martId: 'a', title: 'A', contexts: [], depth: 0, keyMetricId: 'a:id', metricIds: ['a:id', 'a:qty'], shown: true }],
+    edges: [], metrics: [mt('a:id', 'id', 'COUNT_DISTINCT'), mt('a:qty', 'qty', 'SUM')],
+  };
+  const details = new Map([['a', { id: 'a', title: 'A', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: true }, { name: 'qty', type: 'FLOAT', isPrimaryKey: false }, { name: 'date', type: 'DATE', isPrimaryKey: false }] }]]);
+  const doc = await refreshCanvas({ owox, model, details, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', thresholdPct: 20 });
+  expect(Object.keys(doc.cards.a!.metrics)).toEqual(['a:qty']);
+  const sent = JSON.stringify(owox.calls.filter((c) => c.path.startsWith('traverse:')));
+  expect(sent).not.toContain('COUNT_DISTINCT');
+  expect(model.metrics[0]!.shown).toBe(true);
+});

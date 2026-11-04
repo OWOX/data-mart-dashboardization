@@ -1,6 +1,6 @@
 import type { CacheDoc, CardCache, MetricDef, MetricResult, Model, RangeChoice, RangeSpec, CompareChoice, SeriesPack, WeekStart } from '../types';
 import { runPool } from '../lib/pool';
-import type { OwoxLike } from '../owox/sources';
+import type { MartDetail, OwoxLike } from '../owox/sources';
 import { rangeKey, compareKey } from '../lib/dates';
 import { shownModel } from '../model/shown';
 import { BLOCKING, type Issue } from '../model/health';
@@ -35,12 +35,14 @@ export const persistable = (range: RangeChoice, compare: CompareChoice): boolean
 
 export async function refreshCanvas(args: {
   owox: OwoxLike; model: Model; spec: RangeSpec; key: string; thresholdPct: number;
-  visibleIds?: ReadonlySet<string> | null; issues?: Issue[]; onProgress?: (done: number, total: number) => void;
+  visibleIds?: ReadonlySet<string> | null; issues?: Issue[];
+  /** Live schemas: a metric whose field refuses its aggregation is not queried. */
+  details?: ReadonlyMap<string, MartDetail>; onProgress?: (done: number, total: number) => void;
   /** Called after each metric with the cards built so far. */
   onPartial?: (cards: Record<string, CardCache>) => void;
 }): Promise<CacheDoc> {
-  const { owox, model: full, spec, key, thresholdPct, visibleIds, issues = [], onProgress, onPartial } = args;
-  const model = shownModel(full);
+  const { owox, model: full, spec, key, thresholdPct, visibleIds, issues = [], details, onProgress, onPartial } = args;
+  const model = shownModel(full, details);
   const classes = model.classes.filter((c) => !visibleIds || visibleIds.has(c.id));
   const byId = new Map(model.metrics.map((m) => [m.id, m]));
   const keyIds = new Set(classes.map((c) => c.keyMetricId).filter((id): id is string => !!id));

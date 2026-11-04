@@ -195,6 +195,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   );
 
   const issuesNow = useMemo<Issue[]>(() => (health && health.model === model ? health.issues : []), [health, model]);
+  const detailsNow = useMemo(() => (health && health.model === model ? health.details : undefined), [health, model]);
   const missingIds = useMemo(() => new Set(issuesNow.filter((i) => i.kind === 'mart_missing' && i.metricId === null).map((i) => i.classId)), [issuesNow]);
 
   const refresh = useCallback(async (force: boolean): Promise<boolean> => {
@@ -218,9 +219,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setProgress(null);
       setRefreshing(true);
       const doc = await refreshCanvas({
-        owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible, issues: issuesNow,
+        owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible, issues: issuesNow, details: detailsNow,
         onProgress: (done, total) => { if (current()) setProgress({ done, total }); },
-        onPartial: (cards) => { if (current()) setCache(mergePartial(shown, cards, shownModel(model), spec.anchor, settings.thresholdPct, key, spec.comparison !== null)); },
+        onPartial: (cards) => { if (current()) setCache(mergePartial(shown, cards, shownModel(model, detailsNow), spec.anchor, settings.thresholdPct, key, spec.comparison !== null)); },
       });
       if (!current()) return false;
       setCache(doc);
@@ -238,7 +239,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (current()) { setRefreshing(false); setLoading(false); setProgress(null); }
     }
     return current();
-  }, [model, range, compare, owox, store, now, settings.thresholdPct, settings.weekStart, visible, issuesNow]);
+  }, [model, range, compare, owox, store, now, settings.thresholdPct, settings.weekStart, visible, issuesNow, detailsNow]);
 
   const inReady = view.name === 'ready';
   // the Ontology Model page needs the Data Mart list and schemas too, and a reload can land on it
@@ -366,7 +367,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
           <Canvas
             tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}
-            model={model} cache={cache} visibleIds={visible} missingIds={missingIds} marts={marts}
+            model={model} cache={cache} visibleIds={visible} details={detailsNow} missingIds={missingIds} marts={marts}
             compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
             progress={progress}
             comparisonOn={compare.kind !== 'off'} refreshing={refreshing || loading} onRetry={() => void refresh(true)}

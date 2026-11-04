@@ -1,4 +1,5 @@
 import { uniqueCountMetric, validate } from './validate';
+import { allowsAggregation } from './aggregations';
 import type { AiOutput } from './interpret';
 
 const arrMart = { id: 'm1', title: 'ARR Daily', fields: [
@@ -75,4 +76,47 @@ test('metric on a hidden fact mart is dropped without mismatch', () => {
   out.metrics.push({ ...out.metrics[0]!, ref: 'm2', role: 'leading', factLink: 1 });
   const r = validate({ ai: out, links: l, details, visible });
   expect(r.ok && r.metrics).toHaveLength(1);
+});
+
+test('an INTEGER primary key gives no unique-count metric; a STRING key does', () => {
+  const mart = (type: string) => ({ id: 'c', title: 'Customers', fields: [{ name: 'id', type, isPrimaryKey: true, isHiddenForReporting: true }, { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false }] });
+  const b = { availableSources: [], mainUniqueCountKeyFields: ['id'] };
+  expect(uniqueCountMetric(mart('INTEGER'), b)).toBeNull();
+  expect(uniqueCountMetric(mart('STRING'), b)).toMatchObject({ measure: { field: 'id', fn: 'COUNT_DISTINCT' } });
+});
+
+describe('a metric-level calculated field is a flow', () => {
+  const calc = { id: 'm1', title: 'ARR Daily', fields: [
+    { name: 'date', type: 'DATE', isPrimaryKey: true },
+    { name: 'aov', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'a / b', level: 'metric' as const } },
+    { name: 'arr', type: 'FLOAT', isPrimaryKey: false },
+  ] };
+  const run = (field: string, over = {}) => validate({
+    ai: ai({ kind: 'level', planLink: 2, planDateField: 'date', planShape: 'level', ...over }),
+    links: [{ ...links[0]!, field }, links[1]!, { index: 2, source: 'project', text: 'P', url: 'u2', martId: 'm1', field, placeholder: false }],
+    details: new Map([['m1', calc]]), visible,
+  });
+  test('the AI says level, the plan keeps its shape, the kind comes out flow', () => {
+    const r = run('aov');
+    expect(r.ok && r.metrics[0]).toMatchObject({ measure: { field: 'aov', fn: null }, kind: 'flow', plan: { shape: 'level' } });
+  });
+  test('a stored column the AI marks level stays level', () => {
+    const r = run('arr');
+    expect(r.ok && r.metrics[0]).toMatchObject({ measure: { field: 'arr', fn: 'SUM' }, kind: 'level' });
+  });
+});
+
+test('allowsAggregation: explicit list wins, else the OWOX default of the type', () => {
+  const f = (type: string, allowedAggregations?: string[]) => ({ name: 'x', type, isPrimaryKey: false, allowedAggregations });
+  expect(allowsAggregation(f('INTEGER'), 'SUM')).toBe(true);
+  expect(allowsAggregation(f('INTEGER'), 'COUNT_DISTINCT')).toBe(false);
+  expect(allowsAggregation(f('INTEGER', ['COUNT_DISTINCT']), 'COUNT_DISTINCT')).toBe(true);
+  expect(allowsAggregation(f('STRING'), 'COUNT_DISTINCT')).toBe(true);
+  expect(allowsAggregation(f('STRING'), 'SUM')).toBe(false);
+  expect(allowsAggregation(f('BOOLEAN'), 'COUNT')).toBe(true);
+  expect(allowsAggregation(f('DATE'), 'MAX')).toBe(true);
+  expect(allowsAggregation(f('DATE'), 'SUM')).toBe(false);
+  expect(allowsAggregation(f('NUMERIC(10,2)'), 'AVG')).toBe(true);
+  expect(allowsAggregation({ ...f('FLOAT'), calculated: { formula: 'a/b', level: 'metric' } }, null)).toBe(true);
+  expect(allowsAggregation(f('FLOAT'), null)).toBe(false);
 });

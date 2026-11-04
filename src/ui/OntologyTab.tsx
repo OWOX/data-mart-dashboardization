@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources';
+import { uncomputable } from '../model/aggregations';
 import { applyChanges, diffModels, type Change } from '../model/diff';
 import type { BuildStep } from '../model/build';
 import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricRole, Model, Measure, PlanDef, PlanShape } from '../types';
@@ -341,6 +342,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                       {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </div>
+                  {uncomputable(m, detailOf(m.martId).detail) && <p className="gy-bad-text gy-form-note">OWOX can&apos;t compute this aggregation for this field</p>}
                   <div className="gy-onto-line">
                     <span className="gy-onto-label">Fact</span>
                     <Source
