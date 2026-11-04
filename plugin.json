@@ -1,23 +1,13 @@
 {
-  "name": "Data Mart Dashboards",
-  "description": "Create and save interactive dashboards for OWOX Data Marts.",
-  "delivery": {
-    "type": "remote",
-    "url": "https://owox.github.io/data-mart-dashboardization/odm-plugin/"
-  },
+  "name": "Gyroscope",
+  "description": "Shows the CEO whether the company is on track for its goal, class by class, against plan.",
+  "delivery": { "type": "remote", "url": "https://owox.github.io/gyroscope/v3/" },
+  "credentials": [{ "id": "ai", "models": ["reasoning"] }],
   "collections": [
-    {
-      "name": "dashboards",
-      "scope": "project",
-      "entityBinding": {
-        "type": "data-mart",
-        "actions": {
-          "read": "SEE",
-          "create": "SEE",
-          "update": "SEE",
-          "delete": "SEE"
-        }
-      }
-    }
+    { "name": "model", "scope": "project" },
+    { "name": "ontology", "scope": "member" },
+    { "name": "cache", "scope": "member" },
+    { "name": "settings", "scope": "project" },
+    { "name": "preferences", "scope": "member" }
   ]
 }

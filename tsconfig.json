@@ -1,18 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "strict": true,
+    "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "noEmit": true,
-    "types": ["vitest/globals", "@testing-library/jest-dom", "node"],
-    "baseUrl": ".",
-    // The mock mirrors the SDK's current plugin/collections contract and keeps local development
-    // independent of a host iframe. Production builds resolve the installed package in Vite.
-    "paths": { "@owox/plugin-sdk": ["./ui/sdk-mock"] }
+    "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["ui", "src"]
+  "include": ["src", "vite.config.ts"]
 }

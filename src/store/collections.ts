@@ -1,0 +1,86 @@
+import { upgradeModel } from '../model/upgrade';
+import { toDay } from '../lib/dates';
+import { DEFAULT_SETTINGS, PRESET_LABELS, type CacheDoc, type CompareChoice, type ComparePreset, type DateWindow, type Day, type RangeChoice, type Model, type Preset, type Settings } from '../types';
+
+export interface CollectionsLike {
+  collections<T>(name: string): {
+    get(id: string): Promise<{ document: T } | null>;
+    put(id: string, doc: T): Promise<unknown>;
+  };
+}
+
+export async function loadOntology(ctx: CollectionsLike): Promise<Model | null> {
+  return upgradeModel((await ctx.collections<unknown>('ontology').get('current'))?.document);
+}
+export const saveOntology = async (ctx: CollectionsLike, m: Model): Promise<void> => { await ctx.collections<Model>('ontology').put('current', m); };
+/** The old project-wide model: read-only, only a source for a member's first ontology. */
+export async function loadProjectModel(ctx: CollectionsLike): Promise<Model | null> {
+  return upgradeModel((await ctx.collections<unknown>('model').get('current'))?.document);
+}
+
+export async function loadSettings(ctx: CollectionsLike): Promise<Settings> {
+  const raw = ((await ctx.collections<Partial<Settings>>('settings').get('project'))?.document ?? {}) as Record<string, unknown>;
+  const d = DEFAULT_SETTINGS;
+  const t = raw.thresholdPct;
+  return {
+    thresholdPct: typeof t === 'number' && Number.isFinite(t) ? Math.min(100, Math.max(1, t)) : d.thresholdPct,
+    defaultPreset: typeof raw.defaultPreset === 'string' && Object.hasOwn(PRESET_LABELS, raw.defaultPreset) ? (raw.defaultPreset as Preset) : d.defaultPreset,
+    comparisonDefault: typeof raw.comparisonDefault === 'boolean' ? raw.comparisonDefault : d.comparisonDefault,
+    weekStart: raw.weekStart === 'monday' || raw.weekStart === 'sunday' ? raw.weekStart : d.weekStart,
+  };
+}
+export const saveSettings = async (ctx: CollectionsLike, s: Settings): Promise<void> => { await ctx.collections<Settings>('settings').put('project', s); };
+
+const COMPARE_PRESETS: readonly ComparePreset[] = ['previous_period', 'preceding_days', 'year_before'];
+const isDay = (v: unknown): v is Day => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && toDay(Date.parse(`${v}T00:00:00Z`)) === v;
+function windowOf(v: unknown): DateWindow | null {
+  const w = (v ?? {}) as Record<string, unknown>;
+  return isDay(w.from) && isDay(w.to) && w.from <= w.to ? { from: w.from, to: w.to } : null;
+}
+function rangeOf(v: unknown): RangeChoice | null {
+  const r = (v ?? {}) as Record<string, unknown>;
+  if (r.kind === 'preset') return typeof r.preset === 'string' && Object.hasOwn(PRESET_LABELS, r.preset) ? { kind: 'preset', preset: r.preset as Preset } : null;
+  const window = r.kind === 'custom' ? windowOf(r.window) : null;
+  return window ? { kind: 'custom', window } : null;
+}
+function compareOf(v: unknown): CompareChoice | null {
+  const c = (v ?? {}) as Record<string, unknown>;
+  if (c.kind === 'off') return { kind: 'off' };
+  if (c.kind === 'preset') return COMPARE_PRESETS.includes(c.preset as ComparePreset) ? { kind: 'preset', preset: c.preset as ComparePreset } : null;
+  const window = c.kind === 'custom' ? windowOf(c.window) : null;
+  return window ? { kind: 'custom', window } : null;
+}
+
+export interface Preferences { range: RangeChoice | null; compare: CompareChoice | null }
+/** The member's last applied choice; a part that fails validation is null and falls back to the settings default. */
+export async function loadPreferences(ctx: CollectionsLike): Promise<Preferences | null> {
+  const raw = (await ctx.collections<Record<string, unknown>>('preferences').get('current'))?.document;
+  if (!raw || typeof raw !== 'object') return null;
+  const range = rangeOf(raw.range);
+  const compare = compareOf(raw.compare);
+  return range || compare ? { range, compare } : null;
+}
+export const savePreferences = async (ctx: CollectionsLike, p: { range: RangeChoice; compare: CompareChoice }): Promise<void> => { await ctx.collections<unknown>('preferences').put('current', p); };
+
+export async function loadCache(ctx: CollectionsLike, key: string): Promise<CacheDoc | null> {
+  return (await ctx.collections<CacheDoc>('cache').get(key))?.document ?? null;
+}
+export const saveCache = async (ctx: CollectionsLike, key: string, doc: CacheDoc): Promise<void> => { await ctx.collections<CacheDoc>('cache').put(key, doc); };
+
+/** The model version is builtAt + editedAt: every content change sets one of them; inputHash can move alone and doesn't touch the numbers. */
+export const isStale = (doc: CacheDoc | null, model: Model, anchor: Day, thresholdPct: number): boolean =>
+  !doc || doc.anchor !== anchor || doc.builtAt !== model.builtAt || (doc.editedAt ?? null) !== model.editedAt || doc.thresholdPct !== thresholdPct;
+
+export function memoryCollections(): CollectionsLike {
+  const store = new Map<string, Map<string, unknown>>();
+  return {
+    collections<T>(name: string) {
+      const col = store.get(name) ?? new Map<string, unknown>();
+      store.set(name, col);
+      return {
+        get: async (id: string) => (col.has(id) ? { document: col.get(id) as T } : null),
+        put: async (id: string, doc: T) => { col.set(id, doc); },
+      };
+    },
+  };
+}
