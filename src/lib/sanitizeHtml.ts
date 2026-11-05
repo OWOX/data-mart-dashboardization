@@ -24,10 +24,11 @@ function clean(node: Element): void {
         || ((tag === 'th' || tag === 'td') && (n === 'colspan' || n === 'rowspan' || n === 'align'));
       if (!ok) el.removeAttribute(a.name);
     }
+    if (tag === 'a') { el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener noreferrer'); }
   }
 }
 
-/** Defense in depth for HTML from OWOX's sanitizing endpoint: only the allowlisted elements and attributes survive. */
+/** Defense in depth for HTML from OWOX's sanitizing endpoint: only the allowlisted elements and attributes survive; links open in a new tab. */
 export function sanitizeHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   clean(doc.body);

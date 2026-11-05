@@ -27,3 +27,20 @@ export function extractLinks(markdown: string | null | undefined, source: 'proje
   }
   return out;
 }
+
+/** Hosts that serve the OWOX app: owox.com and its subdomains, plus the page this plugin is framed in (a self-hosted install). */
+export const owoxHosts = (ancestors: readonly string[] = []): string[] =>
+  ancestors.flatMap((o) => { try { return [new URL(o).host]; } catch { return []; } });
+
+/**
+ * The app path a link points at (/ui/...), when it is a page of the OWOX app, so the host can open
+ * it in place; null for any other link.
+ */
+export function owoxPath(href: string, hosts: readonly string[]): string | null {
+  let url: URL;
+  try { url = new URL(href, 'https://relative.invalid'); } catch { return null; }
+  const relative = url.host === 'relative.invalid' && href.startsWith('/');
+  const owox = /^https?:$/.test(url.protocol) && (url.hostname === 'owox.com' || url.hostname.endsWith('.owox.com') || hosts.includes(url.host));
+  if (!relative && !owox) return null;
+  return url.pathname.startsWith('/ui/') ? `${url.pathname}${url.search}${url.hash}` : null;
+}

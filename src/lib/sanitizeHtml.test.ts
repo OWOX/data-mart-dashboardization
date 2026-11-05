@@ -9,11 +9,11 @@ test('scripts, handlers and dangerous markup are neutralised', () => {
   expect(d.querySelector('p')!.textContent).toBe('hi');
 });
 
-test('unsafe hrefs lose the attribute, safe ones stay', () => {
+test('unsafe hrefs lose the attribute, safe ones stay and open in a new tab', () => {
   const d = out('<a href="javascript:alert(1)">a</a><a href=" JaVaScRiPt:alert(1)">b</a><a href="java&#9;script:alert(1)">c</a><a href="data:text/html,x">d</a><a href="vbscript:x">e</a><a href="https://x.test/p">f</a><a href="mailto:a@b.c">g</a><a href="/ui/p">h</a>');
   const links = [...d.querySelectorAll('a')];
   expect(links.map((a) => a.getAttribute('href'))).toEqual([null, null, null, null, null, 'https://x.test/p', 'mailto:a@b.c', '/ui/p']);
-  for (const a of links) expect(a.hasAttribute('target')).toBe(false);
+  for (const a of links) { expect(a.getAttribute('target')).toBe('_blank'); expect(a.getAttribute('rel')).toBe('noopener noreferrer'); }
 });
 
 test('tables, lists, headings and unknown wrappers survive as content', () => {
