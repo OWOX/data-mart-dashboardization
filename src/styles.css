@@ -416,7 +416,7 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-onto-cell { display: flex; align-items: center; gap: 0.25rem; }
 .gy-onto-name { display: block; width: 8.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
 .gy-onto-stack { display: flex; flex-direction: column; align-items: stretch; gap: 0.25rem; }
-.gy-onto-stack .gy-select { width: 6.5rem; }
+.gy-onto-format { width: 6.5rem; }
 .gy-onto-cur { width: 4.5rem; text-transform: uppercase; }
 .gy-onto-shape { width: 6rem; }
 .gy-onto-pick { min-width: 6.5rem; width: 100%; }

@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { Select } from './Select';
 import { DATE_TYPES, type SchemaField } from '../owox/sources';
 import type { AggFn } from '../types';
 
@@ -35,8 +36,8 @@ export function fieldOptions(infos: FieldInfo[]): Option[] {
 }
 
 /**
- * A select whose current value may no longer exist: the old value stays as a disabled "(missing)" option and the
- * select turns red. While the schema is still loading the value is kept as it is, unflagged.
+ * A dropdown whose current value may no longer exist: the old value stays as a disabled "(missing)" option and the
+ * dropdown turns red. While the schema is still loading the value is kept as it is, unflagged.
  */
 export function FieldPicker({ label, value, options, none, unverified = false, note, onChange }: {
   label: string; value: string; options: Option[]; none?: Option; onChange: (v: string) => void;
@@ -52,15 +53,15 @@ export function FieldPicker({ label, value, options, none, unverified = false, n
   const text = missing ? `${value} no longer exists` : note;
   return (
     <>
-      <select
-        className={`gy-select gy-onto-pick${missing ? ' gy-bad' : ''}`} aria-label={label} aria-invalid={missing || undefined}
-        aria-describedby={text ? hint : undefined} title={text}
-        value={value} onChange={(e) => onChange(e.target.value)}
-      >
-        {none ? <option value={none.value}>{none.label}</option> : value === '' && <option value="" disabled>Select…</option>}
-        {!known && !empty && (unverified ? <option value={value}>{value}</option> : <option value={value} disabled>{value} (missing)</option>)}
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
+      <Select
+        className={`gy-onto-pick${missing ? ' gy-bad' : ''}`} label={label} invalid={missing}
+        describedBy={text ? hint : undefined} title={text} value={value} onChange={onChange}
+        options={[
+          ...(none ? [none] : value === '' ? [{ value: '', label: 'Select…', disabled: true }] : []),
+          ...(!known && !empty ? [unverified ? { value, label: value } : { value, label: `${value} (missing)`, disabled: true }] : []),
+          ...options,
+        ]}
+      />
       {text && <span id={hint} className={missing ? 'gy-sr' : 'gy-bad-text'}>{text}</span>}
     </>
   );

@@ -36,19 +36,30 @@ function setup(m: Model = model(), details = DETAILS, marts: typeof MARTS | null
   return { onSave, onCancel };
 }
 const order = () => screen.getAllByRole('rowgroup', { name: /^Metric / }).map((g) => g.getAttribute('aria-label')).slice(0, 2);
+// a dropdown's options, read by opening and closing it
+const optionsOf = (box: HTMLElement): HTMLElement[] => {
+  fireEvent.click(box);
+  const opts = within(document.getElementById(box.getAttribute('aria-controls')!)!).getAllByRole('option');
+  fireEvent.keyDown(box, { key: 'Escape' });
+  return opts;
+};
+const choose = (box: HTMLElement, value: string) => {
+  fireEvent.click(box);
+  fireEvent.click(document.getElementById(box.getAttribute('aria-controls')!)!.querySelector(`[data-value="${value}"]`)!);
+};
 const row = (name: string) => within(screen.getByRole('rowgroup', { name: `Metric ${name}` }));
 
 test('the Format select saves, and a currency code input appears for Currency', async () => {
   const { onSave } = setup();
   const r = row('Units');
-  expect(r.getByLabelText('Format')).toHaveValue('number');
+  expect(r.getByLabelText('Format')).toHaveAttribute('data-value', 'number');
   expect(r.queryByLabelText('Currency code')).toBeNull();
-  fireEvent.change(r.getByLabelText('Format'), { target: { value: 'currency' } });
+  choose(r.getByLabelText('Format'), 'currency');
   fireEvent.change(r.getByLabelText('Currency code'), { target: { value: 'eur' } });
   fireEvent.change(r.getByLabelText('Currency code'), { target: { value: '' } });
   expect(r.getByLabelText('Currency code')).toHaveValue('');
   fireEvent.change(r.getByLabelText('Currency code'), { target: { value: 'eur' } });
-  fireEvent.change(row('Revenue').getByLabelText('Format'), { target: { value: 'percent' } });
+  choose(row('Revenue').getByLabelText('Format'), 'percent');
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
   const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
@@ -70,17 +81,17 @@ test('says the changes are the member\'s own, lists the goal first and locks its
 test('editing fact, plan and forecast, then Save, writes the doc with editedAt', async () => {
   const { onSave } = setup();
   const r = row('Units');
-  fireEvent.change(r.getByLabelText('Fact field'), { target: { value: 'revenue' } });
-  fireEvent.change(r.getByLabelText('Fact aggregation'), { target: { value: 'AVG' } });
-  fireEvent.change(r.getByLabelText('Fact date field'), { target: { value: '' } });
-  fireEvent.change(r.getByLabelText('Plan data mart'), { target: { value: 'p' } });
-  fireEvent.change(r.getByLabelText('Plan field'), { target: { value: 'goal' } });
-  fireEvent.change(r.getByLabelText('Plan date field'), { target: { value: 'stat_day' } });
-  fireEvent.change(r.getByLabelText('Plan shape'), { target: { value: 'cumulative' } });
+  choose(r.getByLabelText('Fact field'), 'revenue');
+  choose(r.getByLabelText('Fact aggregation'), 'AVG');
+  choose(r.getByLabelText('Fact date field'), '');
+  choose(r.getByLabelText('Plan data mart'), 'p');
+  choose(r.getByLabelText('Plan field'), 'goal');
+  choose(r.getByLabelText('Plan date field'), 'stat_day');
+  choose(r.getByLabelText('Plan shape'), 'cumulative');
   fireEvent.click(r.getByRole('combobox', { name: 'Forecast source' }));
   fireEvent.click(within(r.getByRole('group', { name: 'Targets' })).getByRole('option', { name: 'goal' }));
-  fireEvent.change(r.getByLabelText('Forecast aggregation'), { target: { value: 'MAX' } });
-  fireEvent.change(r.getByLabelText('Forecast date field'), { target: { value: 'stat_day' } });
+  choose(r.getByLabelText('Forecast aggregation'), 'MAX');
+  choose(r.getByLabelText('Forecast date field'), 'stat_day');
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
   const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
@@ -95,13 +106,13 @@ test('editing fact, plan and forecast, then Save, writes the doc with editedAt',
 
 test('the date pickers offer only date fields', () => {
   setup();
-  const opts = within(row('Revenue').getByLabelText('Fact date field')).getAllByRole('option').map((o) => o.textContent);
+  const opts = optionsOf(row('Revenue').getByLabelText('Fact date field')).map((o) => o.textContent);
   expect(opts).toEqual(['No date (all time)', 'day']);
 });
 
 test('Cancel writes nothing', () => {
   const { onSave, onCancel } = setup();
-  fireEvent.change(row('Revenue').getByLabelText('Format'), { target: { value: 'percent' } });
+  choose(row('Revenue').getByLabelText('Format'), 'percent');
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(onCancel).toHaveBeenCalled();
   expect(onSave).not.toHaveBeenCalled();
@@ -184,7 +195,7 @@ test('a drag that is cancelled changes nothing', () => {
 
 test('an empty name or a plan without a field stops the save', async () => {
   const { onSave } = setup();
-  fireEvent.change(row('Revenue').getByLabelText('Plan data mart'), { target: { value: 'p' } });
+  choose(row('Revenue').getByLabelText('Plan data mart'), 'p');
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('The plan of Revenue needs a field and a date field');
   expect(onSave).not.toHaveBeenCalled();
@@ -194,10 +205,10 @@ test('a missing field is flagged red and the old value kept', () => {
   const details = new Map(DETAILS);
   details.set('a', detail('a', 'Orders', [named('qty', 'Units'), field('day', 'DATE')]));
   setup(model(), details);
-  const pick = row('Revenue').getByLabelText('Fact field') as HTMLSelectElement;
-  expect(pick.value).toBe('revenue');
+  const pick = row('Revenue').getByLabelText('Fact field');
+  expect(pick).toHaveAttribute('data-value', 'revenue');
   expect(pick).toHaveClass('gy-bad');
-  expect(within(pick).getByRole('option', { name: 'revenue (missing)' })).toBeDisabled();
+  expect(optionsOf(pick).find((o) => o.textContent === 'revenue (missing)')).toHaveAttribute('aria-disabled', 'true');
   expect(row('Units').getByLabelText('Fact field')).not.toHaveClass('gy-bad');
 });
 
@@ -207,7 +218,7 @@ test('a Data Mart that is gone is flagged on the plan select and on the class', 
   setup(m, DETAILS, MARTS);
   const plan = row('Revenue').getByLabelText('Plan data mart');
   expect(plan).toHaveClass('gy-bad');
-  expect(within(plan).getByRole('option', { name: 'gone (missing)' })).toBeDisabled();
+  expect(optionsOf(plan).find((o) => o.textContent === 'gone (missing)')).toHaveAttribute('aria-disabled', 'true');
 });
 
 test('a Data Mart picked from the list has its schema fetched', async () => {
@@ -216,8 +227,8 @@ test('a Data Mart picked from the list has its schema fetched', async () => {
   const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
   render(<OntologyTab model={model()} details={details} marts={MARTS} owox={owox} now={() => new Date()} onSave={async () => undefined} onCancel={() => {}} />);
   openAll();
-  fireEvent.change(row('Revenue').getByLabelText('Plan data mart'), { target: { value: 'p' } });
-  await waitFor(() => expect(within(row('Revenue').getByLabelText('Plan field')).getByRole('option', { name: 'goal' })).toBeInTheDocument());
+  choose(row('Revenue').getByLabelText('Plan data mart'), 'p');
+  await waitFor(() => expect(optionsOf(row('Revenue').getByLabelText('Plan field')).map((o) => o.textContent)).toContain('goal'));
   expect(owox.calls.map((c) => c.path)).toContain('/api/data-marts/p');
 });
 
@@ -227,11 +238,11 @@ test('a failed access check flags nothing, keeps values, and says so once', () =
   setup(m, DETAILS, null);
   expect(screen.getAllByText("Couldn't check which Data Marts you can access; references aren't verified.")).toHaveLength(1);
   expect(document.querySelectorAll('.gy-bad')).toHaveLength(0);
-  const plan = row('Revenue').getByLabelText('Plan data mart') as HTMLSelectElement;
-  expect(plan.value).toBe('gone');
+  const plan = row('Revenue').getByLabelText('Plan data mart');
+  expect(plan).toHaveAttribute('data-value', 'gone');
   // only the Data Marts the model already uses are offered
-  expect(within(plan).getAllByRole('option').map((o) => o.getAttribute('value')).sort()).toEqual(['', 'a', 'c', 'gone']);
-  expect((row('Revenue').getByLabelText('Fact field') as HTMLSelectElement).value).toBe('revenue');
+  expect(optionsOf(plan).map((o) => o.getAttribute('data-value')).sort()).toEqual(['', 'a', 'c', 'gone']);
+  expect(row('Revenue').getByLabelText('Fact field')).toHaveAttribute('data-value', 'revenue');
 });
 
 test('a schema that fails to load says so instead of flagging missing', async () => {
@@ -305,11 +316,11 @@ test('the folded header shows the shown count and a broken count, and no input s
 
 test('draft edits inside a block survive folding and Save', async () => {
   const { onSave } = setup();
-  fireEvent.change(row('Revenue').getByLabelText('Format'), { target: { value: 'percent' } });
+  choose(row('Revenue').getByLabelText('Format'), 'percent');
   fireEvent.click(header('Orders'));
   expect(screen.queryByRole('rowgroup', { name: 'Metric Revenue' })).toBeNull();
   fireEvent.click(header('Orders'));
-  expect(row('Revenue').getByLabelText('Format')).toHaveValue('percent');
+  expect(row('Revenue').getByLabelText('Format')).toHaveAttribute('data-value', 'percent');
   fireEvent.click(header('Orders'));
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(onSave).toHaveBeenCalled());
@@ -430,9 +441,9 @@ test('the field lists show aliases and keep the field path as the value', () => 
   const details = new Map(DETAILS);
   details.set('a', detail('a', 'Orders', [named('revenue', 'Net revenue'), named('qty', 'Units'), field('day', 'DATE')]));
   setup(model(), details);
-  const pick = row('Net revenue').getByLabelText('Fact field') as HTMLSelectElement;
-  expect(within(pick).getAllByRole('option').map((o) => o.textContent)).toEqual(['Net revenue', 'Units', 'day']);
-  expect(pick.value).toBe('revenue');
+  const pick = row('Net revenue').getByLabelText('Fact field');
+  expect(optionsOf(pick).map((o) => o.textContent)).toEqual(['Net revenue', 'Units', 'day']);
+  expect(pick).toHaveAttribute('data-value', 'revenue');
 });
 
 test('each class lists its metrics as a table, one row per series', () => {
@@ -474,7 +485,7 @@ test('the forecast list groups fields by Data Mart, reads the schemas it lacks, 
   expect(rev).toHaveAttribute('aria-activedescendant', within(list()).getByRole('option', { name: 'goal', selected: true }).id);
   fireEvent.click(within(list()).getByRole('option', { name: 'Extrapolated' }));
   expect(rev).toHaveValue('Extrapolated');
-  fireEvent.change(row('Units').getByLabelText('Forecast date field'), { target: { value: 'stat_day' } });
+  choose(row('Units').getByLabelText('Forecast date field'), 'stat_day');
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(onSave).toHaveBeenCalled());
   const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
@@ -494,7 +505,7 @@ test('aliases shared by several fields get the path added', () => {
   const details = new Map(DETAILS);
   details.set('a', detail('a', 'Orders', [named('revenue', 'Revenue'), named('qty', 'Units'), named('x', 'Amount'), named('y', 'Amount'), field('day', 'DATE')]));
   setup(model(), details);
-  expect(within(row('Revenue').getByLabelText('Fact field')).getAllByRole('option').map((o) => o.textContent))
+  expect(optionsOf(row('Revenue').getByLabelText('Fact field')).map((o) => o.textContent))
     .toEqual(['Revenue', 'Units', 'Amount (x)', 'Amount (y)', 'day']);
 });
 

@@ -16,6 +16,7 @@ import { BuildProgress } from './BuildProgress';
 import { RebuildProposal } from './RebuildProposal';
 import { AGGS, FieldPicker, dateFields, fieldOptions, martFields, valueFields, type Option } from './FieldPicker';
 import { ForecastPicker, type FieldGroup } from './ForecastPicker';
+import { Select } from './Select';
 
 const FORMATS: { value: MetricFormat; label: string }[] = [{ value: 'number', label: 'Number' }, { value: 'percent', label: 'Percent' }, { value: 'currency', label: 'Currency' }];
 const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
@@ -448,12 +449,10 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                       <tbody key={m.id} aria-label={`Metric ${label}`} data-metric-id={m.id} className={`gy-onto-metric${dragging?.id === m.id ? ' is-dragging' : ''}${dropMark === m.id ? ' is-drop-before' : ''}${dropEnd === m.id ? ' is-drop-end' : ''}`}>
                         <tr>
                           <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, shown: e.target.checked }))} /></span></td>
-                          <td rowSpan={3}><span className="gy-onto-name" title={label}>{label}</span></td>
+                          <td rowSpan={3}><span className="gy-onto-first"><span className="gy-onto-name" title={label}>{label}</span></span></td>
                           <td rowSpan={3}>
                             <span className="gy-onto-stack">
-                              <select className="gy-select" aria-label="Format" value={m.format} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, format: e.target.value as MetricFormat, currency: e.target.value === 'currency' ? x.currency : null }))}>
-                                {FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-                              </select>
+                              <Select className="gy-onto-format" label="Format" value={m.format} options={FORMATS} onChange={(v) => patchMetric(m.id, (x) => ({ ...x, format: v as MetricFormat, currency: v === 'currency' ? x.currency : null }))} />
                               {m.format === 'currency' && (
                                 <input
                                   className="gy-input gy-onto-cur" aria-label="Currency code" placeholder="USD" maxLength={3} value={m.currency ?? ''}
@@ -508,9 +507,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                               onDate={(dateField) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, dateField } } : x))}
                             >
                               <td>
-                                <select className="gy-select gy-onto-shape" aria-label="Plan shape" value={plan.shape} onChange={(e) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, shape: e.target.value as PlanShape } } : x))}>
-                                  {SHAPES.map((s) => <option key={s} value={s}>{s}</option>)}
-                                </select>
+                                <Select className="gy-onto-shape" label="Plan shape" value={plan.shape} options={SHAPES.map((s) => ({ value: s, label: s }))} onChange={(v) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, shape: v as PlanShape } } : x))} />
                               </td>
                             </Source>
                           ) : <td colSpan={4} />}
