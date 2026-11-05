@@ -12,7 +12,7 @@
     "serve": "npm run build && vite preview"
   },
   "dependencies": {
-    "@owox/plugin-sdk": "0.39.0",
+    "@owox/plugin-sdk": "0.42.0",
     "ai": "^7.0.153",
     "lucide-react": "^1.61.0",
     "react": "^19.0.0",

@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { PRESET_GROUPS, PRESET_LABELS, type BuildResult, type Model, type Preset, type Settings, type WeekStart } from '../types';
 import type { MartDetail, OwoxLike } from '../owox/sources';
 import type { BuildStep } from '../model/build';
-import { LoadingLine } from './LoadingLine';
+import { LoadingBar } from './LoadingBar';
 import { OntologyTab } from './OntologyTab';
 import { CheckupTab, type CheckupProps } from './CheckupTab';
 
@@ -73,7 +73,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
           {ontology
             ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} />
             : noModel ? <p className="dm-muted gy-form-note">No model yet. It's built when you go back to the canvas.</p>
-            : <><LoadingLine /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
+            : <><LoadingBar /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
         </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-checkup" aria-labelledby="gy-tab-checkup" hidden={tab !== 'checkup'}>
           {tab === 'checkup' && checkup && <CheckupTab {...checkup} onOpen={onOpen} onOpenTab={(t) => go(t)} />}

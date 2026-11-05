@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '../test-host';
 import { Canvas } from './Canvas';
 import type { Model } from '../types';
 
@@ -58,7 +58,7 @@ test('loading line only while refreshing, determinate once the total is known', 
   rerender(<Canvas model={rich} cache={null} comparisonOn refreshing onRetry={() => {}} />);
   expect(screen.getByRole('progressbar', { name: 'Loading data' })).not.toHaveAttribute('aria-valuenow');
   rerender(<Canvas model={rich} cache={null} comparisonOn refreshing progress={{ done: 2, total: 8 }} onRetry={() => {}} />);
-  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '2');
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
   expect(container.querySelector('.gy-bands')).not.toHaveAttribute('inert');
   expect(container.querySelector('.gy-overlay')).toBeNull();
 });

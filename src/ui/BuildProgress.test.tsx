@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '../test-host';
 import { BuildProgress } from './BuildProgress';
 import type { BuildStep, CheckId, CheckState } from '../model/build';
 
@@ -38,7 +38,7 @@ test('the marts point counts up and ticks do not reach the live region', () => {
   const read = (done: number): BuildStep => ({ kind: 'read', what: 'marts', done, total: 12, finished: false });
   const { container, rerender } = render(<BuildProgress steps={[ck('marts', 'running'), read(3)]} />);
   expect(screen.getByText('Data Marts read: 3 of 12')).toBeInTheDocument();
-  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '3');
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
   const live = () => container.querySelector('section[aria-label="Checklist"] [aria-live]')!.textContent;
   expect(live()).toBe('Data Marts read: in progress');
   rerender(<BuildProgress steps={[ck('marts', 'running'), read(3), read(4)]} />);

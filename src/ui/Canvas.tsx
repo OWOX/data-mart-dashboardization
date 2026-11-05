@@ -6,7 +6,7 @@ import type { QualitySummary } from '../owox/quality';
 import type { MarkdownHtml } from '../lib/markdown';
 import { shownModel } from '../model/shown';
 import { Card, type MartInfo } from './Card';
-import { LoadingLine, type LoadingProgress } from './LoadingLine';
+import { LoadingBar, type LoadingProgress } from './LoadingBar';
 import { contextsOf, layoutFor, type Connector } from './layout';
 
 interface Props {
@@ -178,7 +178,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         {tools && <div className="gy-toolbar-end">{tools}</div>}
       </div>
       <div className="gy-canvas" ref={ref} data-hover={hover ?? undefined}>
-        {refreshing && <LoadingLine progress={progress} />}
+        {refreshing && <LoadingBar progress={progress} />}
         <svg className="gy-wires" aria-hidden="true">
           <defs>
             {/* One marker per line colour: a marker does not inherit the stroke of the path it ends. */}

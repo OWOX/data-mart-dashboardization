@@ -90,12 +90,7 @@ h2 { margin: 0; }
 .gy-canvas[data-hover] .gy-wires path { opacity: 0.15; }
 .gy-canvas[data-hover] .gy-wires path.lit { opacity: 1; }
 
-/* --- loading line ------------------------------------------------------- */
-.gy-loadline { position: relative; height: 2px; width: 100%; overflow: hidden; background: var(--border); border-radius: 1px; }
-.gy-canvas > .gy-loadline { position: absolute; z-index: 6; top: -0.5rem; left: 0; }
-.gy-loadline > span { display: block; height: 100%; background: var(--primary); transition: width 0.2s; }
-.gy-loadline[data-determinate='false']::after { content: ''; position: absolute; inset-block: 0; width: 40%; background: var(--primary); animation: gy-slide 1.1s infinite; }
-@keyframes gy-slide { from { left: -40%; } to { left: 100%; } }
+/* --- loading notes and build checklist ----------------------------------- */
 .gy-loadnote { margin: 0.5rem 0 0; font-size: 0.75rem; }
 .gy-build { display: grid; gap: 1.5rem; margin-top: 1.5rem; }
 .gy-build-h { margin: 0 0 0.5rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-foreground); }
@@ -131,10 +126,6 @@ h2 { margin: 0; }
 .gy-chk[data-state='skip'] .gy-chk-mark { border-color: transparent; color: var(--muted-foreground); }
 .gy-chk[data-state='warn'] .gy-chk-detail { color: var(--orange); }
 .gy-chk[data-state='ok'] .gy-chk-detail, .gy-chk[data-state='skip'] .gy-chk-detail { color: var(--muted-foreground); }
-@media (prefers-reduced-motion: reduce) {
-  .gy-loadline > span { transition: none; }
-  .gy-loadline[data-determinate='false']::after { animation: none; left: 0; }
-}
 
 /* --- cards -------------------------------------------------------------- */
 .gy-card {

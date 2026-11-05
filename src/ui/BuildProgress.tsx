@@ -1,5 +1,5 @@
 import type { BuildStep, CheckId, CheckState } from '../model/build';
-import { LoadingLine } from './LoadingLine';
+import { LoadingBar } from './LoadingBar';
 
 type Read = Extract<BuildStep, { kind: 'read' }>;
 type Found = Extract<BuildStep, { kind: 'found' }>;
@@ -81,7 +81,7 @@ export function BuildProgress({ steps, embedded = false }: { steps: BuildStep[];
   const Tag = embedded ? 'div' : 'main';
   return (
     <Tag className="gy-main">
-      <LoadingLine progress={progress} />
+      <LoadingBar progress={progress} />
       <div className="gy-build">
         <section aria-label="Checklist">
           <p className="gy-sr" aria-live="polite">{changed ? `${nameOf(changed.id)}: ${STATE_TEXT[changed.state]}` : ''}</p>

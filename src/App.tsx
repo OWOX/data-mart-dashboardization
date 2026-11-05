@@ -20,7 +20,7 @@ import { BuildProgress } from './ui/BuildProgress';
 import { Canvas } from './ui/Canvas';
 import { createMarkdownHtml } from './lib/markdown';
 import { metricName } from './model/metricName';
-import { LoadingLine } from './ui/LoadingLine';
+import { LoadingBar } from './ui/LoadingBar';
 import { Header, RangeControls } from './ui/Header';
 import { runCheckup } from './checkup/run';
 import { SettingsPage, type SettingsTab } from './ui/SettingsPage';
@@ -336,7 +336,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
 
   switch (view.name) {
     case 'loading':
-      return <main className="gy-main"><LoadingLine /><p className="gy-muted gy-loadnote">Loading settings and model…</p></main>;
+      return <main className="gy-main"><LoadingBar /><p className="gy-muted gy-loadnote">Loading settings and model…</p></main>;
     case 'building':
       return <BuildProgress steps={steps} />;
     case 'blocked':
