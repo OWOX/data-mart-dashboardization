@@ -1,13 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Info, Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical, Info } from 'lucide-react';
 import { normalizeCurrency } from '../lib/format';
 import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources';
 import { uncomputable } from '../model/aggregations';
 import { applyChanges, diffModels, type Change } from '../model/diff';
+import { deriveKeys } from '../model/shown';
 import type { BuildStep } from '../model/build';
-import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricFormat, MetricRole, Model, Measure, PlanDef, PlanShape } from '../types';
+import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricFormat, Model, Measure, PlanDef, PlanShape } from '../types';
 import { useBelow } from './anchor';
 import { Blocked } from './Blocked';
 import { BuildProgress } from './BuildProgress';
@@ -15,7 +16,6 @@ import { RebuildProposal } from './RebuildProposal';
 import { AGGS, FieldPicker, dateFields, fieldOptions, martFields, valueFields, type Option } from './FieldPicker';
 import { ForecastPicker, type FieldGroup } from './ForecastPicker';
 
-const ROLES: MetricRole[] = ['critical', 'leading', 'lagging', 'unique'];
 const FORMATS: { value: MetricFormat; label: string }[] = [{ value: 'number', label: 'Number' }, { value: 'percent', label: 'Percent' }, { value: 'currency', label: 'Currency' }];
 const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
 const CALCULATED = 'CALC';
@@ -73,29 +73,6 @@ function InfoTip({ name, text }: { name: string; text: string }) {
         <Info size={14} aria-hidden="true" />
       </button>
       <span role="tooltip" id={id} hidden={!open} className="gy-tip-pop" style={style}>{text}</span>
-    </span>
-  );
-}
-
-/** A star toggle that marks a metric as its class's key. The tooltip shows on hover and keyboard focus. */
-function KeyStar({ alias, isKey, disabled, onPick }: { alias: string; isKey: boolean; disabled: boolean; onPick: () => void }) {
-  const id = useId();
-  const [hover, setHover] = useState(false);
-  const [focus, setFocus] = useState(false);
-  const open = hover || focus;
-  const anchor = useRef<HTMLSpanElement>(null);
-  const style = useBelow(anchor, open);
-  return (
-    <span ref={anchor} className="gy-star-tip" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
-      <button
-        type="button" className={`gy-onto-star${isKey ? ' is-key' : ''}`} aria-label={`Key metric: ${alias}`} aria-pressed={isKey} aria-describedby={id}
-        disabled={disabled}
-        onClick={() => { if (!isKey) onPick(); }} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-        onKeyDown={(e) => { if (e.key === 'Escape') { setHover(false); setFocus(false); } }}
-      >
-        <Star size={16} aria-hidden="true" fill={isKey ? 'currentColor' : 'none'} />
-      </button>
-      <span role="tooltip" id={id} hidden={!open} className="gy-tip-pop" style={style}>Key metric: shown large on the card</span>
     </span>
   );
 }
@@ -226,25 +203,74 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     return n;
   };
 
-  const patchMetric = (id: string, f: (m: MetricDef) => MetricDef) => setDraft((d) => ({ ...d, metrics: d.metrics.map((m) => (m.id === id ? f(m) : m)) }));
-  const patchClass = (id: string, f: (c: ClassNode) => ClassNode) => setDraft((d) => ({ ...d, classes: d.classes.map((c) => (c.id === id ? f(c) : c)) }));
+  // every edit re-derives the key: the first shown metric in the class's order
+  const patchMetric = (id: string, f: (m: MetricDef) => MetricDef) => setDraft((d) => deriveKeys({ ...d, metrics: d.metrics.map((m) => (m.id === id ? f(m) : m)) }));
+  const patchClass = (id: string, f: (c: ClassNode) => ClassNode) => setDraft((d) => deriveKeys({ ...d, classes: d.classes.map((c) => (c.id === id ? f(c) : c)) }));
 
-  const toggleMetric = (c: ClassNode, m: MetricDef, shown: boolean) => {
-    patchMetric(m.id, (x) => ({ ...x, shown }));
-    // the key metric stays one of the shown ones
-    const others = c.metricIds.filter((id) => id !== m.id && draft.metrics.find((x) => x.id === id)?.shown !== false);
-    if (!shown && c.keyMetricId === m.id) patchClass(c.id, (x) => ({ ...x, keyMetricId: others[0] ?? null }));
-    if (shown && !c.keyMetricId) patchClass(c.id, (x) => ({ ...x, keyMetricId: m.id }));
+  const [announcement, setAnnouncement] = useState('');
+  const [drag, setDrag] = useState<{ classId: string; id: string; drop: number } | null>(null);
+  const dragRef = useRef<{ classId: string; id: string; drop: number } | null>(null);
+  const focusAfter = useRef<string | null>(null);
+  // a moved row keeps the keyboard where it was
+  useEffect(() => {
+    const id = focusAfter.current;
+    if (!id) return;
+    focusAfter.current = null;
+    for (const b of document.querySelectorAll<HTMLElement>('[data-handle]')) if (b.dataset.handle === id) b.focus();
+  }, [draft]);
+
+  /** Moves one metric to `to` among the others of its class. */
+  const moveMetric = (classId: string, id: string, to: number) => patchClass(classId, (c) => {
+    const rest = c.metricIds.filter((x) => x !== id);
+    rest.splice(Math.max(0, Math.min(to, rest.length)), 0, id);
+    return { ...c, metricIds: rest };
+  });
+  const nudge = (c: ClassNode, m: MetricDef, by: -1 | 1) => {
+    const at = c.metricIds.indexOf(m.id);
+    const to = at + by;
+    if (at < 0 || to < 0 || to >= c.metricIds.length) return;
+    focusAfter.current = m.id;
+    moveMetric(c.id, m.id, to);
+    setAnnouncement(`${m.alias} moved to position ${to + 1} of ${c.metricIds.length}`);
+  };
+  /** Where the pointer would drop the dragged metric, from the rows' boxes. */
+  const dropAt = (handle: HTMLElement, id: string, y: number): number => {
+    const rows = [...(handle.closest('table')?.querySelectorAll<HTMLElement>('tbody.gy-onto-metric') ?? [])].filter((t) => t.dataset.metricId !== id);
+    return rows.filter((t) => { const r = t.getBoundingClientRect(); return r.top + r.height / 2 < y; }).length;
+  };
+  const startDrag = (e: React.PointerEvent<HTMLButtonElement>, c: ClassNode, m: MetricDef) => {
+    if (e.button !== undefined && e.button > 0) return;
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* the pointer is gone */ }
+    const at = c.metricIds.indexOf(m.id);
+    dragRef.current = { classId: c.id, id: m.id, drop: at };
+    setDrag(dragRef.current);
+  };
+  const overDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const drop = dropAt(e.currentTarget, d.id, e.clientY);
+    if (drop !== d.drop) { dragRef.current = { ...d, drop }; setDrag(dragRef.current); }
+  };
+  const endDrag = (commit: boolean, c: ClassNode, m: MetricDef) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    setDrag(null);
+    if (!commit || !d || d.drop === c.metricIds.indexOf(m.id)) return;
+    focusAfter.current = m.id;
+    moveMetric(c.id, m.id, d.drop);
+    setAnnouncement(`${m.alias} moved to position ${d.drop + 1} of ${c.metricIds.length}`);
   };
 
   const save = async () => {
-    const problem = validateDraft(draft);
+    const next = deriveKeys(draft);
+    const problem = validateDraft(next);
     // the named metric may sit in a folded class, so unfold them all
     if (problem) { setError(problem); setOpenIds(new Set(draft.classes.map((c) => c.id))); return; }
     setError(null);
     setSaving(true);
     try {
-      await onSave({ ...draft, editedAt: now().toISOString() });
+      await onSave({ ...next, editedAt: now().toISOString() });
     } catch (e) {
       setError(`Couldn't save the model: ${describeError(e)}`);
       setSaving(false);
@@ -355,6 +381,11 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         const shownCount = metrics.filter((m) => m.shown !== false).length;
         const broken = brokenIn(c);
         const martNote = descriptions.get(c.martId);
+        // the metric the drop line sits above, or the last one when the drop is at the end
+        const dragging = drag && drag.classId === c.id ? drag : null;
+        const others = dragging ? metrics.filter((x) => x.id !== dragging.id) : [];
+        const dropMark = dragging && dragging.drop < others.length ? others[dragging.drop]!.id : null;
+        const dropEnd = dragging && dragging.drop >= others.length ? others[others.length - 1]?.id ?? null : null;
         return (
           <section key={c.id} className="dm-card gy-onto-class" aria-label={c.title}>
             <div className="gy-onto-class-head">
@@ -380,9 +411,9 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                 <table className="gy-onto-table">
                   <thead>
                     <tr>
-                      <th scope="col">Shown</th><th scope="col">Key</th><th scope="col">Name</th><th scope="col">Role</th><th scope="col">Format</th>
+                      <th scope="col">Shown</th><th scope="col">Name</th><th scope="col">Format</th>
                       <th scope="col">Series</th><th scope="col">Data Mart</th><th scope="col">Field</th><th scope="col">Aggregation</th>
-                      <th scope="col">Date field</th><th scope="col">Shape</th>
+                      <th scope="col">Date field</th><th scope="col">Shape</th><th scope="col"><span className="gy-sr-only">Reorder</span></th>
                     </tr>
                   </thead>
                   {metrics.map((m) => {
@@ -408,23 +439,10 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                       />
                     );
                     return (
-                      <tbody key={m.id} aria-label={`Metric ${label}`} className="gy-onto-metric">
+                      <tbody key={m.id} aria-label={`Metric ${label}`} data-metric-id={m.id} className={`gy-onto-metric${dragging?.id === m.id ? ' is-dragging' : ''}${dropMark === m.id ? ' is-drop-before' : ''}${dropEnd === m.id ? ' is-drop-end' : ''}`}>
                         <tr>
-                          <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => toggleMetric(c, m, e.target.checked)} /></span></td>
-                          <td rowSpan={3}>
-                            <span className="gy-onto-first">
-                              <KeyStar
-                                alias={m.alias} isKey={c.keyMetricId === m.id} disabled={m.shown === false}
-                                onPick={() => patchClass(c.id, (x) => ({ ...x, keyMetricId: m.id }))}
-                              />
-                            </span>
-                          </td>
+                          <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, shown: e.target.checked }))} /></span></td>
                           <td rowSpan={3}><input className="gy-input gy-onto-name" aria-label="Name" value={m.alias} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, alias: e.target.value }))} /></td>
-                          <td rowSpan={3}>
-                            <select className="gy-select" aria-label="Role" value={m.role} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, role: e.target.value as MetricRole }))}>
-                              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                            </select>
-                          </td>
                           <td rowSpan={3}>
                             <span className="gy-onto-cell">
                               <select className="gy-select" aria-label="Format" value={m.format} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, format: e.target.value as MetricFormat, currency: e.target.value === 'currency' ? x.currency : null }))}>
@@ -450,6 +468,20 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                             })}
                             onDate={(d) => patchMetric(m.id, (x) => ({ ...x, dateField: d === '' ? null : d }))}
                           />
+                          <td rowSpan={3}>
+                            <span className="gy-onto-first">
+                              <button
+                                type="button" className="gy-onto-grip" aria-label={`Reorder ${m.alias}`} title="Drag to reorder, or use the arrow keys" data-handle={m.id}
+                                onPointerDown={(e) => startDrag(e, c, m)} onPointerMove={overDrag}
+                                onPointerUp={() => endDrag(true, c, m)} onPointerCancel={() => endDrag(false, c, m)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); nudge(c, m, e.key === 'ArrowUp' ? -1 : 1); }
+                                }}
+                              >
+                                <GripVertical size={16} aria-hidden="true" />
+                              </button>
+                            </span>
+                          </td>
                         </tr>
                         <tr>
                           <th scope="row" className="gy-onto-label">Plan</th>
@@ -493,7 +525,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                           ) : <td colSpan={3} />}
                         </tr>
                         {uncomputable(m, detailOf(m.martId).detail) && (
-                          <tr><td colSpan={11}><p className="gy-bad-text gy-form-note">OWOX can&apos;t compute this aggregation for this field</p></td></tr>
+                          <tr><td colSpan={10}><p className="gy-bad-text gy-form-note">OWOX can&apos;t compute this aggregation for this field</p></td></tr>
                         )}
                       </tbody>
                     );
@@ -505,6 +537,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
           </section>
         );
       })}
+
+      <div role="status" aria-live="polite" className="gy-sr-only">{announcement}</div>
 
       {rebuild.phase === 'idle' && (
         <>

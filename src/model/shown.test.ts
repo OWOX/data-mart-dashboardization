@@ -1,4 +1,4 @@
-import { shownModel } from './shown';
+import { deriveKeys, shownModel } from './shown';
 import type { ClassNode, MetricDef, Model } from '../types';
 
 const mt = (id: string, shown: boolean): MetricDef => ({ id, martId: 'a', alias: id, measure: { field: id, fn: 'SUM' }, kind: 'flow', dateField: null, role: 'critical', source: 'project', isUniqueCount: false, format: 'number', currency: null, plan: null, shown, forecast: null });
@@ -38,4 +38,12 @@ test('with live schemas, a metric its field refuses is hidden and the key moves 
   expect(s.classes[0]!.keyMetricId).toBe('x');
   expect(m.metrics[0]!.shown).toBe(true);
   expect(shownModel(m, new Map()).classes[0]!.metricIds).toEqual(['k', 'x']);
+});
+
+test('deriveKeys makes the first shown metric the key, or none', () => {
+  const m = model([cl('g', true, ['k', 'x', 'y'], 'y')], [mt('k', false), mt('x', true), mt('y', true)]);
+  const out = deriveKeys(m);
+  expect(out.classes[0]!.keyMetricId).toBe('x');
+  expect(deriveKeys(out)).toBe(out);
+  expect(deriveKeys(model([cl('g', true, ['k'])], [mt('k', false)])).classes[0]!.keyMetricId).toBeNull();
 });

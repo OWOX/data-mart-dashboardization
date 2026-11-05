@@ -21,3 +21,16 @@ export function shownModel(model: Model, details?: ReadonlyMap<string, MartDetai
       }),
   };
 }
+
+/** Every class's key metric is the first shown metric in its order, or none. */
+export function deriveKeys(model: Model): Model {
+  const shown = new Set(model.metrics.filter((m) => m.shown !== false).map((m) => m.id));
+  let changed = false;
+  const classes = model.classes.map((c) => {
+    const keyMetricId = c.metricIds.find((id) => shown.has(id)) ?? null;
+    if (keyMetricId === c.keyMetricId) return c;
+    changed = true;
+    return { ...c, keyMetricId };
+  });
+  return changed ? { ...model, classes } : model;
+}

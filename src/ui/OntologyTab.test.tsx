@@ -33,6 +33,7 @@ function setup(m: Model = model(), details = DETAILS, marts: typeof MARTS | null
   if (open) openAll();
   return { onSave, onCancel };
 }
+const order = () => screen.getAllByRole('rowgroup', { name: /^Metric / }).map((g) => g.getAttribute('aria-label')).slice(0, 2);
 const row = (name: string) => within(screen.getByRole('rowgroup', { name: `Metric ${name}` }));
 
 test('the Format select saves, and a currency code input appears for Currency', async () => {
@@ -64,11 +65,10 @@ test('says the changes are the member\'s own, lists the goal first and locks its
   expect(screen.getByRole('checkbox', { name: 'Customers' })).toBeEnabled();
 });
 
-test('editing name, role, fact, plan and forecast, then Save, writes the doc with editedAt', async () => {
+test('editing name, fact, plan and forecast, then Save, writes the doc with editedAt', async () => {
   const { onSave } = setup();
   const r = row('Units');
   fireEvent.change(r.getByLabelText('Name'), { target: { value: 'Items sold' } });
-  fireEvent.change(r.getByLabelText('Role'), { target: { value: 'lagging' } });
   fireEvent.change(r.getByLabelText('Fact field'), { target: { value: 'revenue' } });
   fireEvent.change(r.getByLabelText('Fact aggregation'), { target: { value: 'AVG' } });
   fireEvent.change(r.getByLabelText('Fact date field'), { target: { value: '' } });
@@ -85,7 +85,7 @@ test('editing name, role, fact, plan and forecast, then Save, writes the doc wit
   const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
   expect(saved.editedAt).toBe('2026-11-04T10:00:00.000Z');
   expect(saved.metrics.find((m) => m.id === 'a:qty:SUM')).toMatchObject({
-    alias: 'Items sold', role: 'lagging', measure: { field: 'revenue', fn: 'AVG' }, dateField: null,
+    alias: 'Items sold', measure: { field: 'revenue', fn: 'AVG' }, dateField: null,
     plan: { martId: 'p', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day', shape: 'cumulative' },
     forecast: { martId: 'p', measure: { field: 'goal', fn: 'MAX' }, dateField: 'stat_day' },
   });
@@ -106,47 +106,79 @@ test('Cancel writes nothing', () => {
   expect(onSave).not.toHaveBeenCalled();
 });
 
-test('unchecking a key metric moves the key; Save is refused when a shown class has no key', async () => {
+test('hiding the first metric makes the next shown one the key; Save is refused for no one', async () => {
   const { onSave } = setup();
   fireEvent.click(row('Revenue').getByLabelText('Shown'));
-  expect(row('Units').getByRole('button', { name: /Key metric/ })).toHaveAttribute('aria-pressed', 'true');
-  expect(row('Revenue').getByRole('button', { name: /Key metric/ })).toBeDisabled();
-  fireEvent.click(row('Units').getByLabelText('Shown'));
-  // no shown metric is left: no key is needed
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
   const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
-  expect(saved.classes.find((c) => c.id === 'a')!.keyMetricId).toBeNull();
-  expect(saved.metrics.filter((m) => m.martId === 'a').every((m) => !m.shown)).toBe(true);
+  expect(saved.classes.find((c) => c.id === 'a')!.keyMetricId).toBe('a:qty:SUM');
+  expect(saved.classes.find((c) => c.id === 'a')!.metricIds).toEqual(['a:revenue:SUM', 'a:qty:SUM']);
 });
 
-test('clicking a non-key star makes it the key and Save persists it', async () => {
+test('hiding every metric leaves no key', async () => {
   const { onSave } = setup();
-  const rev = () => row('Revenue').getByRole('button', { name: /Key metric/ });
-  const units = () => row('Units').getByRole('button', { name: /Key metric/ });
-  expect(rev()).toHaveAttribute('aria-pressed', 'true');
-  expect(units()).toHaveAttribute('aria-pressed', 'false');
-  fireEvent.click(units());
-  expect(units()).toHaveAttribute('aria-pressed', 'true');
-  expect(rev()).toHaveAttribute('aria-pressed', 'false');
-  fireEvent.click(units());
-  expect(units()).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(row('Revenue').getByLabelText('Shown'));
+  fireEvent.click(row('Units').getByLabelText('Shown'));
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(onSave).toHaveBeenCalled());
-  const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
-  expect(saved.classes.find((c) => c.id === 'a')!.keyMetricId).toBe(saved.metrics.find((m) => m.alias === 'Units')!.id);
+  expect((onSave.mock.calls[0] as unknown as [Model])[0].classes.find((c) => c.id === 'a')!.keyMetricId).toBeNull();
 });
 
-test('the star of a hidden metric is disabled and its tooltip shows on focus', () => {
+test('ArrowDown on the first handle moves it down, announces it, keeps focus; the second metric is the key after Save', async () => {
+  const { onSave } = setup();
+  const handle = row('Revenue').getByRole('button', { name: 'Reorder Revenue' });
+  handle.focus();
+  fireEvent.keyDown(handle, { key: 'ArrowDown' });
+  expect(screen.getByRole('status')).toHaveTextContent('Revenue moved to position 2 of 2');
+  expect(row('Revenue').getByRole('button', { name: 'Reorder Revenue' })).toHaveFocus();
+  expect(order()).toEqual(['Metric Units', 'Metric Revenue']);
+  // already last: nothing moves
+  fireEvent.keyDown(row('Revenue').getByRole('button', { name: 'Reorder Revenue' }), { key: 'ArrowDown' });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  const cls = (onSave.mock.calls[0] as unknown as [Model])[0].classes.find((c) => c.id === 'a')!;
+  expect(cls.metricIds).toEqual(['a:qty:SUM', 'a:revenue:SUM']);
+  expect(cls.keyMetricId).toBe('a:qty:SUM');
+});
+
+test('ArrowUp moves a metric up and a hidden first metric does not stay key', async () => {
+  const { onSave } = setup();
+  fireEvent.click(row('Revenue').getByLabelText('Shown'));
+  fireEvent.keyDown(row('Units').getByRole('button', { name: 'Reorder Units' }), { key: 'ArrowUp' });
+  expect(screen.getByRole('status')).toHaveTextContent('Units moved to position 1 of 2');
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  const cls = (onSave.mock.calls[0] as unknown as [Model])[0].classes.find((c) => c.id === 'a')!;
+  expect(cls).toMatchObject({ metricIds: ['a:qty:SUM', 'a:revenue:SUM'], keyMetricId: 'a:qty:SUM' });
+});
+
+test('dragging a handle with the pointer reorders its class', async () => {
+  const { onSave } = setup();
+  const boxes: Record<string, number> = { 'Metric Revenue': 0, 'Metric Units': 100 };
+  for (const [name, top] of Object.entries(boxes)) {
+    vi.spyOn(screen.getByRole('rowgroup', { name }), 'getBoundingClientRect').mockReturnValue({ top, bottom: top + 90, height: 90, left: 0, right: 500, width: 500, x: 0, y: top, toJSON: () => ({}) });
+  }
+  const handle = row('Revenue').getByRole('button', { name: 'Reorder Revenue' });
+  fireEvent.pointerDown(handle, { pointerId: 1, clientY: 40 });
+  expect(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).toHaveClass('is-dragging');
+  fireEvent.pointerMove(handle, { pointerId: 1, clientY: 180 });
+  expect(screen.getByRole('rowgroup', { name: 'Metric Units' })).toHaveClass('is-drop-end');
+  fireEvent.pointerUp(handle, { pointerId: 1, clientY: 180 });
+  expect(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).not.toHaveClass('is-dragging');
+  expect(order()).toEqual(['Metric Units', 'Metric Revenue']);
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  const cls = (onSave.mock.calls[0] as unknown as [Model])[0].classes.find((c) => c.id === 'a')!;
+  expect(cls).toMatchObject({ metricIds: ['a:qty:SUM', 'a:revenue:SUM'], keyMetricId: 'a:qty:SUM' });
+});
+
+test('a drag that is cancelled changes nothing', () => {
   setup();
-  fireEvent.click(row('Units').getByLabelText('Shown'));
-  expect(row('Units').getByRole('button', { name: /Key metric/ })).toBeDisabled();
-  const star = row('Revenue').getByRole('button', { name: /Key metric/ });
-  const tip = row('Revenue').getByRole('tooltip', { hidden: true });
-  expect(tip).not.toBeVisible();
-  fireEvent.focus(star);
-  expect(tip).toBeVisible();
-  expect(tip).toHaveTextContent('Key metric: shown large on the card');
+  const handle = row('Revenue').getByRole('button', { name: 'Reorder Revenue' });
+  fireEvent.pointerDown(handle, { pointerId: 1, clientY: 0 });
+  fireEvent.pointerCancel(handle, { pointerId: 1 });
+  expect(order()).toEqual(['Metric Revenue', 'Metric Units']);
 });
 
 test('an empty name or a plan without a field stops the save', async () => {
@@ -398,7 +430,7 @@ test('each class lists its metrics as a table, one row per series', () => {
   setup();
   const table = within(screen.getByRole('region', { name: 'Orders' })).getByRole('table');
   expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(
-    ['Shown', 'Key', 'Name', 'Role', 'Format', 'Series', 'Data Mart', 'Field', 'Aggregation', 'Date field', 'Shape']);
+    ['Shown', 'Name', 'Format', 'Series', 'Data Mart', 'Field', 'Aggregation', 'Date field', 'Shape', 'Reorder']);
   expect(row('Revenue').getAllByRole('rowheader').map((h) => h.textContent)).toEqual(['Fact', 'Plan', 'Forecast']);
 });
 

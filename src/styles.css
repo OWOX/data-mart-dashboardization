@@ -376,7 +376,7 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-onto-fold:focus-visible, .gy-tip-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); border-radius: 0.25rem; }
 .gy-onto-body { display: grid; gap: 0.75rem; }
 .gy-onto-body[hidden] { display: none; }
-.gy-tip, .gy-star-tip { position: relative; display: inline-flex; align-items: center; }
+.gy-tip { position: relative; display: inline-flex; align-items: center; }
 .gy-tip-btn { display: inline-grid; place-items: center; padding: 0.125rem; border: 0; background: none; color: var(--muted-foreground); cursor: pointer; }
 .gy-tip-btn:hover { color: var(--foreground); }
 .gy-tip-pop { position: absolute; z-index: 20; top: 100%; left: 0; width: max-content; max-width: 18rem; margin-top: 0.25rem; padding: 0.5rem 0.625rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card); color: var(--foreground); font-size: 0.8125rem; line-height: 1.4; box-shadow: 0 4px 12px rgb(0 0 0 / 0.12); white-space: pre-wrap; }
@@ -392,11 +392,14 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-onto-metric tr:last-child > * { padding-bottom: 0.625rem; }
 .gy-onto-metric td[rowspan] { vertical-align: top; }
 .gy-onto-first { display: flex; align-items: center; height: 2rem; }
-.gy-onto-star { display: inline-grid; place-items: center; padding: 0.125rem; border: 0; border-radius: 0.25rem; background: none; color: var(--muted-foreground); cursor: pointer; }
-.gy-onto-star:hover:not(:disabled) { color: var(--foreground); }
-.gy-onto-star.is-key, .gy-onto-star.is-key:hover:not(:disabled) { color: var(--primary); cursor: default; }
-.gy-onto-star:disabled { opacity: 0.4; cursor: not-allowed; }
-.gy-onto-star:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
+.gy-onto-grip { display: inline-grid; place-items: center; padding: 0.125rem; border: 0; border-radius: 0.25rem; background: none; color: var(--muted-foreground); cursor: grab; touch-action: none; user-select: none; }
+.gy-onto-grip:hover { color: var(--foreground); }
+.gy-onto-grip:active { cursor: grabbing; }
+.gy-onto-grip:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
+.gy-onto-metric.is-dragging { opacity: 0.5; }
+.gy-onto-metric.is-drop-before > tr:first-child > * { box-shadow: inset 0 2px 0 var(--primary); }
+.gy-onto-metric.is-drop-end > tr:last-child > * { box-shadow: inset 0 -2px 0 var(--primary); }
+.gy-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .gy-onto-label { font-weight: 500; color: var(--muted-foreground); }
 .gy-onto-mart { color: var(--muted-foreground); }
 .gy-onto-cell { display: flex; align-items: center; gap: 0.25rem; }

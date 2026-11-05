@@ -145,11 +145,8 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
     }
   }
 
-  // every class keeps a key metric that is one of its shown ones
-  classes = classes.map((c) => {
-    const ok = c.keyMetricId && c.metricIds.includes(c.keyMetricId) && metrics.find((m) => m.id === c.keyMetricId)?.shown !== false;
-    return ok ? c : { ...c, keyMetricId: firstShown(c.metricIds, metrics) };
-  });
+  // the key metric is the first shown one in the member's order; added metrics sit at the end
+  classes = classes.map((c) => ({ ...c, keyMetricId: firstShown(c.metricIds, metrics) }));
 
   const ids = new Set(classes.map((c) => c.id));
   let edges: Edge[] = current.edges.filter((e) => ids.has(e.from) && ids.has(e.to));

@@ -64,3 +64,15 @@ test('every metric without a valid format gets number, on both versions', () => 
   expect(load({ format: 'currency', currency: 'nope' })).toMatchObject({ format: 'currency', currency: null });
   expect(load({ format: 'percent', currency: 'USD' })).toMatchObject({ format: 'percent', currency: null });
 });
+
+test('a saved key metric that is not first moves to the front once; the rest keep their order', () => {
+  const metric = (id: string, shown = true) => ({ ...v1.metrics[0], id, shown, forecast: null });
+  const doc = (keyMetricId: string) => ({ ...v2, classes: [{ ...v2.classes[0], keyMetricId, metricIds: ['x', 'y', 'z'] }], metrics: [metric('x'), metric('y'), metric('z')] });
+  expect(upgradeModel(doc('z'))!.classes[0]!.metricIds).toEqual(['z', 'x', 'y']);
+  expect(upgradeModel(doc('x'))!.classes[0]!.metricIds).toEqual(['x', 'y', 'z']);
+  const moved = upgradeModel(doc('z'))!;
+  expect(upgradeModel(moved)!.classes[0]!.metricIds).toEqual(['z', 'x', 'y']);
+  // v1 too
+  const old = { ...v1, classes: [{ ...v1.classes[0], keyMetricId: 'q', metricIds: ['p', 'q'] }], metrics: [{ ...v1.metrics[0], id: 'p' }, { ...v1.metrics[0], id: 'q' }] };
+  expect(upgradeModel(old)!.classes[0]!.metricIds).toEqual(['q', 'p']);
+});

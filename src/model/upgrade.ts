@@ -31,6 +31,17 @@ const fixFormat = (x: Record<string, unknown>): Record<string, unknown> => {
 // a metric-level calculated field is a ratio: summing its daily values means nothing, so it is never a level
 const fixKind = (x: Record<string, unknown>): Record<string, unknown> => (isObj(x.measure) && x.measure.fn === null && x.kind !== 'flow' ? { ...x, kind: 'flow' } : x);
 
+/** The saved key metric moves to the front once, so the order alone says which metric is the main one. */
+function keyFirst(classes: Record<string, unknown>[], metrics: Record<string, unknown>[]): Record<string, unknown>[] {
+  const shown = new Set(metrics.filter((x) => x.shown !== false).map((x) => x.id));
+  return classes.map((c) => {
+    const ids = c.metricIds as string[];
+    const key = c.keyMetricId;
+    if (!isStr(key) || !shown.has(key) || ids.indexOf(key) <= 0) return c;
+    return { ...c, metricIds: [key, ...ids.filter((id) => id !== key)] };
+  });
+}
+
 /** A v1 doc becomes v2 (everything shown, no forecast source, never edited); a valid v2 doc passes; anything else is null. */
 export function upgradeModel(raw: unknown): Model | null {
   if (!isObj(raw) || !shaped(raw)) return null;
@@ -41,14 +52,14 @@ export function upgradeModel(raw: unknown): Model | null {
       && classes.every((c) => typeof c.shown === 'boolean')
       && metrics.every((x) => typeof x.shown === 'boolean');
     // a malformed forecast source falls back to the extrapolated forecast; the rest of the model stays
-    return ok ? ({ ...raw, metrics: metrics.map((x) => fixFormat(fixKind(validForecast(x.forecast) ? x : { ...x, forecast: null }))) } as unknown as Model) : null;
+    return ok ? ({ ...raw, classes: keyFirst(classes, metrics), metrics: metrics.map((x) => fixFormat(fixKind(validForecast(x.forecast) ? x : { ...x, forecast: null }))) } as unknown as Model) : null;
   }
   if (raw.version !== 1) return null;
   return {
     ...raw,
     version: 2,
     editedAt: null,
-    classes: (raw.classes as Record<string, unknown>[]).map((c) => ({ ...c, shown: true })),
+    classes: keyFirst((raw.classes as Record<string, unknown>[]).map((c) => ({ ...c, shown: true })), raw.metrics as Record<string, unknown>[]),
     metrics: (raw.metrics as Record<string, unknown>[]).map((x) => fixFormat(fixKind({ ...x, shown: true, forecast: null }))),
   } as unknown as Model;
 }

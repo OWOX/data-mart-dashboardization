@@ -166,3 +166,15 @@ test('an added class does not duplicate a metric that exists under another id', 
   expect(next.metrics.filter((m) => m.measure.field === 'rev')).toHaveLength(1);
   expect(next.classes.find((c) => c.id === 'd')!.metricIds).toEqual(['d:v:SUM']);
 });
+
+test('a rebuild keeps the member\'s order, appends new metrics, and the key is the first shown one', () => {
+  const cur = base();
+  cur.classes[0]!.metricIds = ['a:qty:SUM', 'a:rev:SUM'];
+  cur.classes[0]!.keyMetricId = 'a:qty:SUM';
+  const cand = copy(base()); // the build's own order: rev first
+  cand.metrics.push(metric('a:new:SUM', 'a', 'New', 'new'));
+  cand.classes[0]!.metricIds = ['a:new:SUM', 'a:rev:SUM', 'a:qty:SUM'];
+  const next = applyChanges(cur, cand, diffModels(cur, cand), 'now');
+  expect(next.classes[0]!.metricIds).toEqual(['a:qty:SUM', 'a:rev:SUM', 'a:new:SUM']);
+  expect(next.classes[0]!.keyMetricId).toBe('a:qty:SUM');
+});
