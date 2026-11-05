@@ -249,14 +249,14 @@ export function WarningHint({ text }: { text: string }) {
 const inYear = (w: DateWindow, year: string) => w.from.slice(0, 4) === year && w.to.slice(0, 4) === year;
 const spanText = (w: DateWindow, days: number, pct: number, year: string) => `${formatWindow(w, !inYear(w, year))} · ${days} ${days === 1 ? 'day' : 'days'} · ${pct}%`;
 
-/** `*16% forecast` beside a projected number: the share of the range that is forecast, with both parts and the forecast's source on hover. */
+/** `*16% of period is forecasted` beside a projected number: the share of the range that is forecast, with both parts and the forecast's source on hover. */
 function ProjectionNote({ projection, metric, martTitle, fieldName, year }: { projection: NonNullable<MetricResult['projection']>; metric: MetricDef; martTitle: string; fieldName: string; year: string }) {
   const { factWindow, forecastWindow, actual, source } = projection;
   const factDays = diffDays(factWindow.from, factWindow.to) + 1, forecastDays = diffDays(forecastWindow.from, forecastWindow.to) + 1;
   // the two shares add up to 100
   const forecastPct = Math.round(forecastDays / (factDays + forecastDays) * 100);
   return (
-    <Tip label={`${forecastPct}% forecast, details`} className="gy-projnote" trigger={<span className="gy-projnote-text">*{forecastPct}% forecast</span>}>
+    <Tip label={`${forecastPct}% of period is forecasted, details`} className="gy-projnote" trigger={<span className="gy-projnote-text">*{forecastPct}% of period is forecasted</span>}>
       {(id) => (
         <span id={id} className="gy-hint-body gy-hint-left" role="tooltip">
           <span className="gy-projnote-line">Actual: {spanText(factWindow, factDays, 100 - forecastPct, year)}{actual !== null && ` · ${formatValue(actual, metric)}`}</span>

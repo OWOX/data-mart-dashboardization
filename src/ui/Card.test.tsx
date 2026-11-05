@@ -636,12 +636,12 @@ describe('projection footnote', () => {
 
   test('the trigger\'s accessible name contains its visible text', () => {
     show({ projection });
-    expect(screen.getByRole('button', { name: '16% forecast, details' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '16% of period is forecasted, details' })).toBeInTheDocument();
   });
 
   test('shows the forecast share and the two parts on hover', () => {
     const { container } = show({ projection });
-    expect(screen.getByText('*16% forecast')).toBeInTheDocument();
+    expect(screen.getByText('*16% of period is forecasted')).toBeInTheDocument();
     const tip = container.querySelector('.gy-projnote [role="tooltip"]')!.textContent!;
     expect(tip).toContain('Actual: Jan 1 – Nov 4 · 308 days · 84% · 1M');
     expect(tip).toContain('Forecast: Nov 5 – Dec 31 · 57 days · 16%');
