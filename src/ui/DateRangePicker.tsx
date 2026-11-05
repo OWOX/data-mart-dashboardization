@@ -66,6 +66,8 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
   const rawCompare = dCompare.kind === 'custom' ? dCompare.window : null;
   /** The `*` marks the range itself, so the text is cut where the comparison starts. */
   const forecast = spec.forecastWindow;
+  // by days, as on the cards
+  const forecastPct = forecast ? Math.round((diffDays(forecast.from, forecast.to) + 1) / spec.days * 100) : 0;
   const [summaryHead, ...summaryRest] = formatPeriod(drawn, compareOn ? comparison : null).split(' vs ');
   const summary = { head: summaryHead, tail: summaryRest.length ? ` vs ${summaryRest.join(' vs ')}` : '' };
   const [rangeMonth, setRangeMonth] = useState(() => openMonth(drawn, anchor));
@@ -113,15 +115,16 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       <div className="gy-drp-head">
         <span className="gy-drp-windows">
-          {summary.head}{forecast && <sup>*</sup>}{summary.tail}
-          {forecast && (
-            <span className="gy-hint gy-drp-note" tabIndex={0}>
-              * {windowText(forecast, anchor)} forecast
+          {/* the range and its asterisk carry the forecast note on hover and focus */}
+          {forecast ? (
+            <span className="gy-hint gy-drp-note" tabIndex={0} aria-label={`${summary.head}, ${windowText(forecast, anchor)} forecast`}>
+              {summary.head}<sup>*</sup>
               <span className="gy-hint-body gy-hint-left" role="tooltip">
-                {`${windowText(forecast, anchor)} hasn't happened yet. Each card fills these days with its metric's forecast: from the forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last ${HISTORY_DAYS} days.`}
+                {`* ${windowText(forecast, anchor)} data (${forecastPct}% of period) is forecasted. Each card takes it from its metric's forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last ${HISTORY_DAYS} days.`}
               </span>
             </span>
-          )}
+          ) : summary.head}
+          {summary.tail}
         </span>
         <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
         <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>
@@ -146,9 +149,9 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
           <div className="gy-drp-presets gy-drp-cmplist">
             <div className="gy-drp-list">
               {options.map((o) => (
-                <button key={o.preset} type="button" className="gy-drp-preset" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
+                <button key={o.preset} type="button" className="gy-drp-preset gy-drp-cmpopt" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
                   onClick={() => { setDCompare({ kind: 'preset', preset: o.preset }); setPendingCompare(false); setCompareMonth(openMonth(o.window, anchor)); }}>
-                  {compareChipLabel(o.preset, diffDays(o.window.from, o.window.to) + 1)}
+                  <span className="gy-drp-cmpname">{compareChipLabel(o.preset, diffDays(o.window.from, o.window.to) + 1)}</span>
                   <span className="gy-drp-win" aria-hidden>{windowText(o.window, anchor)}</span>
                 </button>
               ))}

@@ -355,11 +355,13 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-drp-compare input { flex: none; }
 .gy-drp-head { grid-column: 1 / -1; grid-row: 1; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
 .gy-drp-windows { flex: 1; color: var(--muted-foreground); }
-/* The forecast footnote sits under the range, smaller; its tooltip is the app's usual hint bubble. */
-.gy-drp-note { display: flex; align-self: auto; margin-top: 0.125rem; font-size: 0.75rem; opacity: 0.8; cursor: help; }
-.gy-drp-note:hover, .gy-drp-note:focus-visible { opacity: 1; }
-.gy-drp-note .gy-hint-body { max-width: min(20rem, 80vw); white-space: normal; }
-.gy-drp-win { margin-left: 0.5rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; white-space: nowrap; }
+/* The forecast note: the range with an asterisk, explained on hover in the app's usual hint bubble. */
+.gy-drp-note { display: inline; align-self: auto; color: inherit; opacity: 1; cursor: help; text-decoration: underline dotted; text-underline-offset: 0.2em; }
+.gy-drp-note .gy-hint-body { top: calc(100% + 0.25rem); max-width: min(20rem, 80vw); white-space: normal; font-size: 0.8125rem; }
+/* A comparison option: its name, then its dates under it, so neither wraps in the narrow column. */
+.gy-drp-cmpopt { height: auto; flex-direction: column; align-items: flex-start; padding: 0.25rem 0.625rem; line-height: 1.3; }
+.gy-drp-cmpname, .gy-drp-win { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gy-drp-win { color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; }
 .gy-cal { position: relative; width: 17.5rem; }
 .gy-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
 .gy-cal-titles { display: flex; gap: 0.125rem; }
