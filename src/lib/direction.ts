@@ -1,4 +1,5 @@
 import type { MetricDef, MetricResult } from '../types';
+import { shownValue } from './stats';
 
 export type Direction = 'up' | 'down' | 'flat';
 
@@ -8,8 +9,8 @@ export type Direction = 'up' | 'down' | 'flat';
  */
 export function directionOf(result: MetricResult | undefined, metric: MetricDef, comparing: boolean): Direction {
   if (!result || result.error != null) return 'flat';
-  const fact = result.compareFact ?? result.fact;
-  if (comparing && result.fact !== null && metric.dateField !== null && fact !== null && result.comparison !== null) {
+  const fact = result.compareFact ?? shownValue(result);
+  if (comparing && shownValue(result) !== null && metric.dateField !== null && fact !== null && result.comparison !== null) {
     const delta = fact - result.comparison;
     return delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
   }

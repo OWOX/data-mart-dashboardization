@@ -24,7 +24,7 @@ export async function loadSettings(ctx: CollectionsLike): Promise<Settings> {
   const t = raw.thresholdPct;
   return {
     thresholdPct: typeof t === 'number' && Number.isFinite(t) ? Math.min(100, Math.max(1, t)) : d.thresholdPct,
-    defaultPreset: typeof raw.defaultPreset === 'string' && Object.hasOwn(PRESET_LABELS, raw.defaultPreset) ? (raw.defaultPreset as Preset) : d.defaultPreset,
+    defaultPreset: presetOf(raw.defaultPreset) ?? d.defaultPreset,
     comparisonDefault: typeof raw.comparisonDefault === 'boolean' ? raw.comparisonDefault : d.comparisonDefault,
     weekStart: raw.weekStart === 'monday' || raw.weekStart === 'sunday' ? raw.weekStart : d.weekStart,
   };
@@ -37,9 +37,16 @@ function windowOf(v: unknown): DateWindow | null {
   const w = (v ?? {}) as Record<string, unknown>;
   return isDay(w.from) && isDay(w.to) && w.from <= w.to ? { from: w.from, to: w.to } : null;
 }
+/** The `this_*` presets used to mean actual-to-date; that is what the `*td` ids mean now, so a saved choice keeps its numbers. */
+const RENAMED: Record<string, Preset> = { this_year: 'ytd', this_quarter: 'qtd', this_month: 'mtd', this_week: 'wtd' };
+const presetOf = (v: unknown): Preset | null => {
+  if (typeof v !== 'string') return null;
+  if (Object.hasOwn(RENAMED, v)) return RENAMED[v]!;
+  return Object.hasOwn(PRESET_LABELS, v) ? (v as Preset) : null;
+};
 function rangeOf(v: unknown): RangeChoice | null {
   const r = (v ?? {}) as Record<string, unknown>;
-  if (r.kind === 'preset') return typeof r.preset === 'string' && Object.hasOwn(PRESET_LABELS, r.preset) ? { kind: 'preset', preset: r.preset as Preset } : null;
+  if (r.kind === 'preset') { const preset = presetOf(r.preset); return preset ? { kind: 'preset', preset } : null; }
   const window = r.kind === 'custom' ? windowOf(r.window) : null;
   return window ? { kind: 'custom', window } : null;
 }

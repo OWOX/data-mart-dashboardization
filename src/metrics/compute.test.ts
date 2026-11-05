@@ -2,6 +2,7 @@ import { computeMetric } from './compute';
 import { fakeOwox } from '../owox/fake';
 import { rangeFor } from '../lib/dates';
 import { addDays } from '../lib/dates';
+import { HISTORY_DAYS, shownValue } from '../lib/stats';
 import type { MetricDef } from '../types';
 
 const metric: MetricDef = {
@@ -30,11 +31,11 @@ const owox = fakeOwox({
 });
 
 test('this quarter: fact to date, forecast, plan, near status, spark', async () => {
-  const spec = rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
+  const spec = rangeFor('cur_quarter', new Date('2026-10-24T10:00:00Z'));
   const { result, spark } = await computeMetric({ owox, metric, spec, thresholdPct: 20, withSpark: true });
   expect(result.fact).toBe(230);
-  expect(result.comparison).toBe(230);
-  expect(result.diffPct).toBe(0);
+  expect(result.comparison).toBe(920);        // the whole previous quarter
+  expect(result.diffPct).toBeCloseTo(0);        // forecast 920 against it
   expect(result.forecast).toBeCloseTo(920);
   expect(result.plan).toBe(12 * 92);
   expect(result.status).toBe('near');           // 920 vs 1104 is −16.7%
@@ -44,7 +45,7 @@ test('this quarter: fact to date, forecast, plan, near status, spark', async () 
 });
 
 test('range after the anchor: no fact, no comparison, forecast only', async () => {
-  const spec = rangeFor('this_week', new Date('2026-10-26T08:00:00Z'));
+  const spec = rangeFor('cur_week', new Date('2026-10-26T08:00:00Z'));
   const { result } = await computeMetric({ owox, metric: { ...metric, plan: null }, spec, thresholdPct: 20, withSpark: false });
   expect(result.fact).toBeNull();
   expect(result.diffPct).toBeNull();
@@ -70,14 +71,14 @@ test('an AVG flow metric forecasts its level, not a sum of daily averages', asyn
       return out;
     },
   });
-  const spec = rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
+  const spec = rangeFor('cur_quarter', new Date('2026-10-24T10:00:00Z'));
   const { result } = await computeMetric({ owox: avgOwox, metric: avg, spec: { ...spec, comparison: null }, thresholdPct: 20, withSpark: false });
   expect(result.fact).toBe(10);
   expect(result.forecast).toBeCloseTo(10);
 });
 
 test('compareFact: the diff is measured from the recounted value, fact stays whole', async () => {
-  const spec = { ...rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z')), compareFact: { from: '2026-10-01', to: '2026-10-10' }, comparison: { from: '2026-07-01', to: '2026-07-10' } };
+  const spec = { ...rangeFor('qtd', new Date('2026-10-24T10:00:00Z')), compareFact: { from: '2026-10-01', to: '2026-10-10' }, comparison: { from: '2026-07-01', to: '2026-07-10' } };
   const { result } = await computeMetric({ owox, metric, spec, thresholdPct: 20, withSpark: false });
   expect(result.fact).toBe(230);
   expect(result.compareFact).toBe(100);
@@ -107,7 +108,7 @@ test('compareFact whose recount is null gives no diff rather than a mismatched o
     for (let d = from; d <= to; d = addDays(d, 1)) days++;
     return [{ 'revenue | SUM': per * days }];
   }
-  const spec = { ...rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z')), compareFact: { from: '2026-10-01', to: '2026-10-10' }, comparison: { from: '2026-07-01', to: '2026-07-10' } };
+  const spec = { ...rangeFor('qtd', new Date('2026-10-24T10:00:00Z')), compareFact: { from: '2026-10-01', to: '2026-10-10' }, comparison: { from: '2026-07-01', to: '2026-07-10' } };
   const { result } = await computeMetric({ owox: gap, metric, spec, thresholdPct: 20, withSpark: false });
   expect(result.fact).toBe(230);
   expect(result.compareFact).toBeNull();
@@ -131,7 +132,7 @@ test('a running range with too little history to forecast is not judged against 
       return [{ 'revenue | SUM': 50 }];
     },
   });
-  const spec = rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
+  const spec = rangeFor('cur_quarter', new Date('2026-10-24T10:00:00Z'));
   const { result } = await computeMetric({ owox: young, metric, spec, thresholdPct: 20, withSpark: false });
   expect(result.note).toBe('short_history');
   expect(result.forecast).toBeNull();
@@ -140,7 +141,7 @@ test('a running range with too little history to forecast is not judged against 
 });
 
 describe('forecast from a source', () => {
-  const spec = () => rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
+  const spec = () => rangeFor('cur_quarter', new Date('2026-10-24T10:00:00Z'));
   // the anchor is 10-23. Forecast mart 'f' has gaps: 10-23 (the anchor), 10-25, 10-27, 12-20; every other day is missing
   const fvals: Record<string, number> = { '2026-10-23': 7, '2026-10-25': 3, '2026-10-27': 4, '2026-12-20': 9 };
   const makeF = (fvals: Record<string, number>) => fakeOwox({
@@ -232,8 +233,8 @@ describe('forecast from a source', () => {
     // numbers are the ones the first test above asserted before forecasts came from a source
     const { result, spark } = await computeMetric({ owox, metric, spec: spec(), thresholdPct: 20, withSpark: true });
     expect(result).toEqual({
-      fact: 230, compareFact: null, comparison: 230, diffPct: 0, plan: 12 * 92, forecast: expect.closeTo(920),
-      forecastApprox: false, status: 'near', trend: 'flat', note: null, error: null,
+      fact: 230, compareFact: null, comparison: 920, diffPct: expect.closeTo(0), plan: 12 * 92, forecast: expect.closeTo(920),
+      projection: expect.objectContaining({ actual: 230, source: { kind: 'trend', days: 90 } }), forecastApprox: false, status: 'near', trend: 'flat', note: null, error: null,
     });
     expect(spark!.forecastStart).toBe('2026-10-24');
     expect(spark!.forecast).toHaveLength(69);
@@ -262,4 +263,63 @@ test('a unique-count metric asks uniqueCount for its fact queries, a normal metr
   await computeMetric({ owox: spy, metric: { ...metric, plan: null }, spec, thresholdPct: 20, withSpark: false });
   expect(seen.length).toBeGreaterThan(0);
   for (const o of seen) expect(o).not.toHaveProperty('uniqueCount');
+});
+
+describe('a projected range', () => {
+  const now = new Date('2026-10-24T10:00:00Z');
+  test('the shown value is the forecast, measured against the whole previous period', async () => {
+    const { result } = await computeMetric({ owox, metric, spec: rangeFor('cur_quarter', now), thresholdPct: 20, withSpark: false });
+    expect(shownValue(result)).toBe(result.forecast);
+    expect(result.forecast).toBeCloseTo(920);
+    expect(result.comparison).toBe(920);
+    expect(result.diffPct).toBeCloseTo(0);
+    expect(result.projection).toEqual({
+      actual: 230, factWindow: { from: '2026-10-01', to: '2026-10-23' }, forecastWindow: { from: '2026-10-24', to: '2026-12-31' },
+      source: { kind: 'trend', days: HISTORY_DAYS },
+    });
+  });
+
+  test('a forecast Data Mart is named as the source', async () => {
+    const fmetric = { ...metric, forecast: { martId: 'f', measure: { field: 'fc', fn: 'SUM' as const }, dateField: 'date' } };
+    const fox = fakeOwox({
+      projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+      rows: (id, o) => {
+        const f = o.filter as { value: string }[];
+        const from = f[0]!.value, to = addDays(f[1]!.value, -1);
+        const per = id === 'f' ? 20 : 10;
+        const field = id === 'f' ? 'fc | SUM' : 'revenue | SUM';
+        if (o.dateTrunc) {
+          const out = [];
+          for (let d = from; d <= to; d = addDays(d, 1)) out.push({ date: d, [field]: String(per) });
+          return out;
+        }
+        let days = 0;
+        for (let d = from; d <= to; d = addDays(d, 1)) days++;
+        return [{ [field]: per * days }];
+      },
+    });
+    const { result } = await computeMetric({ owox: fox, metric: fmetric, spec: rangeFor('cur_quarter', now), thresholdPct: 20, withSpark: false });
+    expect(result.forecast).toBe(20 * 92);
+    expect(result.projection?.source).toEqual({ kind: 'mart', martId: 'f', field: 'fc' });
+    expect(result.diffPct).toBeCloseTo(((20 * 92 - 920) / 920) * 100);
+  });
+
+  test('with too little history there is no comparison and no projection', async () => {
+    const young = fakeOwox({
+      projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+      rows: (_id, o) => {
+        const f = o.filter as { value: string }[];
+        if (!o.dateTrunc) return [{ 'revenue | SUM': 50 }];
+        const out = [];
+        for (let d = f[0]!.value; d < f[1]!.value; d = addDays(d, 1)) if (d >= '2026-10-19') out.push({ date: d, 'revenue | SUM': '10' });
+        return out;
+      },
+    });
+    const { result } = await computeMetric({ owox: young, metric, spec: rangeFor('cur_quarter', now), thresholdPct: 20, withSpark: false });
+    expect(result.note).toBe('short_history');
+    expect(result.comparison).toBeNull();
+    expect(result.diffPct).toBeNull();
+    expect(result.projection).toBeNull();
+    expect(shownValue(result)).toBe(50);
+  });
 });

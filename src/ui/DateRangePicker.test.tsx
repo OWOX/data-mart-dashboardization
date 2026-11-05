@@ -3,7 +3,9 @@ import { DateRangePicker } from './DateRangePicker';
 import type { CompareChoice, RangeChoice } from '../types';
 
 const now = new Date('2026-11-03T12:00:00Z'); // yesterday = 2026-11-02
-const Q: RangeChoice = { kind: 'preset', preset: 'this_quarter' };
+const Q: RangeChoice = { kind: 'preset', preset: 'cur_quarter' };
+/** Quarter to date: its previous period is the same days of the last quarter, which the calendar test below leans on. */
+const QTD: RangeChoice = { kind: 'preset', preset: 'qtd' };
 const PREV: CompareChoice = { kind: 'preset', preset: 'previous_period' };
 const OFF: CompareChoice = { kind: 'off' };
 
@@ -58,11 +60,11 @@ test('two clicks make a custom range, reversed clicks are swapped', () => {
 });
 
 test('comparison preset and custom comparison', () => {
-  const onChange = setup();
+  const onChange = setup(QTD);
   open();
   fireEvent.click(screen.getByRole('button', { name: 'Same period last year' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onChange).toHaveBeenLastCalledWith(Q, { kind: 'preset', preset: 'year_before' });
+  expect(onChange).toHaveBeenLastCalledWith(QTD, { kind: 'preset', preset: 'year_before' });
 
   open();
   fireEvent.click(screen.getByRole('button', { name: 'Custom', pressed: false }));
@@ -72,7 +74,7 @@ test('comparison preset and custom comparison', () => {
   fireEvent.click(cal.getByRole('button', { name: 'Monday, August 31, 2026' }));
   fireEvent.click(cal.getByRole('button', { name: 'Monday, August 3, 2026' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onChange).toHaveBeenLastCalledWith(Q, { kind: 'custom', window: { from: '2026-08-03', to: '2026-08-31' } });
+  expect(onChange).toHaveBeenLastCalledWith(QTD, { kind: 'custom', window: { from: '2026-08-03', to: '2026-08-31' } });
 });
 
 test('comparison calendar follows the range and shows the resolved window', () => {

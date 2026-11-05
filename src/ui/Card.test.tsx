@@ -616,3 +616,16 @@ test('a tooltip link to an OWOX page opens through the app in the same tab; othe
   expect(fireEvent.click(other!)).toBe(true);
   expect(onOpen).toHaveBeenCalledTimes(1);
 });
+
+test('a projected result shows the forecast as the big number and the difference from it', () => {
+  const projection = { actual: 400_000, factWindow: { from: '2026-10-01', to: '2026-10-23' }, forecastWindow: { from: '2026-10-24', to: '2026-12-31' }, source: { kind: 'trend', days: 90 } } as const;
+  const { container } = render(<Card cls={cls} metrics={[arr]} cache={cache({ fact: 400_000, forecast: 1_240_000, comparison: 1_000_000, diffPct: 24, projection })} comparisonOn compareLabel="Last Quarter" absolute refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('1.24M')).toBeInTheDocument();
+  expect(container.textContent).toMatch(/\+240K/);
+});
+
+test('a projected approximate forecast keeps its ≈', () => {
+  const projection = { actual: 400, factWindow: { from: '2026-10-01', to: '2026-10-23' }, forecastWindow: { from: '2026-10-24', to: '2026-12-31' }, source: { kind: 'trend', days: 90 } } as const;
+  render(<Card cls={cls} metrics={[arr]} cache={cache({ fact: 400, forecast: 1240, forecastApprox: true, comparison: 1000, projection })} comparisonOn compareLabel="Last Quarter" refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('≈1.24K')).toBeInTheDocument();
+});

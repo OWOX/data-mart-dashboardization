@@ -2,6 +2,7 @@ import { MoveRight, TrendingDown, TrendingUp, TriangleAlert } from 'lucide-react
 import type { MetricDef, MetricResult } from '../types';
 import { formatValue } from '../lib/format';
 import { directionOf } from '../lib/direction';
+import { shownValue } from '../lib/stats';
 
 export function Badge({ metric, name = metric.alias, comparing = false, result, onPick }: { metric: MetricDef; name?: string; comparing?: boolean; result: MetricResult | undefined; onPick?: () => void }) {
   const failed = !result || result.error != null;
@@ -9,7 +10,7 @@ export function Badge({ metric, name = metric.alias, comparing = false, result, 
   const trend = directionOf(result, metric, comparing);
   // The same trend glyphs as the one before the main number, and as the owox.com map's badges.
   const Icon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : MoveRight;
-  const value = failed ? '—' : formatValue(result.fact ?? result.forecast, metric);
+  const value = failed ? '—' : formatValue(shownValue(result) ?? result.forecast, metric);
   const Tag = onPick ? 'button' : 'span';
   return (
     <Tag className="gy-badge" data-status={status} title={`${value} ${name}`} {...(onPick ? { type: 'button' as const, 'aria-label': `Show ${name}, ${value}`, onClick: onPick } : {})}>

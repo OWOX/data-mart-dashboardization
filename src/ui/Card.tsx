@@ -7,7 +7,7 @@ import type { MarkdownHtml } from '../lib/markdown';
 import { fieldAt } from '../model/aggregations';
 import { metricName } from '../model/metricName';
 import { owoxHosts, owoxPath } from '../lib/links';
-import { diffPct } from '../lib/stats';
+import { diffPct, shownValue } from '../lib/stats';
 import { directionOf } from '../lib/direction';
 import { formatDeltaFor, formatPct, formatValue } from '../lib/format';
 import { Badge } from './Badge';
@@ -351,15 +351,16 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   const failed = res.error != null;
   const spark = key.id === home?.id ? cache?.spark : cache?.sparks?.[key.id];
   // A comparison shorter than the range recounts the value over the same number of days.
-  const fact = res.compareFact ?? res.fact;
+  const shown = shownValue(res);
+  const fact = res.compareFact ?? shown;
   const comparison = res.comparison;
-  const canCompare = !failed && comparisonOn && !!compareLabel && res.fact !== null && key.dateField !== null;
+  const canCompare = !failed && comparisonOn && !!compareLabel && shown !== null && key.dateField !== null;
   const delta = canCompare && fact !== null && comparison !== null ? fact - comparison : null;
   // Against the comparison when there is one, else the series' own direction.
   const sign: Sign = directionOf(res, key, comparingNow);
   // a failed query shows no number; the error rides in the tooltip and the card offers a retry
   const warning = res.warning ?? res.error;
-  const big = failed ? formatValue(null, key) : fact !== null ? formatValue(fact, key) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${formatValue(res.forecast, key)}` : formatValue(null, key);
+  const big = failed ? formatValue(null, key) : fact !== null ? `${res.projection && res.forecastApprox ? '≈' : ''}${formatValue(fact, key)}` : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${formatValue(res.forecast, key)}` : formatValue(null, key);
   // Plan and forecast stay off the face of the card; the number names them on hover.
   const detail = [
     res.plan !== null ? `Plan ${formatValue(res.plan, key)}` : null,

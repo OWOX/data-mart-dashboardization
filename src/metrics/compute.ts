@@ -1,7 +1,7 @@
 import type { DateWindow, MetricDef, MetricResult, RangeSpec, SeriesPack } from '../types';
 import { addDays, eachDay, maxDay, minDay } from '../lib/dates';
 import { describeError } from '../lib/errors';
-import { diffPct, forecastFor, levelAt, planForRange, statusOf, trendOf } from '../lib/stats';
+import { diffPct, forecastFor, HISTORY_DAYS, levelAt, planForRange, statusOf, trendOf } from '../lib/stats';
 import type { OwoxLike } from '../owox/sources';
 import { queryDaily, queryTotal } from './query';
 
@@ -30,7 +30,7 @@ export async function computeMetric(args: {
     const { anchor, range, factWindow } = spec;
     const comparisonWindow = spec.comparison;
     const historyWindow: DateWindow = {
-      from: minDay(minDay(addDays(anchor, -89), comparisonWindow?.from ?? range.from), range.from),
+      from: minDay(minDay(addDays(anchor, -(HISTORY_DAYS - 1)), comparisonWindow?.from ?? range.from), range.from),
       to: minDay(range.to, anchor),
     };
     const daily = await queryDaily(owox, martId, measure, dateField, historyWindow, unique);
@@ -46,6 +46,7 @@ export async function computeMetric(args: {
     let note: MetricResult['note'] = null;
     let warning: string | null = null;
     let forecastMeasure = measure;
+    let source: NonNullable<MetricResult['projection']>['source'] | null = null;
     if (spec.endsInFuture) {
       let sourced = false;
       if (metric.forecast) {
@@ -68,6 +69,7 @@ export async function computeMetric(args: {
             future = carried.map((v) => v ?? first);
           }
           forecastMeasure = fc.measure;
+          source = { kind: 'mart', martId: fc.martId, field: fc.measure.field };
           sourced = true;
         } catch (e) {
           warning = e instanceof NoData ? 'Forecast source has no data' : `Forecast source failed: ${describeError(e)}`;
@@ -80,7 +82,7 @@ export async function computeMetric(args: {
         // only because uniqueCount: [''] counts the mart's own primary key and each row has one date value (a joined alias's per-day counts wouldn't)
         const additive = kind === 'flow' && (measure.fn === 'SUM' || measure.fn === 'COUNT' || metric.isUniqueCount);
         const f = forecastFor({ daily, anchor, rangeTo: range.to, additive, fact });
-        if (f) { forecast = f.value; future = f.future.map((p) => p.v); } else note = 'short_history';
+        if (f) { forecast = f.value; future = f.future.map((p) => p.v); source = { kind: 'trend', days: HISTORY_DAYS }; } else note = 'short_history';
       }
     }
 
@@ -91,11 +93,16 @@ export async function computeMetric(args: {
       plan = planForRange(planDaily, range, p.shape);
     }
 
+    // a projected range is judged by its forecast over the whole period; without one, a partial total against a
+    // whole period would mislead, so there is no comparison at all
+    const { forecastWindow } = spec;
+    const projection = forecastWindow && factWindow && forecast !== null && source ? { actual: fact, factWindow, forecastWindow, source } : null;
+    const unfair = !!forecastWindow && !projection;
     const result: MetricResult = {
       fact, compareFact,
       // a cut fact window whose recount failed has no day-for-day partner, so no comparison at all
-      comparison: spec.compareFact && compareFact === null ? null : comparison,
-      diffPct: diffPct(spec.compareFact ? compareFact : fact, comparison), plan, forecast,
+      comparison: unfair || (spec.compareFact && compareFact === null) ? null : comparison,
+      diffPct: unfair ? null : diffPct(projection ? forecast : spec.compareFact ? compareFact : fact, comparison), plan, forecast, projection,
       forecastApprox: forecast !== null && (forecastMeasure.fn === 'COUNT_DISTINCT' || forecastMeasure.fn === null),
       // a range still running is judged by its forecast; without one there is nothing fair to judge yet
       status: statusOf(spec.endsInFuture ? forecast : fact, plan, thresholdPct),

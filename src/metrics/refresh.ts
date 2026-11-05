@@ -27,7 +27,7 @@ export function trimToSize(doc: CacheDoc, limit = MAX_DOC_CHARS): CacheDoc {
 
 /** Week presets resolve to other days under a Sunday start, so only they carry it (Monday keeps the old keys). */
 export const cacheKey = (range: RangeChoice, compare: CompareChoice, weekStart: WeekStart = 'monday'): string => {
-  const weekly = range.kind === 'preset' && (range.preset === 'this_week' || range.preset === 'last_week') && weekStart === 'sunday';
+  const weekly = range.kind === 'preset' && (['cur_week', 'wtd', 'last_week'].includes(range.preset)) && weekStart === 'sunday';
   return `${rangeKey(range)}:${compareKey(compare)}${weekly ? ':sun' : ''}`;
 };
 

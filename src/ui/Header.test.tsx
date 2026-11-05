@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { Header, RangeControls } from './Header';
 
 const controls = (over: Partial<Parameters<typeof RangeControls>[0]> = {}) => (
-  <RangeControls range={{ kind: 'preset', preset: 'this_quarter' }} compare={{ kind: 'preset', preset: 'previous_period' }} now={new Date('2026-10-24T10:00:00Z')} onChange={() => {}} onRefresh={() => {}} onSettings={() => {}} {...over} />
+  <RangeControls range={{ kind: 'preset', preset: 'cur_quarter' }} compare={{ kind: 'preset', preset: 'previous_period' }} now={new Date('2026-10-24T10:00:00Z')} onChange={() => {}} onRefresh={() => {}} onSettings={() => {}} {...over} />
 );
 
 test('the header reads Gyroscope with the update time, no controls and no label', () => {
