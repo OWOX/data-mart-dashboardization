@@ -236,6 +236,24 @@ function TrendArrow({ sign }: { sign: Sign }) {
   );
 }
 
+/** Grey bars where the arrow, the number and the secondary metrics will be, laid out on the card's own grid. */
+function CardSkeleton({ badges, spark }: { badges: number; spark: boolean }) {
+  return (
+    <>
+      <div className="gy-card-body" aria-hidden="true">
+        <span className="gy-trend"><span className="gy-sk gy-sk-arrow" /></span>
+        <div className="gy-figure"><span className="gy-sk gy-sk-big" /></div>
+        {badges > 0 && (
+          <div className="gy-badges">
+            {Array.from({ length: badges }, (_, i) => <span key={i} className="gy-sk gy-sk-badge" />)}
+          </div>
+        )}
+      </div>
+      {spark && <div className="gy-spark-slot" aria-hidden="true" />}
+    </>
+  );
+}
+
 export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', quality, details, markdown, onOpen, onRetry }: Props) {
   const nameOf = (m: MetricDef) => metricName(m, details?.get(m.martId));
   // The metric the reader swapped in for this session, with the secondary order it leaves behind.
@@ -281,9 +299,18 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       </article>
     );
   }
+  // While a load runs, a card with nothing good to show yet holds its shape instead of a dash or an error.
+  if (refreshing && (!res || res.error != null)) {
+    return (
+      <article className="gy-card" data-class-id={cls.id} data-status="loading" aria-busy="true">
+        {header}
+        <CardSkeleton badges={Math.min(secondary.length, SHOWN)} spark={!!cache?.spark} />
+      </article>
+    );
+  }
   if (!res) {
     return (
-      <article className="gy-card" data-class-id={cls.id} data-status="empty" aria-busy={refreshing}>
+      <article className="gy-card" data-class-id={cls.id} data-status="empty">
         {header}
         <p className="gy-muted">—</p>
       </article>

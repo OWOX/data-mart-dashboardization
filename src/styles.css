@@ -208,6 +208,14 @@ button.gy-badge { border: 0; font-family: inherit; cursor: pointer; }
 button.gy-badge:hover { color: var(--foreground); }
 .gy-badge-value, .gy-badge svg { flex-shrink: 0; }
 .gy-badge-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* A loading card: bars the size of the arrow, the number and the badges, pulsing. */
+.gy-sk { display: block; border-radius: 0.375rem; background: var(--muted); animation: gy-sk-pulse 1.4s ease-in-out infinite; }
+.gy-sk-arrow { width: 2.5rem; height: 1.25rem; }
+.gy-sk-big { width: 7rem; height: 2.75rem; margin-top: 0.25rem; }
+.gy-sk-badge { width: 4.5rem; height: 1.125rem; }
+:root.dark .gy-sk { background: var(--tile); }
+@keyframes gy-sk-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .gy-sk { animation: none; } }
 /* Where a swapped-in metric has no series: the sparkline's height (3rem + 0.5rem of padding), so the card keeps its size. */
 .gy-spark-slot { height: 3.5rem; margin: auto -0.75rem -0.75rem; }
 /* The palette's pale row: a status, quiet enough to sit beside the card's own border. */

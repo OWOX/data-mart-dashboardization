@@ -59,6 +59,19 @@ test('an exact forecast without a fact has no approximation sign', () => {
   expect(screen.getByText('900')).toBeInTheDocument();
 });
 
+test('a loading card with no result or a failed one shows a skeleton, not a dash or a retry', () => {
+  const { container, rerender } = render(<Card cls={cls} metrics={[arr, uc]} cache={undefined} comparisonOn refreshing onRetry={() => {}} />);
+  expect(container.querySelector('[data-status="loading"]')).toHaveAttribute('aria-busy', 'true');
+  expect(container.querySelectorAll('.gy-sk-badge')).toHaveLength(1);
+  expect(screen.queryByText('—')).toBeNull();
+  rerender(<Card cls={cls} metrics={[arr, uc]} cache={cache({ error: 'TIMEOUT' })} comparisonOn refreshing onRetry={() => {}} />);
+  expect(container.querySelector('.gy-sk-big')).not.toBeNull();
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  // a good result stays on the card while it reloads
+  rerender(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn refreshing onRetry={() => {}} />);
+  expect(container.querySelector('.gy-sk')).toBeNull();
+});
+
 test('error card offers retry; empty card says no metric', () => {
   const onRetry = vi.fn();
   render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ error: 'TIMEOUT' })} comparisonOn refreshing={false} onRetry={onRetry} />);

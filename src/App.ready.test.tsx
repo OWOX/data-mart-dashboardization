@@ -593,7 +593,7 @@ test('a card shows its number before the refresh finishes', async () => {
   const { container } = render(<App ctx={ctxWith().ctx} deps={p.deps} />);
   await waitFor(() => expect(container.querySelector(`[data-class-id="${GID}"]`)).toHaveTextContent('4.24K'));
   expect(line()).not.toBeNull();
-  expect(container.querySelector(`[data-class-id="${CID}"]`)).toHaveTextContent('—');
+  expect(container.querySelector(`[data-class-id="${CID}"]`)).toHaveAttribute('data-status', 'loading');
   openC();
   await waitFor(() => expect(line()).toBeNull());
 });
@@ -634,7 +634,7 @@ test('a superseded refresh does not apply its partials or its final doc', async 
   await new Promise((r) => setTimeout(r, 30));
   const card = () => container.querySelector(`[data-class-id="${GID}"]`)!;
   expect(card()).not.toHaveTextContent('1.11K');
-  expect(card()).toHaveTextContent('—');
+  expect(card()).toHaveAttribute('data-status', 'loading');
   expect(line()).not.toBeNull();
   openNew();
   await waitFor(() => expect(line()).toBeNull());
