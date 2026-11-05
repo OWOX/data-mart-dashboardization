@@ -80,8 +80,9 @@ function QualityTool({ quality, path, onOpen }: { quality?: QualitySummary; path
   if (!badge) return null;
   const Icon = SHIELD[badge.kind];
   return (
-    <button type="button" className="gy-tool gy-quality" data-tone={badge.tone} aria-label={badge.label} title={badge.label} onClick={() => onOpen(path)}>
+    <button type="button" className="gy-tool gy-quality" data-tone={badge.tone} aria-label={badge.label} onClick={() => onOpen(path)}>
       <Icon size={14} />
+      <span className="gy-hint-body" role="tooltip" aria-hidden="true">{badge.label}</span>
     </button>
   );
 }
@@ -267,8 +268,10 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
           {res.note === 'short_history' ? 'Not enough history to forecast' : 'All time'}
         </footer>
       )}
-      {/* Only the class's own key metric has a series. */}
-      {cache?.spark && key.id === home?.id && <Sparkline spark={cache.spark} trend={res.trend} />}
+      {/* Only the class's own key metric has a series; a swapped-in metric keeps the slot's height so the card doesn't shrink. */}
+      {cache?.spark && (key.id === home?.id
+        ? <Sparkline spark={cache.spark} trend={res.trend} />
+        : <div className="gy-spark-slot" aria-hidden="true" />)}
     </article>
   );
 }

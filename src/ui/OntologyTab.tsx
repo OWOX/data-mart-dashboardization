@@ -380,6 +380,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         const bodyId = `gy-onto-body-${c.id}`;
         const shownCount = metrics.filter((m) => m.shown !== false).length;
         const broken = brokenIn(c);
+        const cannotCompute = metrics.filter((m) => uncomputable(m, detailOf(m.martId).detail)).length;
         const martNote = descriptions.get(c.martId);
         // the metric the drop line sits above, or the last one when the drop is at the end
         const dragging = drag && drag.classId === c.id ? drag : null;
@@ -401,6 +402,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                 {c.contexts.length > 0 && <span className="dm-muted gy-onto-contexts">{c.contexts.map((x) => x.name).join(', ')}</span>}
                 <span className="dm-muted gy-onto-contexts">{shownCount} of {metrics.length} metrics shown</span>
                 {broken > 0 && <span className="gy-bad-text">{broken} broken</span>}
+                {cannotCompute > 0 && <span className="gy-bad-text">{cannotCompute} can&apos;t compute</span>}
               </button>
               {martNote && <InfoTip name={c.title} text={martNote} />}
               {classNote && <span className="gy-bad-text">{classNote}</span>}
@@ -413,7 +415,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                     <tr>
                       <th scope="col">Shown</th><th scope="col">Name</th><th scope="col">Format</th>
                       <th scope="col">Series</th><th scope="col">Data Mart</th><th scope="col">Field</th><th scope="col">Aggregation</th>
-                      <th scope="col">Date field</th><th scope="col">Shape</th><th scope="col"><span className="gy-sr-only">Reorder</span></th>
+                      <th scope="col">Date field</th><th scope="col">Shape</th><th scope="col" className="gy-onto-end"><span className="gy-sr-only">Reorder</span></th>
                     </tr>
                   </thead>
                   {metrics.map((m) => {
@@ -444,7 +446,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                           <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, shown: e.target.checked }))} /></span></td>
                           <td rowSpan={3}><input className="gy-input gy-onto-name" aria-label="Name" value={m.alias} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, alias: e.target.value }))} /></td>
                           <td rowSpan={3}>
-                            <span className="gy-onto-cell">
+                            <span className="gy-onto-stack">
                               <select className="gy-select" aria-label="Format" value={m.format} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, format: e.target.value as MetricFormat, currency: e.target.value === 'currency' ? x.currency : null }))}>
                                 {FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
                               </select>
@@ -468,7 +470,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                             })}
                             onDate={(d) => patchMetric(m.id, (x) => ({ ...x, dateField: d === '' ? null : d }))}
                           />
-                          <td rowSpan={3}>
+                          <td rowSpan={3} className="gy-onto-end">
                             <span className="gy-onto-first">
                               <button
                                 type="button" className="gy-onto-grip" aria-label={`Reorder ${m.alias}`} title="Drag to reorder, or use the arrow keys" data-handle={m.id}
@@ -502,7 +504,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                               onDate={(dateField) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, dateField } } : x))}
                             >
                               <td>
-                                <select className="gy-select" aria-label="Plan shape" value={plan.shape} onChange={(e) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, shape: e.target.value as PlanShape } } : x))}>
+                                <select className="gy-select gy-onto-shape" aria-label="Plan shape" value={plan.shape} onChange={(e) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, shape: e.target.value as PlanShape } } : x))}>
                                   {SHAPES.map((s) => <option key={s} value={s}>{s}</option>)}
                                 </select>
                               </td>

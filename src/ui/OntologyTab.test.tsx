@@ -417,6 +417,14 @@ test('a metric its field cannot aggregate is listed with a warning, not hidden',
   expect(within(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).queryByText("OWOX can't compute this aggregation for this field")).toBeNull();
 });
 
+test('a folded class with a metric OWOX cannot compute shows the count in its header', () => {
+  const m = model();
+  m.metrics[1] = { ...m.metrics[1]!, measure: { field: 'qty', fn: 'COUNT_DISTINCT' } };
+  setup(m, DETAILS, MARTS, false);
+  expect(header('Orders')).toHaveTextContent("1 can't compute");
+  expect(header('Customers')).not.toHaveTextContent("can't compute");
+});
+
 test('the field lists show aliases and keep the field path as the value', () => {
   const details = new Map(DETAILS);
   details.set('a', detail('a', 'Orders', [{ ...field('revenue'), alias: 'Net revenue' }, field('qty'), field('day', 'DATE')]));

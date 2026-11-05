@@ -11,10 +11,10 @@ export function Badge({ metric, result, onPick }: { metric: MetricDef; result: M
   const value = failed ? '—' : formatValue(result.fact ?? result.forecast, metric);
   const Tag = onPick ? 'button' : 'span';
   return (
-    <Tag className="gy-badge" data-status={status} {...(onPick ? { type: 'button' as const, 'aria-label': `Show ${metric.alias}, ${value}`, onClick: onPick } : {})}>
+    <Tag className="gy-badge" data-status={status} title={`${value} ${metric.alias}`} {...(onPick ? { type: 'button' as const, 'aria-label': `Show ${metric.alias}, ${value}`, onClick: onPick } : {})}>
       <Icon size={12} aria-label={`trend ${trend}`} />
       <span className="num gy-badge-value">{value}</span>{' '}
-      <span className="gy-badge-name" title={metric.alias}>{metric.alias}</span>
+      <span className="gy-badge-name">{metric.alias}</span>
       {result?.warning && <span className="gy-warn" title={result.warning}><TriangleAlert size={12} aria-label="Warning" /></span>}
     </Tag>
   );

@@ -286,6 +286,21 @@ test('Escape closing the panel does not reach other listeners', () => {
   expect(other).not.toHaveBeenCalled();
 });
 
+test('the sparkline slot keeps its place after a swap, as an empty aria-hidden placeholder', () => {
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-spark')).not.toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Show Customers, 7.15K' }));
+  const slot = container.querySelector('.gy-spark-slot')!;
+  expect(slot).not.toBeNull();
+  expect(slot.getAttribute('aria-hidden')).toBe('true');
+  expect(slot.textContent).toBe('');
+});
+
+test('a badge names its whole value and label in a title', () => {
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-badge')!.getAttribute('title')).toBe('7.15K Customers');
+});
+
 describe('data quality icon', () => {
   const q = (over: Partial<QualitySummary>): QualitySummary => ({ state: 'PASSED', enabledChecks: 5, passedChecks: 5, failedChecks: 0, errorChecks: 0, warningFindings: 0, errorFindings: 0, highestSeverity: null, lastRunAt: null, ...over });
   const show = (quality?: QualitySummary, onOpen = vi.fn()) => {
@@ -304,6 +319,14 @@ describe('data quality icon', () => {
     const b = screen.getByRole('button', { name });
     expect(b.getAttribute('data-tone')).toBe(tone);
     expect(b.querySelector(`.lucide-${icon}`)).not.toBeNull();
+  });
+
+  test('focusing the shield shows its label as a tooltip', () => {
+    show(q({ state: 'ISSUES', failedChecks: 2, highestSeverity: 'warning' }));
+    const b = screen.getByRole('button', { name: 'Data quality: 2 issues' });
+    b.focus();
+    expect(b).toHaveFocus();
+    expect(b.querySelector('[role="tooltip"]')!.textContent).toBe('Data quality: 2 issues');
   });
 
   test('missing counts read as 0, never NaN', () => {
