@@ -103,7 +103,8 @@ test('a stand-in main Data Mart without a key or a date field still warns: no go
   const c = byId(await run({ ...base, marts: base.marts.filter((m) => m.id !== G), details: { ...base.details, [C]: bare } }));
   expect(c['connections.reachable']!.detail).toContain('Customers');
   expect(c['connections.pk']).toMatchObject({ status: 'warn', detail: 'No primary key: Customers' });
-  expect(c['connections.date']!.status).toBe('warn');
+  expect(c['connections.date']).toMatchObject({ status: 'warn', detail: 'No date field: Customers (the main Data Mart)' });
+  expect(c['connections.facts']!.status).toBe('ok');
 });
 
 test('a goal without a primary key or a date fails both', async () => {

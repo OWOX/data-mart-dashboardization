@@ -218,7 +218,10 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     }
     if (noPk.length) put('connections.pk', 'warn', `No primary key: ${names(noPk)}`, martFix(noPk[0]!, titles.get(noPk[0]!)));
     else put('connections.pk', 'ok');
-    if (noDate.length) put('connections.date', 'warn', `No date field, so not on the canvas: ${names(noDate)}`, martFix(noDate[0]!, titles.get(noDate[0]!)));
+    // main stays on the canvas without one; it just can't take the date range
+    const offDate = noDate.filter((id) => id !== main?.id);
+    const dateText = [offDate.length ? `No date field, so not on the canvas: ${names(offDate)}` : '', noDate.includes(main?.id ?? '') ? `No date field: ${names([main!.id])} (the main Data Mart)` : ''].filter(Boolean).join('. ');
+    if (noDate.length) put('connections.date', 'warn', dateText, martFix(noDate[0]!, titles.get(noDate[0]!)));
     else put('connections.date', 'ok');
   });
 

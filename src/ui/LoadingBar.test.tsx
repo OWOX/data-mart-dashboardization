@@ -48,6 +48,12 @@ test('a bar at 90% or more stops at once, so the next view starts a fresh one', 
   const r = render(<HostLoadingContext value={late.start}><LoadingBar key="a" progress={{ done: 47, total: 50 }} /></HostLoadingContext>);
   r.rerender(<HostLoadingContext value={late.start}><LoadingBar key="b" /></HostLoadingContext>);
   expect(late.calls).toEqual(['start 1', '1 0.94', 'stop 1', 'start 2']);
+  for (const [done, now] of [[9, true], [8.8, false]] as const) {
+    const b = host();
+    const x = render(<HostLoadingContext value={b.start}><LoadingBar key="a" progress={{ done, total: 10 }} /></HostLoadingContext>);
+    x.rerender(<HostLoadingContext value={b.start}><LoadingBar key="b" /></HostLoadingContext>);
+    expect(b.calls.includes('stop 1'), String(done)).toBe(now);
+  }
 });
 
 test('without the host bar, nothing shows and nothing throws', () => {
