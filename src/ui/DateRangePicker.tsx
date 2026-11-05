@@ -1,7 +1,8 @@
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { addDays, anchorFor, compareOptions, controlLabel, diffDays, resolveRange } from '../lib/dates';
-import { formatPeriod } from '../lib/format';
+import { formatPeriod, formatWindow } from '../lib/format';
+import { HISTORY_DAYS } from '../lib/stats';
 import { PRESET_GROUPS, PRESET_LABELS, type CompareChoice, type ComparePreset, type DateWindow, type Day, type RangeChoice, type WeekStart } from '../types';
 import { Calendar, monthStart } from './Calendar';
 
@@ -16,6 +17,9 @@ const openMonth = (w: DateWindow | null, anchor: Day): Day => monthStart(!w || w
 /** Picker wording; the cards use the Title Case names from dates.ts. */
 const compareChipLabel = (preset: ComparePreset, days: number): string =>
   preset === 'previous_period' ? 'Previous period' : preset === 'preceding_days' ? `Previous ${days} days` : 'Same period last year';
+
+/** A window without its year when it sits in the anchor's year. */
+const windowText = (w: DateWindow, anchor: Day): string => formatWindow(w, w.from.slice(0, 4) !== anchor.slice(0, 4) || w.to.slice(0, 4) !== anchor.slice(0, 4));
 
 export function DateRangePicker(props: Props) {
   const [open, setOpen] = useState(false);
@@ -60,7 +64,10 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
   // The resolved (clipped, length-matched) window is what gets queried, so it is what we show; the raw pick goes to onChange.
   const comparison = resolveRange(dRange, dCompare, now, weekStart).comparison;
   const rawCompare = dCompare.kind === 'custom' ? dCompare.window : null;
-  const factDays = spec.factWindow ? diffDays(spec.factWindow.from, spec.factWindow.to) + 1 : spec.days;
+  /** The `*` marks the range itself, so the text is cut where the comparison starts. */
+  const forecast = spec.forecastWindow;
+  const [summaryHead, ...summaryRest] = formatPeriod(drawn, compareOn ? comparison : null).split(' vs ');
+  const summary = { head: summaryHead, tail: summaryRest.length ? ` vs ${summaryRest.join(' vs ')}` : '' };
   const [rangeMonth, setRangeMonth] = useState(() => openMonth(drawn, anchor));
   const [compareMonth, setCompareMonth] = useState(() => openMonth(comparison, anchor));
   const id = useId();
@@ -106,7 +113,15 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       <div className="gy-drp-head">
         <span className="gy-drp-windows">
-          {formatPeriod(drawn, compareOn ? comparison : null)}
+          {summary.head}{forecast && <sup>*</sup>}{summary.tail}
+          {forecast && (
+            <span className="gy-hint gy-drp-note" tabIndex={0}>
+              * {windowText(forecast, anchor)} forecast
+              <span className="gy-hint-body gy-hint-left" role="tooltip">
+                {`${windowText(forecast, anchor)} hasn't happened yet. Each card fills these days with its metric's forecast: from the forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last ${HISTORY_DAYS} days.`}
+              </span>
+            </span>
+          )}
         </span>
         <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
         <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>
@@ -133,7 +148,8 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
               {options.map((o) => (
                 <button key={o.preset} type="button" className="gy-drp-preset" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
                   onClick={() => { setDCompare({ kind: 'preset', preset: o.preset }); setPendingCompare(false); setCompareMonth(openMonth(o.window, anchor)); }}>
-                  {compareChipLabel(o.preset, factDays)}
+                  {compareChipLabel(o.preset, diffDays(o.window.from, o.window.to) + 1)}
+                  <span className="gy-drp-win" aria-hidden>{windowText(o.window, anchor)}</span>
                 </button>
               ))}
               <button type="button" className="gy-drp-preset" aria-pressed={dCompare.kind === 'custom'}
@@ -146,12 +162,12 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
       </div>
       <div className="gy-drp-right">
         <div className="gy-drp-cal">
-          <Calendar month={rangeMonth} selected={drawn} weekStart={weekStart} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
+          <Calendar month={rangeMonth} selected={drawn} weekStart={weekStart} anchorYear={Number(anchor.slice(0, 4))} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
         </div>
         {compareOn && <div className="gy-drp-sep" role="separator" />}
         {compareOn && (
           <div className="gy-drp-cmpcal">
-            <Calendar month={compareMonth} selected={comparison} weekStart={weekStart} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />
+            <Calendar month={compareMonth} selected={comparison} weekStart={weekStart} anchorYear={Number(anchor.slice(0, 4))} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />
           </div>
         )}
       </div>

@@ -616,3 +616,55 @@ test('a tooltip link to an OWOX page opens through the app in the same tab; othe
   expect(fireEvent.click(other!)).toBe(true);
   expect(onOpen).toHaveBeenCalledTimes(1);
 });
+
+test('a projected result shows the forecast as the big number and the difference from it', () => {
+  const projection = { actual: 400_000, factWindow: { from: '2026-10-01', to: '2026-10-23' }, forecastWindow: { from: '2026-10-24', to: '2026-12-31' }, source: { kind: 'trend', days: 90 } } as const;
+  const { container } = render(<Card cls={cls} metrics={[arr]} cache={cache({ fact: 400_000, forecast: 1_240_000, comparison: 1_000_000, diffPct: 24, projection })} comparisonOn compareLabel="Last Quarter" absolute refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('1.24M')).toBeInTheDocument();
+  expect(container.textContent).toMatch(/\+240K/);
+});
+
+test('a projected approximate forecast keeps its ≈', () => {
+  const projection = { actual: 400, factWindow: { from: '2026-10-01', to: '2026-10-23' }, forecastWindow: { from: '2026-10-24', to: '2026-12-31' }, source: { kind: 'trend', days: 90 } } as const;
+  render(<Card cls={cls} metrics={[arr]} cache={cache({ fact: 400, forecast: 1240, forecastApprox: true, comparison: 1000, projection })} comparisonOn compareLabel="Last Quarter" refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('≈1.24K')).toBeInTheDocument();
+});
+
+describe('projection footnote', () => {
+  const projection = { actual: 1_000_000, factWindow: { from: '2026-01-01', to: '2026-11-04' }, forecastWindow: { from: '2026-11-05', to: '2026-12-31' }, source: { kind: 'trend' as const, days: 90 } };
+  const show = (over: Partial<MetricResult>, extra: Partial<Parameters<typeof Card>[0]> = {}) => render(<Card cls={cls} metrics={[arr, uc]} cache={cache(over)} comparisonOn={false} refreshing={false} onRetry={() => {}} {...extra} />);
+
+  test('the trigger\'s accessible name contains its visible text', () => {
+    show({ projection });
+    expect(screen.getByRole('button', { name: '16% of period is forecasted, details' })).toBeInTheDocument();
+  });
+
+  test('shows the forecast share and the two parts on hover', () => {
+    const { container } = show({ projection });
+    expect(screen.getByText('*16% of period is forecasted')).toBeInTheDocument();
+    const tip = container.querySelector('.gy-projnote [role="tooltip"]')!.textContent!;
+    expect(tip).toContain('Actual: Jan 1 – Nov 4 · 308 days · 84% · 1M');
+    expect(tip).toContain('Forecast: Nov 5 – Dec 31 · 57 days · 16%');
+    expect(tip).toContain('Trend and weekday pattern of the last 90 days');
+  });
+
+  test('a mart source names the mart and the field alias', () => {
+    const detail: MartDetail = { id: 'f', title: 'Forecasts', fields: [{ name: 'arr_f', alias: 'ARR forecast', type: 'NUMBER', isPrimaryKey: false }] };
+    const { container } = show({ projection: { ...projection, actual: null, source: { kind: 'mart', martId: 'f', field: 'arr_f' } } }, { details: new Map([['f', detail]]) });
+    const tip = container.querySelector('.gy-projnote [role="tooltip"]')!.textContent!;
+    expect(tip).toContain('From Forecasts, ARR forecast');
+    expect(tip).not.toMatch(/84% ·/);
+  });
+
+  test('no footnote without a projection', () => {
+    const { container } = show({});
+    expect(container.querySelector('.gy-projnote')).toBeNull();
+  });
+});
+
+test('a forecast mart that is not on the canvas is named from the project mart list', () => {
+  const projection = { actual: null, factWindow: { from: '2026-01-01', to: '2026-11-04' }, forecastWindow: { from: '2026-11-05', to: '2026-12-31' }, source: { kind: 'mart' as const, martId: 'other', field: 'arr_f' } };
+  const marts = new Map([['other', { title: 'Plan 2026', description: null, icon: null }]]);
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ projection })} marts={marts} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-projnote [role="tooltip"]')!.textContent).toContain('From Plan 2026, arr_f');
+});

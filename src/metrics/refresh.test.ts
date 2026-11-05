@@ -60,7 +60,7 @@ test('spark values and forecast are rounded to 4 significant digits', async () =
     edges: [],
     metrics: [{ id: 'a:id:COUNT_DISTINCT', martId: 'a', alias: 'A', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, format: 'number' as const, currency: null, plan: null, shown: true, forecast: null }],
   };
-  const doc = await refreshCanvas({ owox, model, spec: { ...rangeFor('this_month', new Date('2026-10-24T10:00:00Z')), comparison: null, compareFact: null }, key: 'k', thresholdPct: 20 });
+  const doc = await refreshCanvas({ owox, model, spec: { ...rangeFor('cur_month', new Date('2026-10-24T10:00:00Z')), comparison: null, compareFact: null }, key: 'k', thresholdPct: 20 });
   const spark = doc.cards.a!.spark!;
   expect(spark.values.length).toBeGreaterThan(0);
   expect(spark.forecast.length).toBeGreaterThan(0);
@@ -88,11 +88,11 @@ test('an oversized cache doc drops every spark', () => {
 });
 
 test('cacheKey and persistable: presets persist per key, custom choices do not', () => {
-  const q = { kind: 'preset', preset: 'this_quarter' } as const;
+  const q = { kind: 'preset', preset: 'qtd' } as const;
   const prev = { kind: 'preset', preset: 'previous_period' } as const;
   const win = { from: '2026-10-01', to: '2026-10-31' };
-  expect(cacheKey(q, prev)).toBe('this_quarter:previous_period');
-  expect(cacheKey(q, { kind: 'off' })).toBe('this_quarter:off');
+  expect(cacheKey(q, prev)).toBe('qtd:previous_period');
+  expect(cacheKey(q, { kind: 'off' })).toBe('qtd:off');
   expect(cacheKey({ kind: 'custom', window: win }, { kind: 'custom', window: win })).toBe('c:2026-10-01_2026-10-31:c:2026-10-01_2026-10-31');
   expect(persistable(q, prev)).toBe(true);
   expect(persistable(q, { kind: 'off' })).toBe(true);
@@ -103,11 +103,11 @@ test('cacheKey and persistable: presets persist per key, custom choices do not',
 test('cacheKey carries a Sunday week start for week presets only', () => {
   const off = { kind: 'off' } as const;
   const w = { kind: 'preset', preset: 'last_week' } as const;
-  const q = { kind: 'preset', preset: 'this_quarter' } as const;
+  const q = { kind: 'preset', preset: 'qtd' } as const;
   expect(cacheKey(w, off)).toBe('last_week:off');
   expect(cacheKey(w, off, 'monday')).toBe('last_week:off');
   expect(cacheKey(w, off, 'sunday')).toBe('last_week:off:sun');
-  expect(cacheKey(q, off, 'sunday')).toBe('this_quarter:off');
+  expect(cacheKey(q, off, 'sunday')).toBe('qtd:off');
 });
 
 test('onPartial reports growing card sets; the spark arrives with the key metric', async () => {
@@ -230,7 +230,7 @@ describe('broken references', () => {
       return base(id, o);
     };
     const m = model([metric('m', { dateField: 'date', plan, forecast })]);
-    const future = rangeFor('this_quarter', new Date('2026-10-24T10:00:00Z'));
+    const future = rangeFor('cur_quarter', new Date('2026-10-24T10:00:00Z'));
     const doc = await refreshCanvas({ owox, model: m, spec: future, key: 'k', thresholdPct: 20, issues: [{ kind: 'plan_field_missing', classId: 'a', martId: 'a', metricId: 'm', text: 'The plan field x no longer exists in p' }] });
     expect(doc.cards.a!.metrics.m!.warning).toBe('The plan field x no longer exists in p; Forecast source failed: BOOM');
   });

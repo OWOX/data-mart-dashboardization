@@ -48,9 +48,9 @@ test('the project model is read through the upgrade, never written by the ontolo
 test('unknown default preset falls back', async () => {
   const ctx = memoryCollections();
   await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'next_decade' as never });
-  expect((await loadSettings(ctx)).defaultPreset).toBe('this_quarter');
+  expect((await loadSettings(ctx)).defaultPreset).toBe('qtd');
   await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'constructor' as never });
-  expect((await loadSettings(ctx)).defaultPreset).toBe('this_quarter');
+  expect((await loadSettings(ctx)).defaultPreset).toBe('qtd');
 });
 
 test('weekStart is validated', async () => {
@@ -82,4 +82,14 @@ test('invalid preference parts fall back to null', async () => {
   expect(await loadPreferences(ctx)).toBeNull();
   await put('junk');
   expect(await loadPreferences(ctx)).toBeNull();
+});
+
+test('a stored this_* preset loads as its to-date id, in settings and in preferences', async () => {
+  const ctx = memoryCollections();
+  await ctx.collections<unknown>('settings').put('project', { ...DEFAULT_SETTINGS, defaultPreset: 'this_month' });
+  expect((await loadSettings(ctx)).defaultPreset).toBe('mtd');
+  await ctx.collections<unknown>('preferences').put('current', { range: { kind: 'preset', preset: 'this_week' }, compare: { kind: 'off' } });
+  expect(await loadPreferences(ctx)).toEqual({ range: { kind: 'preset', preset: 'wtd' }, compare: { kind: 'off' } });
+  await savePreferences(ctx, { range: { kind: 'preset', preset: 'cur_month' }, compare: { kind: 'off' } });
+  expect((await loadPreferences(ctx))!.range).toEqual({ kind: 'preset', preset: 'cur_month' });
 });

@@ -1,4 +1,4 @@
-import type { DateWindow, Day, PlanShape, Status, Trend } from '../types';
+import type { DateWindow, Day, MetricResult, PlanShape, Status, Trend } from '../types';
 import { addDays, diffDays, eachDay } from './dates';
 
 export type DailyMap = Map<Day, number>;
@@ -14,7 +14,8 @@ export function linearFit(points: { x: number; y: number }[]): { slope: number; 
   return { slope, intercept: (sy - slope * sx) / n };
 }
 
-const HISTORY_DAYS = 90;
+/** How many days of history the extrapolated forecast fits. */
+export const HISTORY_DAYS = 90;
 const MIN_HISTORY = 14;
 
 export function forecastFor(args: { daily: DailyMap; anchor: Day; rangeTo: Day; additive: boolean; fact: number | null }) {
@@ -95,6 +96,9 @@ export function trendOf(daily: DailyMap, w: DateWindow): Trend {
   if (!fit || Math.abs(fit.slope) <= 1e-9 * Math.max(Math.abs(mean), 1)) return 'flat';
   return fit.slope > 0 ? 'up' : 'down';
 }
+
+/** What a card or badge shows as the metric's value: the forecast for a projected range, else the actual. */
+export const shownValue = (res: MetricResult): number | null => (res.projection ? res.forecast : res.fact);
 
 export function diffPct(fact: number | null, comparison: number | null): number | null {
   if (fact === null || comparison === null || comparison === 0) return null;

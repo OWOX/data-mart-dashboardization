@@ -43,10 +43,10 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
   if (cache !== 'none') {
     const doc: CacheDoc = {
       modelHash: model.inputHash, builtAt: model.builtAt, editedAt: model.editedAt, thresholdPct: 20,
-      anchor: cache === 'fresh' ? rangeFor('this_quarter', NOW).anchor : '2000-01-01',
-      refreshedAt: '2026-10-24T09:00:00Z', key: 'this_quarter:previous_period', comparison: true, cards: {},
+      anchor: cache === 'fresh' ? rangeFor('qtd', NOW).anchor : '2000-01-01',
+      refreshedAt: '2026-10-24T09:00:00Z', key: 'qtd:previous_period', comparison: true, cards: {},
     };
-    await saveCache(store, cacheKey({ kind: 'preset', preset: 'this_quarter' }, { kind: 'preset', preset: 'previous_period' }), doc);
+    await saveCache(store, cacheKey({ kind: 'preset', preset: 'qtd' }, { kind: 'preset', preset: 'previous_period' }), doc);
   }
   let clock = NOW.getTime();
   const deps: AppDeps = { owox, store, generate: opts.generate === undefined ? async () => goalAi : opts.generate, userId: 'u1', now: () => new Date(clock) };
@@ -396,11 +396,11 @@ test('the toolbar shows the cut windows when a comparison is cut short', async (
 test('the week start setting changes the cache key of a week preset', async () => {
   const mk = async (weekStart: 'monday' | 'sunday') => {
     const { deps, store, traversals } = await setup({ cache: 'none' });
-    await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'this_week', comparisonDefault: false, weekStart });
+    await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'wtd', comparisonDefault: false, weekStart });
     // a fresh doc under the Monday key only
-    const monday = cacheKey({ kind: 'preset', preset: 'this_week' }, { kind: 'off' });
+    const monday = cacheKey({ kind: 'preset', preset: 'wtd' }, { kind: 'off' });
     const m = (await loadOntology(store))!;
-    await saveCache(store, monday, { modelHash: m.inputHash, builtAt: m.builtAt, editedAt: m.editedAt, thresholdPct: 20, anchor: rangeFor('this_week', NOW).anchor, refreshedAt: '2026-10-24T09:00:00Z', key: monday, comparison: false, cards: {} });
+    await saveCache(store, monday, { modelHash: m.inputHash, builtAt: m.builtAt, editedAt: m.editedAt, thresholdPct: 20, anchor: rangeFor('wtd', NOW).anchor, refreshedAt: '2026-10-24T09:00:00Z', key: monday, comparison: false, cards: {} });
     render(<App ctx={ctxWith().ctx} deps={deps} />);
     return traversals;
   };
@@ -416,6 +416,13 @@ test('with a comparison the header shows the days so far, not the whole range', 
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–\d+ vs Jul 1–\d+, 2026 · /));
+});
+
+test('a projected range shows the whole period against the whole previous one', async () => {
+  const { deps, store } = await setup({ cache: 'none' });
+  await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'cur_month' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–31 vs Sep 1–30, 2026 · /));
 });
 
 test('opens on the saved range and comparison', async () => {

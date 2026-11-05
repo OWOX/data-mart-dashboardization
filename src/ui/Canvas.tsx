@@ -148,6 +148,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
       <Card
         cls={cls}
         mart={marts?.get(cls.id)}
+        marts={marts}
         metrics={cls.metricIds.flatMap((id) => metricsById.get(id) ?? [])}
         details={details}
         cache={cache?.cards[cls.id]}

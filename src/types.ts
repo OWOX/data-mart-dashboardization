@@ -3,8 +3,8 @@ export type Day = string; // 'YYYY-MM-DD', UTC
 export type Preset =
   | 'last_year' | 'last_quarter' | 'last_month' | 'last_week'
   | 'last_28d' | 'last_7d' | 'yesterday'
-  | 'ytd'
-  | 'this_year' | 'this_quarter' | 'this_month' | 'this_week';
+  | 'ytd' | 'qtd' | 'mtd' | 'wtd'
+  | 'cur_year' | 'cur_quarter' | 'cur_month' | 'cur_week';
 
 export interface DateWindow { from: Day; to: Day } // both inclusive
 
@@ -21,6 +21,7 @@ export interface RangeSpec {
   comparison: DateWindow | null;       // the comparison window actually queried (already matched to the fact window's length); null when off or when factWindow is null
   compareFact: DateWindow | null;      // factWindow cut to the comparison's length; null when comparison is off or no cut is needed
   endsInFuture: boolean;     // range.to > anchor
+  forecastWindow: DateWindow | null;   // anchor + 1 .. range.to when part of the range is past and part future (projected); else null
 }
 
 export type AggFn = 'SUM' | 'COUNT' | 'COUNT_DISTINCT' | 'AVG' | 'MIN' | 'MAX';
@@ -120,6 +121,11 @@ export interface MetricResult {
   error: string | null;
   /** A broken reference or a failed query: shown with a warning icon, and the text in the tooltip. */
   warning?: string | null;
+  /** Set when the range is projected and a forecast exists: the shown value is then `forecast`, and `diffPct` is measured from it. */
+  projection?: {
+    actual: number | null; factWindow: DateWindow; forecastWindow: DateWindow;
+    source: { kind: 'mart'; martId: string; field: string } | { kind: 'trend'; days: number };
+  } | null;
 }
 
 export interface CardCache {
@@ -145,25 +151,25 @@ export interface CacheDoc {
 export type WeekStart = 'monday' | 'sunday';
 export interface Settings { thresholdPct: number; defaultPreset: Preset; comparisonDefault: boolean; weekStart: WeekStart }
 
-export const DEFAULT_SETTINGS: Settings = { thresholdPct: 20, defaultPreset: 'this_quarter', comparisonDefault: true, weekStart: 'monday' };
+export const DEFAULT_SETTINGS: Settings = { thresholdPct: 20, defaultPreset: 'qtd', comparisonDefault: true, weekStart: 'monday' };
 
 export const PRESET_LABELS: Record<Preset, string> = {
   last_year: 'Last year', last_quarter: 'Last quarter', last_month: 'Last month', last_week: 'Last week',
   last_28d: 'Last 28 days', last_7d: 'Last 7 days', yesterday: 'Yesterday',
-  ytd: 'Year to date',
-  this_year: 'This year', this_quarter: 'This quarter', this_month: 'This month', this_week: 'This week',
+  ytd: 'This year to date', qtd: 'This quarter to date', mtd: 'This month to date', wtd: 'This week to date',
+  cur_year: 'This year', cur_quarter: 'This quarter', cur_month: 'This month', cur_week: 'This week',
 };
 
 /** What the default comparison window is, per preset (see `rangeFor` in lib/dates); shown after "vs". */
 export const COMPARE_LABELS: Record<Preset, string> = {
   last_year: 'Year Before', last_quarter: 'Quarter Before', last_month: 'Month Before', last_week: 'Week Before',
   last_28d: 'Previous 28 Days', last_7d: 'Previous 7 Days', yesterday: 'Day Before',
-  ytd: 'Last Year to Date',
-  this_year: 'Last Year', this_quarter: 'Last Quarter', this_month: 'Last Month', this_week: 'Last Week',
+  ytd: 'Last Year to Date', qtd: 'Last Quarter to Date', mtd: 'Last Month to Date', wtd: 'Last Week to Date',
+  cur_year: 'Last Year', cur_quarter: 'Last Quarter', cur_month: 'Last Month', cur_week: 'Last Week',
 };
 
 export const PRESET_GROUPS: { label: string; presets: Preset[] }[] = [
-  { label: 'Current', presets: ['this_year', 'this_quarter', 'this_month', 'this_week'] },
-  { label: 'To date', presets: ['ytd'] },
+  { label: 'Current', presets: ['cur_year', 'cur_quarter', 'cur_month', 'cur_week'] },
+  { label: 'To date', presets: ['ytd', 'qtd', 'mtd', 'wtd'] },
   { label: 'Past', presets: ['last_year', 'last_quarter', 'last_month', 'last_week', 'last_28d', 'last_7d', 'yesterday'] },
 ];
