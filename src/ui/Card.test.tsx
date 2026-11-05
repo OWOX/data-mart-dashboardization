@@ -148,6 +148,13 @@ test('the arrow before the number follows the comparison, or the series when com
   expect(container.querySelector('.gy-trend')!.getAttribute('data-sign')).toBe('down');
 });
 
+test('the sparkline takes the arrow\'s colour: the comparison when on, the series when off', () => {
+  const { container, rerender } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ trend: 'down' })} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-spark')!.getAttribute('data-trend')).toBe('up');
+  rerender(<Card cls={cls} metrics={[arr, uc]} cache={cache({ trend: 'down' })} comparisonOn={false} compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-spark')!.getAttribute('data-trend')).toBe('down');
+});
+
 test('plan and forecast stay off the card face; the number names them on hover', () => {
   const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ forecast: 1_500_000 })} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   expect(container.textContent).not.toMatch(/plan|forecast/i);
@@ -444,7 +451,7 @@ test('the metric (i) follows the swapped-in metric and is absent when its field 
   expect(document.querySelector('.gy-metric-tip')).toBeNull();
 });
 
-test('the Data Mart (i) shows raw text first, then OWOX-rendered HTML once, with links in the same tab', async () => {
+test('the Data Mart (i) shows raw text first, then OWOX-rendered HTML once, with links opening in a new tab', async () => {
   const parse = vi.fn(async ({ markdown }: { markdown: string }) => `<h2>Title</h2><p>${markdown}</p><a href="https://x.test">link</a>`);
   const markdown = createMarkdownHtml(parse);
   const { container } = render(<Card cls={cls} mart={{ description: ' **bold** ', icon: null }} metrics={[arr, uc]} cache={cache()} markdown={markdown} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
@@ -454,7 +461,8 @@ test('the Data Mart (i) shows raw text first, then OWOX-rendered HTML once, with
   fireEvent.mouseEnter(hint);
   await waitFor(() => expect(container.querySelector('.gy-md h2')?.textContent).toBe('Title'));
   const a = container.querySelector('.gy-md a')!;
-  expect(a.hasAttribute('target')).toBe(false);
+  expect(a.getAttribute('target')).toBe('_blank');
+  expect(a.getAttribute('rel')).toBe('noopener noreferrer');
   fireEvent.mouseLeave(hint);
   fireEvent.mouseEnter(hint);
   expect(parse).toHaveBeenCalledTimes(1);
@@ -528,7 +536,7 @@ test('a parse result for a description that changed meanwhile is dropped', async
   expect(container.querySelector('.gy-hint-about')!.textContent).toBe('new');
 });
 
-test('without OWOX rendering, the Data Mart (i) parses Markdown itself: links stay in the same tab, hard wraps fold', () => {
+test('without OWOX rendering, the Data Mart (i) parses Markdown itself: links open in a new tab, hard wraps fold', () => {
   const text = 'Everyone who registered, with the channel that first\nbrought them in (a [Traffic Sources](https://app.owox.com/ui/p/data-marts/m) row).\n\nSee https://owox.com. Not [this](javascript:alert(1)).';
   const { container } = render(<Card cls={cls} mart={{ description: text, icon: null }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   const about = container.querySelector('.gy-hint-about')!;
@@ -537,7 +545,7 @@ test('without OWOX rendering, the Data Mart (i) parses Markdown itself: links st
   expect(paras[0]!.textContent).toBe('Everyone who registered, with the channel that first brought them in (a Traffic Sources row).');
   const links = [...about.querySelectorAll('a')];
   expect(links.map((a) => a.getAttribute('href'))).toEqual(['https://app.owox.com/ui/p/data-marts/m', 'https://owox.com']);
-  expect(links.every((a) => !a.hasAttribute('target'))).toBe(true);
+  expect(links.every((a) => a.getAttribute('target') === '_blank' && a.getAttribute('rel') === 'noopener noreferrer')).toBe(true);
   expect(about.textContent).toContain('Not this');
 });
 
@@ -570,4 +578,15 @@ test('"vs" sits beside the chip with two or fewer secondary metrics and under it
   expect(container.querySelector('.gy-compare')).toHaveAttribute('data-stacked', 'false');
   rerender(<Card cls={cl(many)} metrics={many} cache={c(many)} comparisonOn compareLabel="Previous 7 Days" refreshing={false} onRetry={() => {}} />);
   expect(container.querySelector('.gy-compare')).toHaveAttribute('data-stacked', 'true');
+});
+
+test('a tooltip link to an OWOX page opens through the app in the same tab; other links are left to the browser', () => {
+  const onOpen = vi.fn();
+  const text = 'See [Orders](https://app.owox.com/ui/p1/data-marts/m1/overview?x=1) and [docs](https://docs.example.com/a).';
+  const { container } = render(<Card cls={cls} mart={{ description: text, icon: null }} metrics={[arr, uc]} cache={cache()} onOpen={onOpen} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  const [owox, other] = [...container.querySelectorAll('.gy-hint-about a')];
+  expect(fireEvent.click(owox!)).toBe(false);
+  expect(onOpen).toHaveBeenCalledWith('/ui/p1/data-marts/m1/overview?x=1');
+  expect(fireEvent.click(other!)).toBe(true);
+  expect(onOpen).toHaveBeenCalledTimes(1);
 });
