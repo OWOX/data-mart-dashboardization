@@ -222,7 +222,7 @@ describe('presets, comparison windows and the forecast footnote (today = Nov 5)'
     expect(note).toHaveAccessibleName('Nov 1–30, Nov 5–30 forecast');
     // the visible line is the windows alone; the note lives only in the tooltip
     expect(head.textContent!.replace(tip.textContent!, '')).toBe('Nov 1–30* vs Oct 1–31, 2026');
-    expect(tip).toHaveTextContent("* Nov 5–30 is forecast: these days haven't happened yet. Each card fills them with its metric's forecast: from the forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last 90 days.");
+    expect(tip).toHaveTextContent("* Nov 5–30 data (87% of period) is forecasted. Each card takes it from its metric's forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last 90 days.");
   });
 
   test('a to-date range has no footnote', () => {

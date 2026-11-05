@@ -66,6 +66,8 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
   const rawCompare = dCompare.kind === 'custom' ? dCompare.window : null;
   /** The `*` marks the range itself, so the text is cut where the comparison starts. */
   const forecast = spec.forecastWindow;
+  // by days, as on the cards
+  const forecastPct = forecast ? Math.round((diffDays(forecast.from, forecast.to) + 1) / spec.days * 100) : 0;
   const [summaryHead, ...summaryRest] = formatPeriod(drawn, compareOn ? comparison : null).split(' vs ');
   const summary = { head: summaryHead, tail: summaryRest.length ? ` vs ${summaryRest.join(' vs ')}` : '' };
   const [rangeMonth, setRangeMonth] = useState(() => openMonth(drawn, anchor));
@@ -118,7 +120,7 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
             <span className="gy-hint gy-drp-note" tabIndex={0} aria-label={`${summary.head}, ${windowText(forecast, anchor)} forecast`}>
               {summary.head}<sup>*</sup>
               <span className="gy-hint-body gy-hint-left" role="tooltip">
-                {`* ${windowText(forecast, anchor)} is forecast: these days haven't happened yet. Each card fills them with its metric's forecast: from the forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last ${HISTORY_DAYS} days.`}
+                {`* ${windowText(forecast, anchor)} data (${forecastPct}% of period) is forecasted. Each card takes it from its metric's forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last ${HISTORY_DAYS} days.`}
               </span>
             </span>
           ) : summary.head}
