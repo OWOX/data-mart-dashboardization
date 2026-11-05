@@ -92,10 +92,13 @@ test('a goal-only found step shows no classes or metrics rows', () => {
 
 test('the line is indeterminate while the AI reads, and the row flips when it finishes', () => {
   const m: BuildStep = { kind: 'read', what: 'marts', done: 12, total: 12, finished: true };
-  const { rerender } = render(<BuildProgress steps={[m, { kind: 'read', what: 'ai', done: 0, total: null, finished: false }]} />);
+  const { rerender } = render(<BuildProgress steps={[{ ...m, done: 6, finished: false }]} />);
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
+  rerender(<BuildProgress steps={[m, { kind: 'read', what: 'ai', done: 0, total: null, finished: false }]} />);
   expect(screen.getByRole('progressbar')).toHaveAttribute('data-determinate', 'false');
   rerender(<BuildProgress steps={[m, { kind: 'read', what: 'ai', done: 1, total: 1, finished: true }]} />);
-  expect(screen.getByRole('progressbar')).toHaveAttribute('data-determinate', 'true');
+  // after the AI the marts fill the second half
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
   expect(screen.getByText('AI read the descriptions')).toBeInTheDocument();
 });
 

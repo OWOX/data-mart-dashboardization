@@ -501,12 +501,11 @@ test('without a cache the line and step text walk through the steps and go away'
   expect(screen.getByText(/Updated just now/)).toBeInTheDocument();
 });
 
-test('a fresh cache keeps the line only while the cache is read', async () => {
+test('a fresh cache shows no line', async () => {
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await screen.findByText(/Updated 1 h ago/);
-  await waitFor(() => expect(line()).toBeNull());
-  expect(screen.queryByText(/Loading metrics|Reading Data Marts/)).toBeNull();
+  expect(line()).toBeNull();
 });
 
 test('a stale cache refreshes behind the line, cards stay interactive', async () => {

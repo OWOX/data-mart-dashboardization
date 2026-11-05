@@ -60,10 +60,10 @@ export function BuildProgress({ steps, embedded = false }: { steps: BuildStep[];
     } else found = s;
   }
   const marts = latest.get('marts');
-  // the AI call has no count, so the bar slides while it runs; until it has run, reading the marts fills only the first half,
-  // since the host bar never moves back and would otherwise sit full through the whole AI call
+  // the AI call has no count, so the bar slides while it runs. The marts are read before it and again after it, each read
+  // filling half the bar: the host bar never moves back, so one read filling it all would hold it full through the AI call
   const ai = latest.get('ai');
-  const progress = marts && marts.total && ai?.finished !== false ? { done: marts.done, total: ai?.finished ? marts.total : marts.total * 2 } : null;
+  const progress = marts && marts.total && ai?.finished !== false ? { done: (ai?.finished ? marts.total : 0) + marts.done, total: marts.total * 2 } : null;
 
   const labelOf = (row: Row): string => {
     if (row.id === 'marts') return `Data Marts read: ${marts?.done ?? 0} of ${marts?.total ?? '…'}`;
