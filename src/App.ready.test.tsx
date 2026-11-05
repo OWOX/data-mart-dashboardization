@@ -89,7 +89,7 @@ test('Settings and Back set the route', async () => {
 
 const openOntology = async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
 };
 const renamedAi = { ...goalAi, metrics: [{ ...goalAi.metrics[0]!, alias: 'Sales' }] };
 
@@ -287,7 +287,7 @@ test('a blocked rebuild shows inside the tab and keeps the current model', async
   const before = await loadOntology(store);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   expect(await screen.findByRole('heading', { name: "Goal can't be tracked" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to the model' }));
@@ -686,9 +686,9 @@ test('a broken reference shows the icon with its count, and the layer link opens
   render(<App ctx={ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
   expect(screen.getByRole('dialog', { name: 'Issues' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Review in Ontology Model' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review in Metrics' }));
   expect(setRoute).toHaveBeenCalledWith('/settings/ontology');
-  expect(screen.getByRole('tab', { name: 'Ontology Model' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('tab', { name: 'Metrics' })).toHaveAttribute('aria-selected', 'true');
 });
 
 test('no issues icon while the model matches its schemas', async () => {

@@ -25,7 +25,7 @@ test('the tabs are a tablist that arrow keys move through', () => {
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} onTabChange={onTabChange} />);
   expect(screen.getByRole('tablist')).toBeInTheDocument();
   const general = screen.getByRole('tab', { name: 'General' });
-  const onto = screen.getByRole('tab', { name: 'Ontology Model' });
+  const onto = screen.getByRole('tab', { name: 'Metrics' });
   expect(general).toHaveAttribute('aria-selected', 'true');
   expect(onto).toHaveAttribute('tabindex', '-1');
   fireEvent.keyDown(general, { key: 'ArrowRight' });

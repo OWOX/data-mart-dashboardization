@@ -105,7 +105,7 @@ describe('issues icon', () => {
     render(withNotices());
     const icon = screen.getByRole('button', { name: '1 issue' });
     fireEvent.click(icon);
-    screen.getByRole('button', { name: 'Review in Ontology Model' }).focus();
+    screen.getByRole('button', { name: 'Review in Metrics' }).focus();
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(icon).toHaveFocus();
@@ -128,7 +128,7 @@ describe('issues icon', () => {
     const onReview = vi.fn();
     render(withNotices({ outdated: true, onReview }));
     fireEvent.click(screen.getByRole('button', { name: '2 issues' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Review in Ontology Model' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review in Metrics' }));
     fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
     expect(onReview).toHaveBeenCalledTimes(2);
   });

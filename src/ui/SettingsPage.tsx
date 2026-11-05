@@ -7,9 +7,9 @@ import { LoadingLine } from './LoadingLine';
 import { OntologyTab } from './OntologyTab';
 
 export type SettingsTab = 'general' | 'ontology';
-const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'ontology', label: 'Ontology Model' }];
+const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'ontology', label: 'Metrics' }];
 
-/** What the Ontology Model tab edits; null while the Data Marts are still being read. */
+/** What the Metrics tab edits; null while the Data Marts are still being read. */
 export interface OntologyProps {
   model: Model;
   details: ReadonlyMap<string, MartDetail>;

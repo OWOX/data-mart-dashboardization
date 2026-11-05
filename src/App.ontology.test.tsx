@@ -46,7 +46,7 @@ afterEach(cleanup);
 test('a reload at /settings/ontology opens the tab; /settings opens General; others open the canvas', async () => {
   const { deps } = await setup();
   const a = render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
-  expect(await screen.findByRole('tab', { name: 'Ontology Model', selected: true })).toBeInTheDocument();
+  expect(await screen.findByRole('tab', { name: 'Metrics', selected: true })).toBeInTheDocument();
   // the tab waits for the Data Mart list, then shows the editor
   expect(await screen.findByText('Your model. Changes here only affect what you see.')).toBeInTheDocument();
   a.unmount();
@@ -61,7 +61,7 @@ test('switching tabs sets the route', async () => {
   const { deps } = await setup();
   const { ctx, setRoute } = ctxWith('/settings');
   render(<App ctx={ctx} deps={deps} />);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Metrics' }));
   expect(setRoute).toHaveBeenLastCalledWith('/settings/ontology');
   fireEvent.click(screen.getByRole('tab', { name: 'General' }));
   expect(setRoute).toHaveBeenLastCalledWith('/settings');
@@ -73,7 +73,7 @@ test('unchecking a class and saving hides it on the canvas and stamps editedAt',
   render(<App ctx={ctx} deps={deps} />);
   await waitFor(() => expect(customersCard()).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
   const box = await screen.findByRole('checkbox', { name: 'Customers' });
   fireEvent.click(box);
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -90,7 +90,7 @@ test('Cancel on the Ontology tab writes nothing and returns to the canvas', asyn
   const { deps, puts } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   await screen.findByRole('button', { name: 'Date range' });
@@ -102,11 +102,11 @@ test('switching tabs keeps the draft', async () => {
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
   const box = await screen.findByRole('checkbox', { name: 'Customers' });
   fireEvent.click(box);
   fireEvent.click(screen.getByRole('tab', { name: 'General' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Ontology Model' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
   expect(screen.getByRole('checkbox', { name: 'Customers' })).not.toBeChecked();
 });
 

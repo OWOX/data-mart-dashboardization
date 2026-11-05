@@ -62,7 +62,7 @@ export function IssuesLayer({ notices, layerRef, triggerRef, onClose }: {
         </section>
       )}
       <div className="gy-issues-foot">
-        <button type="button" className="gy-link" onClick={notices.onReview}>Review in Ontology Model</button>
+        <button type="button" className="gy-link" onClick={notices.onReview}>Review in Metrics</button>
       </div>
     </div>
   );
