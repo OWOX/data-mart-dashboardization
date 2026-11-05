@@ -49,7 +49,7 @@ const heading = (code: BlockCode): string =>
     : code === 'AI_INVALID' ? "The model doesn't match your Data Marts"
       : "Goal can't be tracked";
 
-const snippet = (projectId: string): string => `## Metrics
+export const metricsSnippet = (projectId: string): string => `## Metrics
 | Role | Metric | Owner | Plan | Fact |
 |---|---|---|---|---|
 | Critical number | ARR | <owner> | [Plan · ARR](https://app.owox.com/ui/${projectId}/data-marts/<plan-data-mart-id>/data-setup?field=<plan_field>) | [ARR](https://app.owox.com/ui/${projectId}/data-marts/<fact-data-mart-id>/data-setup?field=<fact_field>) |`;
@@ -72,7 +72,7 @@ export function Blocked({ blocked, projectId, onRetry, onBack, backLabel = 'Back
   onOpen?: (path: string) => void;
 }) {
   const showSnippet = blocked.code === 'NO_GOAL' || blocked.code === 'GOAL_PLACEHOLDER';
-  const text = snippet(projectId);
+  const text = metricsSnippet(projectId);
   return (
     <div className="gy-blocked">
       {embedded ? <h2>{heading(blocked.code)}</h2> : <h1>{heading(blocked.code)}</h1>}

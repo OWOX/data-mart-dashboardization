@@ -115,6 +115,22 @@ h2 { margin: 0; }
 .gy-chk-tag { border: 1px solid var(--border); border-radius: 0.25rem; padding: 0 0.25rem; }
 .gy-chk-detail { flex-basis: 100%; margin-left: 1.5rem; font-size: 0.75rem; color: var(--red); }
 .gy-chk-group { margin-top: 0.5rem; }
+.gy-ck { display: grid; gap: 1.5rem; }
+.gy-ck-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+.gy-ck-head h2 { margin: 0; font-size: 1rem; }
+.gy-ck-summary { font-size: 0.8125rem; }
+.gy-ck-summary:empty { display: none; }
+.gy-ck-when { color: var(--muted-foreground); font-size: 0.75rem; }
+.gy-ck-head .gy-icon-btn { margin-left: auto; }
+.gy-ck-fix { font-size: 0.75rem; }
+.gy-ck-gmark { font-weight: 400; }
+.gy-ck-gmark[data-state='fail'] { color: var(--red); }
+.gy-ck-gmark[data-state='warn'] { color: var(--orange); }
+.gy-chk[data-state='ok'] .gy-chk-mark { border-color: var(--primary); color: var(--primary); }
+.gy-chk[data-state='warn'] .gy-chk-mark { border-color: var(--orange); color: var(--orange); }
+.gy-chk[data-state='skip'] .gy-chk-mark { border-color: transparent; color: var(--muted-foreground); }
+.gy-chk[data-state='warn'] .gy-chk-detail { color: var(--orange); }
+.gy-chk[data-state='ok'] .gy-chk-detail, .gy-chk[data-state='skip'] .gy-chk-detail { color: var(--muted-foreground); }
 @media (prefers-reduced-motion: reduce) {
   .gy-loadline > span { transition: none; }
   .gy-loadline[data-determinate='false']::after { animation: none; left: 0; }
