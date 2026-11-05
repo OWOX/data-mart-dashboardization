@@ -101,17 +101,18 @@ function QualityTool({ quality, path, onOpen }: { quality?: QualitySummary; path
 }
 
 /** An (i) whose bubble opens on hover or focus and closes on Escape, blur or leaving; `onOpen` fires each time it opens. */
-function Tip({ label, className = '', onOpen, children }: { label: string; className?: string; onOpen?: () => void; children: ReactNode }) {
+function Tip({ label, className = '', onOpen, children }: { label: string; className?: string; onOpen?: () => void; children: (bubbleId: string) => ReactNode }) {
+  const bubble = useId();
   const [open, setOpen] = useState(false);
   const show = () => { if (!open) onOpen?.(); setOpen(true); };
   return (
     <span
-      className={`gy-hint gy-cardtip ${className}`.trim()} tabIndex={0} aria-label={label} data-open={open}
+      className={`gy-hint gy-cardtip ${className}`.trim()} tabIndex={0} role="button" aria-label={label} aria-describedby={bubble} data-open={open}
       onMouseEnter={show} onMouseLeave={() => setOpen(false)} onFocus={show} onBlur={() => setOpen(false)}
       onKeyDown={(e) => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); } }}
     >
       <Info size={14} />
-      {children}
+      {children(bubble)}
     </span>
   );
 }
@@ -119,26 +120,27 @@ function Tip({ label, className = '', onOpen, children }: { label: string; class
 /** The Data Mart's description, as Markdown rendered by OWOX once it arrives; the raw text until then, or when it can't be had. */
 function MartAbout({ martId, title, text, markdown }: { martId: string; title: string; text: string; markdown?: MarkdownHtml }) {
   const [html, setHtml] = useState<string | null>(() => markdown?.peek(martId, text) ?? null);
-  const body = useRef<HTMLDivElement>(null);
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   // a changed description starts over from the raw text
   useEffect(() => { setHtml(markdown?.peek(martId, text) ?? null); }, [martId, text, markdown]);
+  const current = useRef('');
+  current.current = `${martId}\u0000${text}`;
   const load = () => {
     if (!markdown || html !== null) return;
-    void markdown.load(martId, text).then((h) => { if (live.current && h !== null) setHtml(h); });
+    const asked = current.current;
+    // a result for a description that has since changed is dropped
+    void markdown.load(martId, text).then((h) => { if (live.current && h !== null && current.current === asked) setHtml(h); });
   };
-  // the sanitized HTML has plain links; they open beside the plugin, never in it
-  useEffect(() => {
-    body.current?.querySelectorAll('a').forEach((a) => { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); });
-  }, [html]);
   return (
     <Tip label={`About ${title}`} onOpen={load}>
-      <span className="gy-hint-body gy-hint-md" role="tooltip">
-        {html !== null
-          ? <div ref={body} className="gy-md" dangerouslySetInnerHTML={{ __html: html }} />
-          : <span className="gy-hint-about">{text}</span>}
-      </span>
+      {(id) => (
+        <span id={id} className="gy-hint-body gy-hint-md" role="tooltip">
+          {html !== null
+            ? <div className="gy-md" dangerouslySetInnerHTML={{ __html: html }} />
+            : <span className="gy-hint-about">{text}</span>}
+        </span>
+      )}
     </Tip>
   );
 }
@@ -160,7 +162,7 @@ function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath,
             {metricNote && (
               <span className="gy-metric-tip">
                 <Tip label={`About ${metric}`}>
-                  <span className="gy-hint-body gy-hint-left" role="tooltip">{metricNote}</span>
+                  {(id) => <span id={id} className="gy-hint-body gy-hint-left" role="tooltip">{metricNote}</span>}
                 </Tip>
               </span>
             )}

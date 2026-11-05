@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Card } from './Card';
 import type { QualitySummary } from '../owox/quality';
@@ -468,4 +470,32 @@ test('a metric wears the same arrow as a badge and as the main number, falling s
   // comparison off: both fall back to the series' own trend
   const off = render(<Card cls={cls} metrics={[arr, uc]} cache={c} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   expect(off.container.querySelector('.gy-badge [aria-label="trend down"]')).not.toBeNull();
+});
+
+test('card tips are shown by data-open alone, so Escape hides them; they name their bubble for screen readers', () => {
+  render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} details={mdetail(FIELDS)} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  const tip = screen.getByLabelText('About Annual revenue');
+  expect(tip).toHaveAttribute('role', 'button');
+  expect(document.getElementById(tip.getAttribute('aria-describedby')!)).toHaveAttribute('role', 'tooltip');
+  fireEvent.mouseEnter(tip);
+  fireEvent.keyDown(tip, { key: 'Escape' });
+  expect(tip).toHaveAttribute('data-open', 'false');
+  // the hover and focus rules must not apply to card tips
+  const css = readFileSync(resolve(__dirname, '../styles.css'), 'utf8');
+  const rule = css.split('\n').find((l) => l.includes('.gy-hint:not(.gy-cardtip):hover .gy-hint-body'))!;
+  expect(rule).toBeDefined();
+  expect(css).not.toMatch(/\.gy-hint:hover \.gy-hint-body/);
+  expect(css).toMatch(/\.gy-hint-about \{ white-space: pre-wrap/);
+});
+
+test('a parse result for a description that changed meanwhile is dropped', async () => {
+  let release: (h: string) => void = () => {};
+  const markdown = createMarkdownHtml(() => new Promise<string>((r) => { release = r; }));
+  const props = { cls, metrics: [arr, uc], cache: cache(), markdown, comparisonOn: false, refreshing: false, onRetry: () => {} };
+  const { container, rerender } = render(<Card {...props} mart={{ description: 'old', icon: null }} />);
+  fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
+  rerender(<Card {...props} mart={{ description: 'new', icon: null }} />);
+  await act(async () => { release('<p>stale</p>'); });
+  expect(container.querySelector('.gy-md')).toBeNull();
+  expect(container.querySelector('.gy-hint-about')!.textContent).toBe('new');
 });
