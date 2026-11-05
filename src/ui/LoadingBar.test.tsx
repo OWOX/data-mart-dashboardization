@@ -39,11 +39,15 @@ test('a bar in the next view starts before the old one stops', () => {
   expect(calls).toEqual(['start 1', 'start 2', 'stop 1']);
 });
 
-test('a full bar stops at once, so the next view starts a fresh one', () => {
+test('a bar at 90% or more stops at once, so the next view starts a fresh one', () => {
   const { calls, start } = host();
   const { rerender } = render(<HostLoadingContext value={start}><LoadingBar key="a" progress={{ done: 2, total: 2 }} /></HostLoadingContext>);
   rerender(<HostLoadingContext value={start}><LoadingBar key="b" /></HostLoadingContext>);
   expect(calls).toEqual(['start 1', '1 1', 'stop 1', 'start 2']);
+  const late = host();
+  const r = render(<HostLoadingContext value={late.start}><LoadingBar key="a" progress={{ done: 47, total: 50 }} /></HostLoadingContext>);
+  r.rerender(<HostLoadingContext value={late.start}><LoadingBar key="b" /></HostLoadingContext>);
+  expect(late.calls).toEqual(['start 1', '1 0.94', 'stop 1', 'start 2']);
 });
 
 test('without the host bar, nothing shows and nothing throws', () => {

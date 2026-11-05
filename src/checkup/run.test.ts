@@ -97,6 +97,15 @@ test('a goal Data Mart you cannot access fails access but the goal stays reachab
   expect(c['connections.reachable']!.detail).toContain('Customers');
 });
 
+test('a stand-in main Data Mart without a key or a date field still warns: no goal check covers it', async () => {
+  const base = data();
+  const bare = { ...base.details[C]!, fields: base.details[C]!.fields.filter((f) => f.name !== 'id' && f.name !== 'date') };
+  const c = byId(await run({ ...base, marts: base.marts.filter((m) => m.id !== G), details: { ...base.details, [C]: bare } }));
+  expect(c['connections.reachable']!.detail).toContain('Customers');
+  expect(c['connections.pk']).toMatchObject({ status: 'warn', detail: 'No primary key: Customers' });
+  expect(c['connections.date']!.status).toBe('warn');
+});
+
 test('a goal without a primary key or a date fails both', async () => {
   const c = byId(await run(data({ details: { ...data().details, [G]: { id: G, title: 'Orders', fields: [{ name: 'revenue', type: 'FLOAT', isPrimaryKey: false }] } } })));
   expect(c['goal.pk']!.status).toBe('fail');

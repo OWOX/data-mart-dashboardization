@@ -23,8 +23,8 @@ export function LoadingBar({ progress }: { progress?: LoadingProgress | null }) 
       const h = handle.current;
       handle.current = null;
       if (!h) return;
-      // a full bar is done: handed over, it would sit full through the next view's work, since the host bar never moves back
-      if (shown.current !== null && shown.current >= 1) { h.stop(); return; }
+      // a bar at 90% or more is done: the host bar never moves back and estimates only below 90%, so handed over it would sit there through the next view's work
+      if (shown.current !== null && shown.current >= 0.9) { h.stop(); return; }
       // otherwise stopped a tick later: a bar mounting in the next view takes over without the host bar finishing in between
       setTimeout(() => h.stop(), 0);
     };

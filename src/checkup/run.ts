@@ -204,9 +204,10 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     const factIds = [...new Set([...projectRows, ...[...contextRows.values()].flat()].flatMap((r) => r.fact.filter(isFieldLink).map((l) => l.martId!)))].filter((id) => visible.has(id));
     const names = (ids: string[]) => ids.map((id) => titles.get(id) ?? id).join(', ');
     const lacking = (has: (d: MartDetail) => boolean) => factIds.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !has(n.detail); });
-    // the main class stays on the canvas without a key or a date field; the goal checks report those
-    const noPk = lacking(hasPrimaryKey).filter((id) => id !== main?.id);
-    const noDate = lacking(hasDateField).filter((id) => id !== main?.id);
+    // the main class stays on the canvas without a key or a date field; the goal checks report those, unless main stands in for a goal you can't access
+    const reported = main && !main.viaFallback ? main.id : null;
+    const noPk = lacking(hasPrimaryKey).filter((id) => id !== reported);
+    const noDate = lacking(hasDateField).filter((id) => id !== reported);
     if (!main) skip('connections.facts', 'connections.reachable');
     else {
       const depths = classDepths(main.id, edges, new Set(nodes.filter((n) => canBeClass(n.detail)).map((n) => n.id)));
