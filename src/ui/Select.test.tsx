@@ -69,7 +69,7 @@ test('the highlight follows its option when the options change under an open lis
   expect(box).toHaveAttribute('aria-expanded', 'false');
 });
 
-test('a disabled current value highlights nothing: Enter only closes, ArrowDown starts at the first option', () => {
+test('a disabled current value highlights nothing: Enter only closes, ArrowDown starts at the first option and ArrowUp at the last', () => {
   const { box, onChange } = setup('x');
   fireEvent.click(box);
   expect(box).not.toHaveAttribute('aria-activedescendant');
@@ -78,6 +78,10 @@ test('a disabled current value highlights nothing: Enter only closes, ArrowDown 
   fireEvent.click(box);
   fireEvent.keyDown(box, { key: 'ArrowDown' });
   expect(activeText(box)).toBe('Alpha');
+  fireEvent.keyDown(box, { key: 'Escape' });
+  fireEvent.click(box);
+  fireEvent.keyDown(box, { key: 'ArrowUp' });
+  expect(activeText(box)).toBe('Bravo');
   expect(onChange).not.toHaveBeenCalled();
 });
 

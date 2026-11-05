@@ -429,6 +429,13 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-combo-opt:first-child { padding-left: 0.625rem; }
 .gy-combo-opt[aria-selected='true'] { font-weight: 500; }
 .gy-combo-active { background: var(--muted); }
+.gy-combo-off { color: var(--muted-foreground); cursor: default; }
+.gy-combo-flat .gy-combo-opt { padding-left: 0.625rem; }
+.gy-pick { display: flex; align-items: center; gap: 0.375rem; padding-right: 0.5rem; cursor: pointer; user-select: none; }
+.gy-pick-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gy-pick-chev { flex: none; color: var(--muted-foreground); }
+/* the controls read at the size of the column heads */
+.gy-onto-table .gy-input, .gy-onto-table .gy-combo-list { font-size: 0.75rem; }
 .gy-combo-note { padding: 0.25rem 0.625rem 0.25rem 1rem; color: var(--muted-foreground); }
 .gy-bad { border-color: var(--red); color: var(--red); }
 .gy-bad-text { color: var(--red); font-size: 0.8125rem; }

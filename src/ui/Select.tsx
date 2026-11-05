@@ -50,7 +50,7 @@ export function Select({ label, value, options, className = '', invalid, describ
   return (
     <>
       <div
-        ref={anchor} tabIndex={0} role="combobox" aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-list`}
+        ref={anchor} tabIndex={0} role="combobox" aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${id}-list` : undefined}
         aria-activedescendant={open && active >= 0 ? optId(active) : undefined} aria-invalid={invalid || undefined} aria-describedby={describedBy}
         title={title} data-value={value} className={`gy-input gy-pick ${className}`.trim()}
         onClick={() => (open ? close() : show())} onBlur={close}
@@ -58,6 +58,8 @@ export function Select({ label, value, options, className = '', invalid, describ
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
             if (!open) show();
+            // with nothing highlighted, Down starts at the first option and Up at the last
+            else if (active < 0) step(e.key === 'ArrowDown' ? seek(-1, 1) : seek(options.length, -1));
             else step(seek(active, e.key === 'ArrowDown' ? 1 : -1));
           } else if (e.key === 'Home' || e.key === 'End') {
             e.preventDefault();
@@ -80,7 +82,7 @@ export function Select({ label, value, options, className = '', invalid, describ
       </div>
       {open && (
         // mousedown would blur the combobox before the click lands
-        <div id={`${id}-list`} role="listbox" aria-label={label} className="gy-combo-list" style={style} onMouseDown={(e) => e.preventDefault()}>
+        <div id={`${id}-list`} role="listbox" aria-label={label} className="gy-combo-list gy-combo-flat" style={style} onMouseDown={(e) => e.preventDefault()}>
           {options.map((o, i) => (
             <div
               key={o.value} id={optId(i)} role="option" data-value={o.value} aria-selected={o.value === value} aria-disabled={o.disabled || undefined}
