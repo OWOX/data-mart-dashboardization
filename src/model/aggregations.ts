@@ -5,7 +5,7 @@ import type { MartDetail, SchemaField } from '../owox/sources';
 // OWOX type categories and default aggregations (owox-data-marts field-type-category.ts, field-aggregation-governance.ts)
 const NUMBER = new Set(['INTEGER', 'INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'FLOAT', 'REAL', 'DOUBLE', 'DOUBLE PRECISION', 'NUMERIC', 'BIGNUMERIC', 'DECIMAL']);
 const STRING = new Set(['STRING', 'VARCHAR', 'CHAR', 'TEXT', 'BPCHAR']);
-const DATE = new Set([...DATE_TYPES, 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMPTZ']);
+const DATE = DATE_TYPES;
 const TIME = new Set(['TIME', 'TIME WITH TIME ZONE', 'TIMETZ']);
 const BOOL = new Set(['BOOLEAN', 'BOOL']);
 

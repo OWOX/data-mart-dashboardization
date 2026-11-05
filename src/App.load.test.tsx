@@ -83,6 +83,28 @@ test('seeding drops classes the member cannot access and rehashes for the kept o
   await waitFor(() => expect(screen.queryByRole('button', { name: /issue/ })).toBeNull());
 });
 
+test('seeding drops a class whose Data Mart has no date field, from a project model built before the rule', async () => {
+  const { deps, store, model } = await setup();
+  const d = data();
+  d.marts.push(mart('p', 'Products'));
+  d.details.p = { id: 'p', title: 'Products', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: true }] };
+  d.blendables.p = { availableSources: [], mainUniqueCountKeyFields: ['id'] };
+  const owox = fakeOwox(d);
+  const products = { ...model.classes[0]!, id: 'p', martId: 'p', title: 'Products', depth: 1 };
+  await store.collections<unknown>('model').put('current', {
+    ...model, classes: [...model.classes, products],
+    edges: [...model.edges, { from: model.goal.classId, to: 'p' }],
+    metrics: [...model.metrics, { ...model.metrics[0]!, id: 'p:k', martId: 'p' }],
+  });
+  render(<App ctx={ctx} deps={{ ...deps, owox }} />);
+  expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+  const saved = (await loadOntology(store))!;
+  // the goal class has no date field either, and stays
+  expect(saved.classes.map((c) => c.id)).toEqual([GID]);
+  expect(saved.edges.some((e) => e.to === 'p')).toBe(false);
+  expect(saved.metrics.some((x) => x.martId === 'p')).toBe(false);
+});
+
 test('if the hash cannot be recomputed the project hash is kept', async () => {
   const { deps, store, model } = await setup();
   await store.collections<unknown>('model').put('current', { ...model, inputHash: 'project-hash' });

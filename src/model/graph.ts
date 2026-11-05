@@ -1,6 +1,6 @@
 import type { Edge } from '../types';
 import { parseRefs } from '../lib/refs';
-import { DATE_TYPES, type Blendable, type MartDetail, type SchemaField } from '../owox/sources';
+import { DATE_TYPES, flattenFields, type Blendable, type MartDetail, type SchemaField } from '../owox/sources';
 
 export interface MartNode {
   id: string; title: string;
@@ -15,10 +15,8 @@ export function hasPrimaryKey(detail: MartDetail): boolean {
   return walk(detail.fields);
 }
 
-export function hasDateField(detail: MartDetail): boolean {
-  const walk = (fs: SchemaField[]): boolean => fs.some((f) => DATE_TYPES.has(f.type.toUpperCase()) || walk(f.fields ?? []));
-  return walk(detail.fields);
-}
+/** A reportable date field, as the metrics see one: hidden and disconnected fields don't count. */
+export const hasDateField = (detail: MartDetail): boolean => flattenFields(detail.fields).some((x) => DATE_TYPES.has(x.field.type.toUpperCase()));
 
 /** A class needs a primary key to count and a date field to apply the date range to. */
 export const canBeClass = (detail: MartDetail): boolean => hasPrimaryKey(detail) && hasDateField(detail);

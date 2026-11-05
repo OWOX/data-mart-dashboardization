@@ -58,6 +58,7 @@ test('an empty description fails and skips what needs it', async () => {
   const c = byId(await run(data({ projectDescription: '  ' })));
   expect(c['project.description']!.status).toBe('fail');
   for (const id of ['project.table', 'project.critical', 'project.fact', 'project.plan', 'goal.access', 'goal.field', 'goal.pk', 'goal.date']) expect(c[id]!.status, id).toBe('skip');
+  for (const id of ['reachable', 'any', 'facts', 'pk', 'date']) expect(c[`connections.${id}`]!.status, id).toBe('skip');
   expect(c['project.table']!.detail).toBe("Needs: The description isn't empty");
 });
 
@@ -99,13 +100,28 @@ test('a goal without a primary key or a date fails both', async () => {
   expect(c['goal.date']!.status).toBe('fail');
 });
 
-test('a fact Data Mart without a date field warns, and it is not connected to the goal', async () => {
+test('a fact Data Mart without a date field warns once, under the date check', async () => {
   const d = data();
   const undated = { ...d.details[C]!, fields: d.details[C]!.fields.filter((f) => f.name !== 'date') };
   const c = byId(await run({ ...d, details: { ...d.details, [C]: undated } }));
   expect(c['connections.date']).toMatchObject({ status: 'warn', detail: 'No date field, so not on the canvas: Customers' });
-  expect(c['connections.facts']!.detail).toContain('Customers');
+  expect(c['connections.facts']!.status).toBe('ok');
   expect(c['connections.pk']!.status).toBe('ok');
+});
+
+test('a hidden date field does not count', async () => {
+  const d = data();
+  const hidden = { ...d.details[C]!, fields: d.details[C]!.fields.map((f) => (f.name === 'date' ? { ...f, isHiddenForReporting: true } : f)) };
+  const c = byId(await run({ ...d, details: { ...d.details, [C]: hidden } }));
+  expect(c['connections.date']!.status).toBe('warn');
+});
+
+test('the goal Data Mart without a date field fails the goal check only: it stays on the canvas', async () => {
+  const d = data();
+  const undated = { ...d.details[G]!, fields: d.details[G]!.fields.filter((f) => f.name !== 'date') };
+  const c = byId(await run({ ...d, details: { ...d.details, [G]: undated } }));
+  expect(c['goal.date']!.status).toBe('fail');
+  expect(c['connections.date']!.status).toBe('ok');
 });
 
 test('contexts that cannot be read fail and skip the model freshness check', async () => {

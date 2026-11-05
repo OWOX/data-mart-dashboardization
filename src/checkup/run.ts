@@ -183,7 +183,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
   });
 
   const connectionsGroup = () => guard('connections', async () => {
-    if (!factOk) { for (const id of ['reachable', 'any', 'facts', 'pk']) skip(`connections.${id}`, 'project.fact'); return; }
+    if (!factOk) { for (const id of ['reachable', 'any', 'facts', 'pk', 'date']) skip(`connections.${id}`, 'project.fact'); return; }
     const nodes: MartNode[] = [];
     await runPool(inputs.marts.map((m) => async () => {
       const d = await detail(m.id);
@@ -200,17 +200,20 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
 
     const factIds = [...new Set([...projectRows, ...[...contextRows.values()].flat()].flatMap((r) => r.fact.filter(isFieldLink).map((l) => l.martId!)))].filter((id) => visible.has(id));
     const names = (ids: string[]) => ids.map((id) => titles.get(id) ?? id).join(', ');
+    const lacking = (has: (d: MartDetail) => boolean) => factIds.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !has(n.detail); });
+    const noPk = lacking(hasPrimaryKey);
+    // the main class stays on the canvas without a date field; the goal checks report that
+    const noDate = lacking(hasDateField).filter((id) => id !== main?.id);
     if (!main) skip('connections.facts', 'connections.reachable');
     else {
       const depths = classDepths(main.id, edges, new Set(nodes.filter((n) => canBeClass(n.detail)).map((n) => n.id)));
-      const off = factIds.filter((id) => !depths.has(id));
+      // a Data Mart missing a primary key or a date field is reported by its own check, not as unconnected
+      const off = factIds.filter((id) => !depths.has(id) && !noPk.includes(id) && !noDate.includes(id));
       if (off.length) put('connections.facts', 'warn', `Not connected to the goal, so not on the canvas: ${names(off)}`, martFix(off[0]!, titles.get(off[0]!)));
       else put('connections.facts', 'ok');
     }
-    const noPk = factIds.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !hasPrimaryKey(n.detail); });
     if (noPk.length) put('connections.pk', 'warn', `No primary key: ${names(noPk)}`, martFix(noPk[0]!, titles.get(noPk[0]!)));
     else put('connections.pk', 'ok');
-    const noDate = factIds.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !hasDateField(n.detail); });
     if (noDate.length) put('connections.date', 'warn', `No date field, so not on the canvas: ${names(noDate)}`, martFix(noDate[0]!, titles.get(noDate[0]!)));
     else put('connections.date', 'ok');
   });

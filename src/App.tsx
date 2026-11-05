@@ -4,13 +4,14 @@ import type { Blocked as BlockedInfo, CacheDoc, CardCache, CompareChoice, Model,
 import { DEFAULT_SETTINGS } from './types';
 import { compareLabel, resolveRange } from './lib/dates';
 import { describeError } from './lib/errors';
-import { seedFrom } from './model/seed';
+import { seedFrom, withoutUndated } from './model/seed';
 import { shownModel } from './model/shown';
 import { checkHealth, type Issue } from './model/health';
 import { buildModel, currentInputHash, type BuildStep } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
 import { fetchQuality, type QualitySummary } from './owox/quality';
-import { fetchInputs, type Inputs, type MartDetail, type OwoxLike } from './owox/sources';
+import { fetchInputs, fetchMartDetail, type Inputs, type MartDetail, type OwoxLike } from './owox/sources';
+import { runPool } from './lib/pool';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
   isStale, loadCache, loadOntology, loadPreferences, loadProjectModel, loadSettings, saveCache, saveOntology, savePreferences, saveSettings, type CollectionsLike,
@@ -139,8 +140,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           if (accessible) {
             try {
               const inputs = await fetchInputs(owox);
+              // the project model may predate the date-field rule; its undated classes don't carry over
+              const seeded = m;
+              const details = new Map<string, MartDetail>();
+              await runPool(seeded.classes.map((c) => async () => { details.set(c.martId, await fetchMartDetail(owox, c.martId)); }), 6);
+              m = withoutUndated(seeded, details);
               // a hash taken without the contexts would read as out of date once they load
-              if (inputs.contextsOk) m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id)) };
+              if (inputs.contextsOk) m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id), details) };
             } catch { /* keep the project hash */ }
           }
           // a failed save keeps the seed in memory; the next save of the model writes it

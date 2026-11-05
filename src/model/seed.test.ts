@@ -1,4 +1,5 @@
-import { seedFrom } from './seed';
+import { seedFrom, withoutUndated } from './seed';
+import type { MartDetail } from '../owox/sources';
 import type { ClassNode, MetricDef, Model } from '../types';
 
 const c = (id: string, depth: number): ClassNode => ({ id, martId: id, title: id, contexts: [], depth, keyMetricId: `${id}:k`, metricIds: [`${id}:k`], shown: true });
@@ -24,4 +25,14 @@ test('the goal class stays when the member cannot access it', () => {
   expect(s.classes.map((x) => x.id)).toEqual(['g', 'b']);
   expect(s.edges).toEqual([{ from: 'g', to: 'b' }]);
   expect(s.metrics.map((x) => x.martId)).toEqual(['g', 'b']);
+});
+
+const schema = (id: string, dated: boolean): MartDetail => ({ id, title: id, fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, ...(dated ? [{ name: 'at', type: 'timestamp', isPrimaryKey: false }] : [])] });
+
+test('withoutUndated drops classes without a date field; the goal class and classes with no schema to hand stay', () => {
+  const s = withoutUndated(project, new Map([['g', schema('g', false)], ['a', schema('a', false)]]));
+  expect(s.classes.map((x) => x.id)).toEqual(['g', 'b']);
+  expect(s.edges).toEqual([{ from: 'g', to: 'b' }]);
+  expect(s.metrics.map((x) => x.martId)).toEqual(['g', 'b']);
+  expect(withoutUndated(project, new Map([['a', schema('a', true)]]))).toBe(project);
 });

@@ -28,7 +28,7 @@ export interface OwoxLike {
   };
 }
 
-export const DATE_TYPES: ReadonlySet<string> = new Set(['DATE', 'DATETIME', 'TIMESTAMP', 'TIMESTAMP_NTZ', 'TIMESTAMP_TZ', 'TIMESTAMP_LTZ']);
+export const DATE_TYPES: ReadonlySet<string> = new Set(['DATE', 'DATETIME', 'TIMESTAMP', 'TIMESTAMP_NTZ', 'TIMESTAMP_TZ', 'TIMESTAMP_LTZ', 'TIMESTAMPTZ', 'TIMESTAMP WITH TIME ZONE']);
 
 export async function fetchInputs(owox: OwoxLike): Promise<Inputs> {
   let contextsOk = true;
