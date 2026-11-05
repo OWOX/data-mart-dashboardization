@@ -170,7 +170,11 @@ describe('forecast from a source', () => {
 
   test('flow: total over the range, missing days count 0, spark starts after the anchor, status vs plan', async () => {
     const { result, spark } = await computeMetric({ owox: withF, metric: { ...metric, forecast: fdef }, spec: spec(), thresholdPct: 20, withSpark: true });
-    expect(result.forecast).toBe(7 + 3 + 4 + 9);
+    // actual to the anchor (230) plus the mart's days after it; the mart's own value for the anchor day (7) is not counted
+    expect(result.forecast).toBe(230 + 3 + 4 + 9);
+    expect(result.fact).toBe(230);
+    expect(result.projection?.actual).toBe(230);
+    expect(shownValue(result)).toBe(246);
     expect(result.warning ?? null).toBeNull();
     expect(result.plan).toBe(12 * 92);
     expect(result.status).toBe('below');
@@ -229,7 +233,7 @@ describe('forecast from a source', () => {
     expect(withF.calls.slice(before).some((c) => c.path === 'traverse:f')).toBe(false);
   });
 
-  test('forecast null keeps the numbers of the previous implementation', async () => {
+  test('a trend forecast on a quarter gives the whole result: values, projection, plan status and spark', async () => {
     // numbers are the ones the first test above asserted before forecasts came from a source
     const { result, spark } = await computeMetric({ owox, metric, spec: spec(), thresholdPct: 20, withSpark: true });
     expect(result).toEqual({
@@ -299,9 +303,9 @@ describe('a projected range', () => {
       },
     });
     const { result } = await computeMetric({ owox: fox, metric: fmetric, spec: rangeFor('cur_quarter', now), thresholdPct: 20, withSpark: false });
-    expect(result.forecast).toBe(20 * 92);
+    expect(result.forecast).toBe(230 + 20 * 69);
     expect(result.projection?.source).toEqual({ kind: 'mart', martId: 'f', field: 'fc' });
-    expect(result.diffPct).toBeCloseTo(((20 * 92 - 920) / 920) * 100);
+    expect(result.diffPct).toBeCloseTo(((230 + 20 * 69 - 920) / 920) * 100);
   });
 
   test('with too little history there is no comparison and no projection', async () => {
@@ -321,5 +325,61 @@ describe('a projected range', () => {
     expect(result.diffPct).toBeNull();
     expect(result.projection).toBeNull();
     expect(shownValue(result)).toBe(50);
+  });
+
+  const flowOf = (fn: string, per: (d: string, past: boolean) => number) => fakeOwox({
+    projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+    rows: (_id, o) => {
+      const f = o.filter as { value: string }[];
+      if (!o.dateTrunc) return [{ [`revenue | ${fn}`]: 10 }];
+      const out = [];
+      for (let d = f[0]!.value; d < f[1]!.value; d = addDays(d, 1)) out.push({ date: d, [`revenue | ${fn}`]: String(per(d, d <= '2026-10-23')) });
+      return out;
+    },
+  });
+
+  test('an average blends the actual days with the forecast days and is approximate', async () => {
+    const avg = { ...metric, id: 'm:revenue:AVG', measure: { field: 'revenue', fn: 'AVG' as const }, plan: null };
+    const { result } = await computeMetric({ owox: flowOf('AVG', () => 10), metric: avg, spec: rangeFor('cur_quarter', now), thresholdPct: 20, withSpark: false });
+    // actual 10 over 23 days, flat trend of 10 over the other 69
+    expect(result.forecast).toBeCloseTo(10);
+    expect(result.forecastApprox).toBe(true);
+    expect(result.projection).not.toBeNull();
+    const src = fakeOwox({
+      projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+      rows: (id, o) => {
+        const f = o.filter as { value: string }[];
+        const field = id === 'f' ? 'fc | AVG' : 'revenue | AVG';
+        if (!o.dateTrunc) return [{ [field]: 10 }];
+        const out = [];
+        for (let d = f[0]!.value; d < f[1]!.value; d = addDays(d, 1)) out.push({ date: d, [field]: String(id === 'f' ? 20 : 10) });
+        return out;
+      },
+    });
+    const sourced = { ...avg, forecast: { martId: 'f', measure: { field: 'fc', fn: 'AVG' as const }, dateField: 'date' } };
+    const r = await computeMetric({ owox: src, metric: sourced, spec: rangeFor('cur_quarter', now), thresholdPct: 20, withSpark: false });
+    expect(r.result.forecast).toBeCloseTo((10 * 23 + 20 * 69) / 92);
+    expect(r.result.forecastApprox).toBe(true);
+  });
+
+  test.each([
+    ['MIN', { fn: 'MIN' as const, field: 'revenue' }],
+    ['COUNT_DISTINCT', { fn: 'COUNT_DISTINCT' as const, field: 'revenue' }],
+    ['calculated', { fn: null, field: 'revenue' }],
+  ])('%s has no period value: no projection, no comparison, the actual is shown', async (fn, measure) => {
+    const m = { ...metric, id: `m:${fn}`, measure: measure as MetricDef['measure'], plan: null };
+    const { result } = await computeMetric({ owox: flowOf(fn === 'calculated' ? 'null' : fn, () => 10), metric: m, spec: rangeFor('cur_quarter', now), thresholdPct: 20, withSpark: true });
+    expect(result.error).toBeNull();
+    expect(result.projection).toBeNull();
+    expect(result.comparison).toBeNull();
+    expect(result.diffPct).toBeNull();
+    expect(result.forecast).toBeNull();
+    expect(shownValue(result)).toBe(result.fact);
+  });
+
+  test('a unique count (the mart\'s own) still projects as a sum', async () => {
+    const uc: MetricDef = { ...metric, id: 'm:id:COUNT_DISTINCT', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, isUniqueCount: true, plan: null };
+    const { result } = await computeMetric({ owox: flowOf('COUNT_DISTINCT', () => 10), metric: uc, spec: rangeFor('cur_quarter', now), thresholdPct: 20, withSpark: false });
+    expect(result.projection).not.toBeNull();
   });
 });

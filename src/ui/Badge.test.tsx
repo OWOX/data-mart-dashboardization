@@ -8,11 +8,22 @@ const projection = { actual: 100, factWindow: { from: '2026-10-01', to: '2026-10
 
 test('a projected result shows its forecast and the arrow measured from it', () => {
   render(<Badge metric={m} comparing result={res({ forecast: 900, projection })} />);
-  expect(screen.getByText('900')).toBeInTheDocument();
+  expect(screen.getByText('900*')).toBeInTheDocument();
   expect(screen.getByLabelText('trend up')).toBeInTheDocument();
 });
 
 test('an unprojected result shows the actual', () => {
   render(<Badge metric={m} comparing result={res({ forecast: 900 })} />);
+  expect(screen.getByText('100')).toBeInTheDocument();
+});
+
+test('a projected badge carries * and a title naming the actual and forecast ends; ≈ when approximate', () => {
+  render(<Badge metric={m} comparing result={res({ forecast: 900, forecastApprox: true, projection })} />);
+  expect(screen.getByText('≈900*')).toBeInTheDocument();
+  expect(screen.getByTitle(/Actual to Oct 23 \+ forecast to Dec 31/)).toBeInTheDocument();
+});
+
+test('a badge without a projection has no marker', () => {
+  render(<Badge metric={m} comparing result={res({ forecast: 900, forecastApprox: true })} />);
   expect(screen.getByText('100')).toBeInTheDocument();
 });

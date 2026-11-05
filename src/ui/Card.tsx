@@ -256,7 +256,7 @@ function ProjectionNote({ projection, metric, martTitle, fieldName, year }: { pr
   // the two shares add up to 100
   const forecastPct = Math.round(forecastDays / (factDays + forecastDays) * 100);
   return (
-    <Tip label="About the forecast" className="gy-projnote" trigger={<span className="gy-projnote-text">*{forecastPct}% forecast</span>}>
+    <Tip label={`${forecastPct}% forecast, details`} className="gy-projnote" trigger={<span className="gy-projnote-text">*{forecastPct}% forecast</span>}>
       {(id) => (
         <span id={id} className="gy-hint-body gy-hint-left" role="tooltip">
           <span className="gy-projnote-line">Actual: {spanText(factWindow, factDays, 100 - forecastPct, year)}{actual !== null && ` · ${formatValue(actual, metric)}`}</span>

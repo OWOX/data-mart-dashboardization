@@ -634,6 +634,11 @@ describe('projection footnote', () => {
   const projection = { actual: 1_000_000, factWindow: { from: '2026-01-01', to: '2026-11-04' }, forecastWindow: { from: '2026-11-05', to: '2026-12-31' }, source: { kind: 'trend' as const, days: 90 } };
   const show = (over: Partial<MetricResult>, extra: Partial<Parameters<typeof Card>[0]> = {}) => render(<Card cls={cls} metrics={[arr, uc]} cache={cache(over)} comparisonOn={false} refreshing={false} onRetry={() => {}} {...extra} />);
 
+  test('the trigger\'s accessible name contains its visible text', () => {
+    show({ projection });
+    expect(screen.getByRole('button', { name: '16% forecast, details' })).toBeInTheDocument();
+  });
+
   test('shows the forecast share and the two parts on hover', () => {
     const { container } = show({ projection });
     expect(screen.getByText('*16% forecast')).toBeInTheDocument();
