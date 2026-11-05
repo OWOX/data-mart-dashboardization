@@ -109,8 +109,8 @@ test('Cancel writes nothing', () => {
 test('unchecking a key metric moves the key; Save is refused when a shown class has no key', async () => {
   const { onSave } = setup();
   fireEvent.click(row('Revenue').getByLabelText('Shown'));
-  expect(row('Units').getByLabelText('Key metric')).toBeChecked();
-  expect(row('Revenue').getByLabelText('Key metric')).toBeDisabled();
+  expect(row('Units').getByRole('button', { name: /Key metric/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(row('Revenue').getByRole('button', { name: /Key metric/ })).toBeDisabled();
   fireEvent.click(row('Units').getByLabelText('Shown'));
   // no shown metric is left: no key is needed
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -118,6 +118,35 @@ test('unchecking a key metric moves the key; Save is refused when a shown class 
   const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
   expect(saved.classes.find((c) => c.id === 'a')!.keyMetricId).toBeNull();
   expect(saved.metrics.filter((m) => m.martId === 'a').every((m) => !m.shown)).toBe(true);
+});
+
+test('clicking a non-key star makes it the key and Save persists it', async () => {
+  const { onSave } = setup();
+  const rev = () => row('Revenue').getByRole('button', { name: /Key metric/ });
+  const units = () => row('Units').getByRole('button', { name: /Key metric/ });
+  expect(rev()).toHaveAttribute('aria-pressed', 'true');
+  expect(units()).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(units());
+  expect(units()).toHaveAttribute('aria-pressed', 'true');
+  expect(rev()).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(units());
+  expect(units()).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
+  expect(saved.classes.find((c) => c.id === 'a')!.keyMetricId).toBe(saved.metrics.find((m) => m.alias === 'Units')!.id);
+});
+
+test('the star of a hidden metric is disabled and its tooltip shows on focus', () => {
+  setup();
+  fireEvent.click(row('Units').getByLabelText('Shown'));
+  expect(row('Units').getByRole('button', { name: /Key metric/ })).toBeDisabled();
+  const star = row('Revenue').getByRole('button', { name: /Key metric/ });
+  const tip = row('Revenue').getByRole('tooltip', { hidden: true });
+  expect(tip).not.toBeVisible();
+  fireEvent.focus(star);
+  expect(tip).toBeVisible();
+  expect(tip).toHaveTextContent('Key metric: shown large on the card');
 });
 
 test('an empty name or a plan without a field stops the save', async () => {

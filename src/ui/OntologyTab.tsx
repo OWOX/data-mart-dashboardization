@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { ChevronDown, ChevronRight, Info, Star } from 'lucide-react';
 import { normalizeCurrency } from '../lib/format';
 import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
@@ -73,6 +73,29 @@ function InfoTip({ name, text }: { name: string; text: string }) {
         <Info size={14} aria-hidden="true" />
       </button>
       <span role="tooltip" id={id} hidden={!open} className="gy-tip-pop" style={style}>{text}</span>
+    </span>
+  );
+}
+
+/** A star toggle that marks a metric as its class's key. The tooltip shows on hover and keyboard focus. */
+function KeyStar({ alias, isKey, disabled, onPick }: { alias: string; isKey: boolean; disabled: boolean; onPick: () => void }) {
+  const id = useId();
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const open = hover || focus;
+  const anchor = useRef<HTMLSpanElement>(null);
+  const style = useBelow(anchor, open);
+  return (
+    <span ref={anchor} className="gy-star-tip" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <button
+        type="button" className={`gy-onto-star${isKey ? ' is-key' : ''}`} aria-label={`Key metric: ${alias}`} aria-pressed={isKey} aria-describedby={id}
+        disabled={disabled}
+        onClick={() => { if (!isKey) onPick(); }} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+        onKeyDown={(e) => { if (e.key === 'Escape') { setHover(false); setFocus(false); } }}
+      >
+        <Star size={16} aria-hidden="true" fill={isKey ? 'currentColor' : 'none'} />
+      </button>
+      <span role="tooltip" id={id} hidden={!open} className="gy-tip-pop" style={style}>Key metric: shown large on the card</span>
     </span>
   );
 }
@@ -387,13 +410,14 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                     return (
                       <tbody key={m.id} aria-label={`Metric ${label}`} className="gy-onto-metric">
                         <tr>
-                          <td rowSpan={3}><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => toggleMetric(c, m, e.target.checked)} /></td>
+                          <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => toggleMetric(c, m, e.target.checked)} /></span></td>
                           <td rowSpan={3}>
-                            <input
-                              type="radio" className="gy-onto-check" name={`key-${c.id}`} aria-label="Key metric"
-                              checked={c.keyMetricId === m.id} disabled={m.shown === false}
-                              onChange={() => patchClass(c.id, (x) => ({ ...x, keyMetricId: m.id }))}
-                            />
+                            <span className="gy-onto-first">
+                              <KeyStar
+                                alias={m.alias} isKey={c.keyMetricId === m.id} disabled={m.shown === false}
+                                onPick={() => patchClass(c.id, (x) => ({ ...x, keyMetricId: m.id }))}
+                              />
+                            </span>
                           </td>
                           <td rowSpan={3}><input className="gy-input gy-onto-name" aria-label="Name" value={m.alias} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, alias: e.target.value }))} /></td>
                           <td rowSpan={3}>
