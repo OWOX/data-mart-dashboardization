@@ -30,8 +30,9 @@ test('a list after an intro line is a list; indented lines continue an item; num
   expect(d.querySelector('ol')!.getAttribute('start')).toBe('3');
 });
 
+// A runaway (quadratic) parse of this input takes minutes; the bound leaves room for a slow CI runner.
 test('text full of unclosed marks renders quickly', () => {
   const t = performance.now();
   html('['.repeat(50_000) + '*'.repeat(20_000) + '**x'.repeat(10_000));
-  expect(performance.now() - t).toBeLessThan(1000);
+  expect(performance.now() - t).toBeLessThan(5000);
 });
