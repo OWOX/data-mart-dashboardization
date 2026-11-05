@@ -141,12 +141,12 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             try {
               const inputs = await fetchInputs(owox);
               // the project model may predate the date-field rule; its undated classes don't carry over
-              const seeded = m;
               const details = new Map<string, MartDetail>();
-              await runPool(seeded.classes.map((c) => async () => { details.set(c.martId, await fetchMartDetail(owox, c.martId)); }), 6);
-              m = withoutUndated(seeded, details);
-              // a hash taken without the contexts would read as out of date once they load
-              if (inputs.contextsOk) m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id), details) };
+              const read = await runPool(m.classes.map((c) => async () => { details.set(c.martId, await fetchMartDetail(owox, c.martId)); }), 6);
+              m = withoutUndated(m, details);
+              // a hash taken without the contexts would read as out of date once they load; an unread schema may hide an
+              // undated class, so the project hash stays and the out-of-date check proposes the rebuild
+              if (inputs.contextsOk && read.every((r) => r.status === 'fulfilled')) m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id), details) };
             } catch { /* keep the project hash */ }
           }
           // a failed save keeps the seed in memory; the next save of the model writes it

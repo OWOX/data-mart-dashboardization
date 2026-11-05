@@ -103,6 +103,22 @@ test('seeding drops a class whose Data Mart has no date field, from a project mo
   expect(saved.classes.map((c) => c.id)).toEqual([GID]);
   expect(saved.edges.some((e) => e.to === 'p')).toBe(false);
   expect(saved.metrics.some((x) => x.martId === 'p')).toBe(false);
+  // rehashed for the kept classes, so it reads as up to date
+  expect(saved.inputHash).toBe(model.inputHash);
+});
+
+test('a schema that cannot be read while seeding keeps the class and the project hash', async () => {
+  const { deps, store, model } = await setup();
+  await store.collections<unknown>('model').put('current', { ...model, inputHash: 'project-hash' });
+  const base = deps.owox;
+  let failed = false;
+  const owox = { ...base, getJson: (async (path: string) => { if (path.includes(GID) && !failed) { failed = true; throw new Error('503'); } return base.getJson(path); }) as typeof base.getJson };
+  render(<App ctx={ctx} deps={{ ...deps, owox }} />);
+  expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+  const saved = (await loadOntology(store))!;
+  expect(failed).toBe(true);
+  expect(saved.classes.map((c) => c.id)).toEqual([GID]);
+  expect(saved.inputHash).toBe('project-hash');
 });
 
 test('if the hash cannot be recomputed the project hash is kept', async () => {
