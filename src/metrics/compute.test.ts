@@ -245,3 +245,21 @@ const addDaysIndex = (d: string) => {
   for (let x = '2026-10-24'; x < d; x = addDays(x, 1)) n++;
   return n;
 };
+
+test('a unique-count metric asks uniqueCount for its fact queries, a normal metric does not', async () => {
+  const seen: Record<string, unknown>[] = [];
+  const spy = fakeOwox({
+    projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
+    rows: (_id, o) => { seen.push(o); return o.dateTrunc ? [{ date: '2026-10-20', 'Unique Count': 4 }] : [{ 'Unique Count': 4, 'revenue | SUM': 4 }]; },
+  });
+  const spec = rangeFor('last_7d', new Date('2026-10-24T10:00:00Z'));
+  const uc: MetricDef = { ...metric, id: 'm:id:COUNT_DISTINCT', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, isUniqueCount: true, plan: null };
+  const r = await computeMetric({ owox: spy, metric: uc, spec, thresholdPct: 20, withSpark: false });
+  expect(r.result.error).toBeNull();
+  expect(seen.length).toBeGreaterThan(0);
+  for (const o of seen) { expect(o.uniqueCount).toEqual(['']); expect(o).not.toHaveProperty('aggregation'); }
+  seen.length = 0;
+  await computeMetric({ owox: spy, metric: { ...metric, plan: null }, spec, thresholdPct: 20, withSpark: false });
+  expect(seen.length).toBeGreaterThan(0);
+  for (const o of seen) expect(o).not.toHaveProperty('uniqueCount');
+});

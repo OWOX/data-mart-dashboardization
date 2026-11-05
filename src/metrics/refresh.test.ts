@@ -4,7 +4,7 @@ import { addDays, rangeFor } from '../lib/dates';
 import type { CacheDoc, Model } from '../types';
 
 test('refresh fills every card and reports progress', async () => {
-  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'id | COUNTUNIQUE': 5, date: '2026-10-20' }] });
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'Unique Count': 5, date: '2026-10-20' }] });
   const model: Model = {
     version: 2, inputHash: 'h1', builtAt: '', builtBy: 'u', editedAt: null,
     goal: { classId: 'a', metricId: null, goalMartId: 'a', viaFallback: false },
@@ -28,7 +28,7 @@ test('refresh fills every card and reports progress', async () => {
 });
 
 test('classes outside the visible set are not queried and get no card', async () => {
-  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'id | COUNTUNIQUE': 5 }] });
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'Unique Count': 5 }] });
   const metric = (martId: string) => ({ id: `${martId}:id:COUNT_DISTINCT`, martId, alias: martId, measure: { field: 'id', fn: 'COUNT_DISTINCT' as const }, kind: 'flow' as const, dateField: null, role: 'unique' as const, source: 'schema', isUniqueCount: true, format: 'number' as const, currency: null, plan: null, shown: true, forecast: null });
   const model: Model = {
     version: 2, inputHash: 'h1', builtAt: '', builtBy: 'u', editedAt: null,
@@ -47,9 +47,9 @@ test('spark values and forecast are rounded to 4 significant digits', async () =
     projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
     rows: (_id, o) => {
       const f = o.filter as { value: string }[];
-      if (!o.dateTrunc) return [{ 'id | COUNTUNIQUE': 123456.789 }];
+      if (!o.dateTrunc) return [{ 'Unique Count': 123456.789 }];
       const out = [];
-      for (let d = f[0]!.value, i = 0; d < f[1]!.value; d = addDays(d, 1), i++) out.push({ date: d, 'id | COUNTUNIQUE': 1234.56789 + i * 0.001 });
+      for (let d = f[0]!.value, i = 0; d < f[1]!.value; d = addDays(d, 1), i++) out.push({ date: d, 'Unique Count': 1234.56789 + i * 0.001 });
       return out;
     },
   });
@@ -104,7 +104,7 @@ test('cacheKey carries a Sunday week start for week presets only', () => {
 test('onPartial reports growing card sets; the spark arrives with the key metric', async () => {
   const base = fakeOwox({
     projectDescription: null, contexts: [], marts: [], details: {}, blendables: {},
-    rows: (_id, o) => (o.dateTrunc ? [{ date: '2026-10-20', 'id | COUNTUNIQUE': 5 }] : [{ 'id | COUNTUNIQUE': 5 }]),
+    rows: (_id, o) => (o.dateTrunc ? [{ date: '2026-10-20', 'Unique Count': 5 }] : [{ 'Unique Count': 5 }]),
   });
   // the key metric's mart answers late, so the other metric of its card always lands first
   const owox = { ...base, dataMarts: { ...base.dataMarts, traverseData: async (...a: Parameters<typeof base.dataMarts.traverseData>) => { if (a[0] === 'a') await new Promise((r) => setTimeout(r, 20)); return base.dataMarts.traverseData(...a); } } };
@@ -136,7 +136,7 @@ test('onPartial reports growing card sets; the spark arrives with the key metric
 });
 
 test('a hidden class and a hidden metric are not queried', async () => {
-  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'id | COUNTUNIQUE': 5, date: '2026-10-20' }] });
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'Unique Count': 5, date: '2026-10-20' }] });
   const mt = (id: string, martId: string, shown: boolean) => ({ id, martId, alias: id, measure: { field: id, fn: 'COUNT_DISTINCT' as const }, kind: 'flow' as const, dateField: 'date', role: 'unique' as const, source: 'schema', isUniqueCount: true, format: 'number' as const, currency: null, plan: null, shown, forecast: null });
   const model: Model = {
     version: 2, inputHash: 'h1', builtAt: '', builtBy: 'u', editedAt: '2026-11-04T00:00:00Z',
@@ -166,7 +166,7 @@ describe('broken references', () => {
     edges: [], metrics,
   });
   const spec = rangeFor('last_7d', new Date('2026-10-24T10:00:00Z'));
-  const ok = () => fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'id | COUNTUNIQUE': 5 }] });
+  const ok = () => fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'Unique Count': 5 }] });
 
   test('a metric with a broken fact field is not queried; the others are', async () => {
     const owox = ok();
@@ -222,8 +222,8 @@ describe('broken references', () => {
   });
 });
 
-test('a unique count on an INTEGER key is hidden from the canvas and sends no query', async () => {
-  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'qty | SUM': 5, date: '2026-10-20' }] });
+test('a unique count on an INTEGER key shows on the canvas and asks uniqueCount', async () => {
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'qty | SUM': 5, 'Unique Count': 3, date: '2026-10-20' }] });
   const mt = (id: string, field: string, fn: 'SUM' | 'COUNT_DISTINCT') => ({ id, martId: 'a', alias: id, measure: { field, fn }, kind: 'flow' as const, dateField: 'date', role: 'unique' as const, source: 'schema', isUniqueCount: fn === 'COUNT_DISTINCT', format: 'number' as const, currency: null, plan: null, shown: true, forecast: null });
   const model: Model = {
     version: 2, inputHash: 'h1', builtAt: '', builtBy: 'u', editedAt: null,
@@ -233,8 +233,7 @@ test('a unique count on an INTEGER key is hidden from the canvas and sends no qu
   };
   const details = new Map([['a', { id: 'a', title: 'A', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: true }, { name: 'qty', type: 'FLOAT', isPrimaryKey: false }, { name: 'date', type: 'DATE', isPrimaryKey: false }] }]]);
   const doc = await refreshCanvas({ owox, model, details, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', thresholdPct: 20 });
-  expect(Object.keys(doc.cards.a!.metrics)).toEqual(['a:qty']);
-  const sent = JSON.stringify(owox.calls.filter((c) => c.path.startsWith('traverse:')));
-  expect(sent).not.toContain('COUNT_DISTINCT');
+  expect(Object.keys(doc.cards.a!.metrics).sort()).toEqual(['a:id', 'a:qty']);
+  expect(doc.cards.a!.metrics['a:id']!.fact).toBe(3);
   expect(model.metrics[0]!.shown).toBe(true);
 });

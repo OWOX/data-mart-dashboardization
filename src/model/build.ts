@@ -19,8 +19,8 @@ const byText = (a: string, b: string) => a.localeCompare(b);
 /** Covers descriptions and the schema/source signatures of the class marts; modifiedAt is left out, it churns on every actualisation. */
 export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'>, marts: HashMart[]): string {
   return hashString(JSON.stringify([
-    // Bumped when a model needs rebuilding to carry new fields (v2: MetricDef.calculated).
-    'model-v2',
+    // Bumped when a model needs rebuilding to carry new fields (v2: MetricDef.calculated; v3: Unique Count for every class with a primary key).
+    'model-v3',
     inputs.projectDescription,
     [...inputs.contexts].sort((a, b) => byText(a.id, b.id)).map((c) => [c.id, c.description]),
     [...marts].sort((a, b) => byText(a.id, b.id)).map((m) => [

@@ -38,8 +38,9 @@ function find(fields: SchemaField[], path: string, prefix = ''): SchemaField | u
 
 export const fieldAt = (detail: MartDetail, path: string): SchemaField | undefined => find(detail.fields, path);
 
-/** True only when the live schema is known, holds the field, and the field refuses the metric's aggregation. */
+/** True only when the live schema is known, holds the field, and the field refuses the metric's aggregation. A unique count never asks the field to aggregate. */
 export function uncomputable(metric: MetricDef, detail: MartDetail | undefined): boolean {
+  if (metric.isUniqueCount) return false;
   const field = detail ? fieldAt(detail, metric.measure.field) : undefined;
   return !!field && !allowsAggregation(field, metric.measure.fn);
 }

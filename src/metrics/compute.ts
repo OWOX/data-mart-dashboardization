@@ -21,9 +21,10 @@ export async function computeMetric(args: {
 }): Promise<ComputeOut> {
   const { owox, metric, spec, thresholdPct, withSpark } = args;
   const { measure, martId, dateField, kind } = metric;
+  const unique = metric.isUniqueCount;
   try {
     if (!dateField) {
-      const fact = await queryTotal(owox, martId, measure, null, null);
+      const fact = await queryTotal(owox, martId, measure, null, null, unique);
       return { result: empty({ fact, note: 'no_date_field', status: statusOf(fact, null, thresholdPct) }), spark: null };
     }
     const { anchor, range, factWindow } = spec;
@@ -32,10 +33,10 @@ export async function computeMetric(args: {
       from: minDay(minDay(addDays(anchor, -89), comparisonWindow?.from ?? range.from), range.from),
       to: minDay(range.to, anchor),
     };
-    const daily = await queryDaily(owox, martId, measure, dateField, historyWindow);
+    const daily = await queryDaily(owox, martId, measure, dateField, historyWindow, unique);
 
     const read = (w: DateWindow | null) =>
-      !w ? Promise.resolve(null) : kind === 'flow' ? queryTotal(owox, martId, measure, dateField, w) : Promise.resolve(levelAt(daily, w));
+      !w ? Promise.resolve(null) : kind === 'flow' ? queryTotal(owox, martId, measure, dateField, w, unique) : Promise.resolve(levelAt(daily, w));
     const fact = await read(factWindow);
     const comparison = await read(comparisonWindow);
     const compareFact = comparisonWindow ? await read(spec.compareFact) : null;

@@ -47,3 +47,9 @@ test('deriveKeys makes the first shown metric the key, or none', () => {
   expect(deriveKeys(out)).toBe(out);
   expect(deriveKeys(model([cl('g', true, ['k'])], [mt('k', false)])).classes[0]!.keyMetricId).toBeNull();
 });
+
+test('a unique count on an INTEGER key is not hidden by live schemas', () => {
+  const m = model([cl('g', true, ['k', 'x'])], [{ ...mt('k', true), measure: { field: 'id', fn: 'COUNT_DISTINCT' }, isUniqueCount: true }, mt('x', true)]);
+  const details = new Map([['a', { id: 'a', title: 'A', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: true }, { name: 'x', type: 'FLOAT', isPrimaryKey: false }] }]]);
+  expect(shownModel(m, details).classes[0]!.metricIds).toEqual(['k', 'x']);
+});

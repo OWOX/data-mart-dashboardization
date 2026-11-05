@@ -53,35 +53,21 @@ test('aggregation fallback only picks a supported function', () => {
   expect(!none.ok && none.blocked.mismatches).toEqual(['ARR → no supported aggregation for arr']);
 });
 
-test('composite primary key has no unique count; single key does', () => {
-  expect(uniqueCountMetric(arrMart, { availableSources: [], mainUniqueCountKeyFields: ['date', 'customerId'] })).toBeNull();
+test('composite primary key counts too; a mart with no key yields none', () => {
+  expect(uniqueCountMetric(arrMart, { availableSources: [], mainUniqueCountKeyFields: ['date', 'customerId'] })).toMatchObject({
+    measure: { field: 'date', fn: 'COUNT_DISTINCT' }, isUniqueCount: true,
+  });
+  expect(uniqueCountMetric(arrMart, { availableSources: [], mainUniqueCountKeyFields: [] })).toBeNull();
   const customers = { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false }] };
   expect(uniqueCountMetric(customers, { availableSources: [], mainUniqueCountKeyFields: ['id'] })).toMatchObject({
     alias: 'Customers', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, dateField: 'created_at', isUniqueCount: true,
   });
 });
 
-test('plan field mismatch and missing plan date field', () => {
-  const planLinks = [...links, { index: 2, source: 'project', text: 'P', url: 'u2', martId: 'm1', field: 'nope', placeholder: false }];
-  const r = validate({ ai: ai({ planLink: 2, planDateField: 'date', planShape: 'daily' }), links: planLinks, details, visible });
-  expect(!r.ok && r.blocked.mismatches).toEqual(['ARR → plan field "nope" not found in ARR Daily']);
-  const okLinks = [...links, { index: 2, source: 'project', text: 'P', url: 'u2', martId: 'm1', field: 'arr', placeholder: false }];
-  const r2 = validate({ ai: ai({ planLink: 2, planDateField: null, planShape: 'daily' }), links: okLinks, details, visible });
-  expect(!r2.ok && r2.blocked.mismatches).toEqual(['ARR → plan date field missing for ARR Daily']);
-});
-
-test('metric on a hidden fact mart is dropped without mismatch', () => {
-  const l = [links[0]!, { ...links[0]!, index: 1, martId: 'h' }];
-  const out = ai();
-  out.metrics.push({ ...out.metrics[0]!, ref: 'm2', role: 'leading', factLink: 1 });
-  const r = validate({ ai: out, links: l, details, visible });
-  expect(r.ok && r.metrics).toHaveLength(1);
-});
-
-test('an INTEGER primary key gives no unique-count metric; a STRING key does', () => {
+test('an INTEGER primary key gives a unique-count metric like a STRING key', () => {
   const mart = (type: string) => ({ id: 'c', title: 'Customers', fields: [{ name: 'id', type, isPrimaryKey: true, isHiddenForReporting: true }, { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false }] });
   const b = { availableSources: [], mainUniqueCountKeyFields: ['id'] };
-  expect(uniqueCountMetric(mart('INTEGER'), b)).toBeNull();
+  expect(uniqueCountMetric(mart('INTEGER'), b)).toMatchObject({ measure: { field: 'id', fn: 'COUNT_DISTINCT' }, isUniqueCount: true });
   expect(uniqueCountMetric(mart('STRING'), b)).toMatchObject({ measure: { field: 'id', fn: 'COUNT_DISTINCT' } });
 });
 

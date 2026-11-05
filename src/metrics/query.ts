@@ -28,6 +28,24 @@ export const dailyOptions = (m: Measure, dateField: string, w: DateWindow): Reco
   limit: 1000,
 });
 
+// the data endpoint counts distinct primary keys itself (any key type) and labels the value "Unique Count"
+export const UNIQUE_KEY = 'Unique Count';
+
+export const uniqueTotalOptions = (dateField: string | null, w: DateWindow | null): Record<string, unknown> => ({
+  uniqueCount: [''],
+  filter: dateField && w ? dateFilter(dateField, w) : null,
+  limit: 1,
+});
+
+export const uniqueDailyOptions = (dateField: string, w: DateWindow): Record<string, unknown> => ({
+  column: [dateField],
+  uniqueCount: [''],
+  dateTrunc: [{ column: dateField, unit: 'DAY' }],
+  filter: dateFilter(dateField, w),
+  sort: [{ column: dateField, direction: 'asc' }],
+  limit: 1000,
+});
+
 export function toNumber(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
   return Number.isFinite(n) ? n : null;
@@ -40,16 +58,16 @@ export async function readRows(owox: OwoxLike, martId: string, options: Record<s
   return rows;
 }
 
-export async function queryTotal(owox: OwoxLike, martId: string, m: Measure, dateField: string | null, w: DateWindow | null): Promise<number | null> {
-  const rows = await readRows(owox, martId, totalOptions(m, dateField, w));
-  return toNumber(rows[0]?.[valueKey(m)]);
+export async function queryTotal(owox: OwoxLike, martId: string, m: Measure, dateField: string | null, w: DateWindow | null, unique = false): Promise<number | null> {
+  const rows = await readRows(owox, martId, unique ? uniqueTotalOptions(dateField, w) : totalOptions(m, dateField, w));
+  return toNumber(rows[0]?.[unique ? UNIQUE_KEY : valueKey(m)]);
 }
 
-export async function queryDaily(owox: OwoxLike, martId: string, m: Measure, dateField: string, w: DateWindow): Promise<Map<Day, number>> {
+export async function queryDaily(owox: OwoxLike, martId: string, m: Measure, dateField: string, w: DateWindow, unique = false): Promise<Map<Day, number>> {
   const out = new Map<Day, number>();
-  const rows = await readRows(owox, martId, dailyOptions(m, dateField, w));
+  const rows = await readRows(owox, martId, unique ? uniqueDailyOptions(dateField, w) : dailyOptions(m, dateField, w));
   for (const row of rows) {
-    const v = toNumber(row[valueKey(m)]);
+    const v = toNumber(row[unique ? UNIQUE_KEY : valueKey(m)]);
     const d = row[dateField];
     if (v !== null && d != null) out.set(String(d).slice(0, 10), v);
   }
