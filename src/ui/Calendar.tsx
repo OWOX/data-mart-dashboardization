@@ -27,12 +27,15 @@ function TitleList({ label, text, items, value, now, onPick }: {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const list = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (open) { list.current?.focus(); document.getElementById(`${id}-o${active}`)?.scrollIntoView?.({ block: 'nearest' }); } }, [open, active, id]);
   const show = () => { setActive(Math.max(items.findIndex((i) => i.value === value), 0)); setOpen(true); };
-  const pick = (i: number) => { const it = items[i]; setOpen(false); if (it && it.value !== value) onPick(it.value); };
+  // a keyboard close hands focus back to the title button, or it would fall to <body> and the panel's Escape would go deaf
+  const close = () => { setOpen(false); btn.current?.focus(); };
+  const pick = (i: number) => { const it = items[i]; close(); if (it && it.value !== value) onPick(it.value); };
   return (
     <>
-      <button type="button" className="gy-cal-title" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())}>{text}</button>
+      <button ref={btn} type="button" className="gy-cal-title" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())}>{text}</button>
       {open && (
         <div ref={list} id={`${id}-list`} role="listbox" tabIndex={-1} aria-label={label} aria-activedescendant={`${id}-o${active}`} className="gy-combo-list gy-combo-flat gy-cal-list"
           onBlur={() => setOpen(false)}
@@ -41,7 +44,7 @@ function TitleList({ label, text, items, value, now, onPick }: {
             else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); setActive(e.key === 'Home' ? 0 : items.length - 1); }
             else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(active); }
             // the picker panel closes on Escape too; this one only closes the list
-            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
           }}>
           {items.map((it, i) => (
             <div key={it.value} id={`${id}-o${i}`} role="option" aria-selected={it.value === value} aria-current={it.value === now ? 'date' : undefined}

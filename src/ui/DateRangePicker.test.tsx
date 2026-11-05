@@ -277,6 +277,10 @@ describe('month and year lists in the calendar title', () => {
     fireEvent.keyDown(cal().getByRole('listbox'), { key: 'Escape' });
     expect(cal().queryByRole('listbox')).toBeNull();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // focus is back on the title button, so a second Escape reaches the panel and closes it
+    expect(cal().getByRole('button', { name: 'Month' })).toHaveFocus();
+    fireEvent.keyDown(cal().getByRole('button', { name: 'Month' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   test('the comparison calendar has the lists too', () => {
