@@ -68,7 +68,6 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
   const forecast = spec.forecastWindow;
   const [summaryHead, ...summaryRest] = formatPeriod(drawn, compareOn ? comparison : null).split(' vs ');
   const summary = { head: summaryHead, tail: summaryRest.length ? ` vs ${summaryRest.join(' vs ')}` : '' };
-  const factDays = spec.factWindow ? diffDays(spec.factWindow.from, spec.factWindow.to) + 1 : spec.days;
   const [rangeMonth, setRangeMonth] = useState(() => openMonth(drawn, anchor));
   const [compareMonth, setCompareMonth] = useState(() => openMonth(comparison, anchor));
   const id = useId();
@@ -149,7 +148,7 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
               {options.map((o) => (
                 <button key={o.preset} type="button" className="gy-drp-preset" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
                   onClick={() => { setDCompare({ kind: 'preset', preset: o.preset }); setPendingCompare(false); setCompareMonth(openMonth(o.window, anchor)); }}>
-                  {compareChipLabel(o.preset, factDays)}
+                  {compareChipLabel(o.preset, diffDays(o.window.from, o.window.to) + 1)}
                   <span className="gy-drp-win" aria-hidden>{windowText(o.window, anchor)}</span>
                 </button>
               ))}

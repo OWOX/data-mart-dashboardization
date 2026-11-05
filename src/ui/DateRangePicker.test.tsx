@@ -205,6 +205,12 @@ describe('presets, comparison windows and the forecast footnote (today = Nov 5)'
     expect(screen.getByRole('button', { name: 'Previous 31 days' }).querySelector('.gy-drp-win')!.textContent).toBe('Aug 31 – Sep 30');
   });
 
+  test('a projected range names the preceding days by its own window', () => {
+    mount({ kind: 'preset', preset: 'cur_month' });
+    const b = screen.getByRole('button', { name: 'Previous 30 days' });
+    expect(b.querySelector('.gy-drp-win')!.textContent).toBe('Oct 2–31');
+  });
+
   test('a projected range gets a footnote with the forecast tooltip', () => {
     mount({ kind: 'preset', preset: 'cur_month' });
     const head = screen.getByRole('dialog').querySelector('.gy-drp-windows')!;
