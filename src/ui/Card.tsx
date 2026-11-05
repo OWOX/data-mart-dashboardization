@@ -114,7 +114,7 @@ const HOSTS = owoxHosts(typeof location !== 'undefined' && location.ancestorOrig
  * An (i) whose bubble opens on hover or focus and closes on Escape, blur or leaving; `onOpen` fires each time it opens.
  * A link in the bubble to an OWOX page goes through `onNavigate`, so the app opens it in the same tab; any other link opens a new one.
  */
-function Tip({ label, className = '', onOpen, onNavigate, children }: { label: string; className?: string; onOpen?: () => void; onNavigate?: (path: string) => void; children: (bubbleId: string) => ReactNode }) {
+function Tip({ label, className = '', size = 14, onOpen, onNavigate, children }: { label: string; className?: string; size?: number; onOpen?: () => void; onNavigate?: (path: string) => void; children: (bubbleId: string) => ReactNode }) {
   const bubble = useId();
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -134,14 +134,14 @@ function Tip({ label, className = '', onOpen, onNavigate, children }: { label: s
         if (path) { e.preventDefault(); hide(); onNavigate!(path); }
       }}
     >
-      <Info size={14} />
+      <Info size={size} />
       {children(bubble)}
     </span>
   );
 }
 
 /** The Data Mart's description, as Markdown rendered by OWOX once it arrives; the raw text until then, or when it can't be had. */
-function MartAbout({ martId, title, text, markdown, onNavigate }: { martId: string; title: string; text: string; markdown?: MarkdownHtml; onNavigate?: (path: string) => void }) {
+function MartAbout({ martId, title, text, size, markdown, onNavigate }: { martId: string; title: string; text: string; size?: number; markdown?: MarkdownHtml; onNavigate?: (path: string) => void }) {
   const [html, setHtml] = useState<string | null>(() => markdown?.peek(martId, text) ?? null);
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
@@ -156,9 +156,9 @@ function MartAbout({ martId, title, text, markdown, onNavigate }: { martId: stri
     void markdown.load(martId, text).then((h) => { if (live.current && h !== null && current.current === asked) setHtml(h); });
   };
   return (
-    <Tip label={`About ${title}`} onOpen={load} onNavigate={onNavigate}>
+    <Tip label={`About ${title}`} size={size} onOpen={load} onNavigate={onNavigate}>
       {(id) => (
-        <span id={id} className="gy-hint-body gy-hint-md" role="tooltip">
+        <span id={id} className="gy-hint-body gy-hint-left gy-hint-md" role="tooltip">
           {html !== null
             ? <div className="gy-md" dangerouslySetInnerHTML={{ __html: html }} />
             : <div className="gy-md gy-hint-about"><MarkdownText text={text} /></div>}
@@ -168,7 +168,7 @@ function MartAbout({ martId, title, text, markdown, onNavigate }: { martId: stri
   );
 }
 
-/** The mart's icon, then two lines: the class in grey and the metric under it. */
+/** The mart's icon, then two lines: the class in grey and the metric under it, each with its (i) beside it. */
 function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath, onOpen, tools }: {
   title: string; martId: string; metric?: string; metricNote?: string; mart?: MartInfo; markdown?: MarkdownHtml; openPath?: string; onOpen?: (path: string) => void; tools?: ReactNode;
 }) {
@@ -178,13 +178,20 @@ function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath,
     <header className="gy-card-head">
       <span className="gy-logo"><MartIcon icon={mart?.icon} size={20} /></span>
       <span className="gy-card-names">
-        <span className="gy-card-title">{title}</span>
+        <span className="gy-card-line">
+          <span className="gy-card-title">{title}</span>
+          {about && (
+            <span className="gy-line-tip">
+              <MartAbout martId={martId} title={title} text={about} size={metric ? 10 : 12} markdown={markdown} onNavigate={onOpen} />
+            </span>
+          )}
+        </span>
         {metric && (
-          <span className="gy-card-metric-row">
+          <span className="gy-card-line">
             <span className="gy-card-metric">{metric}</span>
             {metricNote && (
-              <span className="gy-metric-tip">
-                <Tip label={`About ${metric}`} onNavigate={onOpen}>
+              <span className="gy-line-tip">
+                <Tip label={`About ${metric}`} size={12} onNavigate={onOpen}>
                   {(id) => <span id={id} className="gy-hint-body gy-hint-left gy-hint-md" role="tooltip"><div className="gy-md"><MarkdownText text={metricNote} /></div></span>}
                 </Tip>
               </span>
@@ -192,7 +199,7 @@ function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath,
           </span>
         )}
       </span>
-      {(about || link || tools) && (
+      {(link || tools) && (
         <CardTools>
           {tools}
           {link && (
@@ -200,7 +207,6 @@ function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath,
               <ExternalLink size={14} />
             </button>
           )}
-          {about && <MartAbout martId={martId} title={title} text={about} markdown={markdown} onNavigate={onOpen} />}
         </CardTools>
       )}
     </header>
