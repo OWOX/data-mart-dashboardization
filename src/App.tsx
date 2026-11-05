@@ -208,7 +208,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   }, [range, compare, now, settings.weekStart]);
 
   const marts = useMemo(
-    () => new Map((inputs?.data?.marts ?? []).map((m) => [m.id, { description: m.description, icon: m.icon ?? null }])),
+    () => new Map((inputs?.data?.marts ?? []).map((m) => [m.id, { title: m.title, description: m.description, icon: m.icon ?? null }])),
     [inputs],
   );
 

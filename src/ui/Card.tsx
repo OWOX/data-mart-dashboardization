@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ExternalLink, Info, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert } from 'lucide-react';
 import { qualityBadge, type QualitySummary } from '../owox/quality';
-import type { CardCache, ClassNode, MetricDef, WeekStart } from '../types';
+import type { CardCache, ClassNode, DateWindow, MetricDef, MetricResult, WeekStart } from '../types';
 import type { MartDetail } from '../owox/sources';
 import type { MarkdownHtml } from '../lib/markdown';
 import { fieldAt } from '../model/aggregations';
@@ -9,14 +9,15 @@ import { metricName } from '../model/metricName';
 import { owoxHosts, owoxPath } from '../lib/links';
 import { diffPct, shownValue } from '../lib/stats';
 import { directionOf } from '../lib/direction';
-import { formatDeltaFor, formatPct, formatValue } from '../lib/format';
+import { diffDays } from '../lib/dates';
+import { formatDeltaFor, formatPct, formatValue, formatWindow } from '../lib/format';
 import { Badge } from './Badge';
 import { MartIcon } from './MartIcon';
 import { Sparkline } from './Sparkline';
 import { MarkdownText } from './MarkdownText';
 
 /** What the mart list says about a class's mart; read live, so it is never older than the page. */
-export interface MartInfo { description: string | null; icon: string | null }
+export interface MartInfo { title?: string; description: string | null; icon: string | null }
 
 interface Props {
   cls: ClassNode;
@@ -114,7 +115,7 @@ const HOSTS = owoxHosts(typeof location !== 'undefined' && location.ancestorOrig
  * An (i) whose bubble opens on hover or focus and closes on Escape, blur or leaving; `onOpen` fires each time it opens.
  * A link in the bubble to an OWOX page goes through `onNavigate`, so the app opens it in the same tab; any other link opens a new one.
  */
-function Tip({ label, className = '', size = 14, onOpen, onNavigate, children }: { label: string; className?: string; size?: number; onOpen?: () => void; onNavigate?: (path: string) => void; children: (bubbleId: string) => ReactNode }) {
+function Tip({ label, className = '', size = 14, trigger, onOpen, onNavigate, children }: { label: string; className?: string; size?: number; trigger?: ReactNode; onOpen?: () => void; onNavigate?: (path: string) => void; children: (bubbleId: string) => ReactNode }) {
   const bubble = useId();
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -134,7 +135,7 @@ function Tip({ label, className = '', size = 14, onOpen, onNavigate, children }:
         if (path) { e.preventDefault(); hide(); onNavigate!(path); }
       }}
     >
-      <Info size={size} />
+      {trigger ?? <Info size={size} />}
       {children(bubble)}
     </span>
   );
@@ -240,6 +241,28 @@ export function WarningHint({ text }: { text: string }) {
       <TriangleAlert size={14} />
       <span className="gy-hint-body" role="tooltip">{text}</span>
     </span>
+  );
+}
+
+const inYear = (w: DateWindow, year: string) => w.from.slice(0, 4) === year && w.to.slice(0, 4) === year;
+const spanText = (w: DateWindow, days: number, pct: number, year: string) => `${formatWindow(w, !inYear(w, year))} · ${days} ${days === 1 ? 'day' : 'days'} · ${pct}%`;
+
+/** `*16% forecast` beside a projected number: the share of the range that is forecast, with both parts and the forecast's source on hover. */
+function ProjectionNote({ projection, metric, martTitle, fieldName, year }: { projection: NonNullable<MetricResult['projection']>; metric: MetricDef; martTitle: string; fieldName: string; year: string }) {
+  const { factWindow, forecastWindow, actual, source } = projection;
+  const factDays = diffDays(factWindow.from, factWindow.to) + 1, forecastDays = diffDays(forecastWindow.from, forecastWindow.to) + 1;
+  // the two shares add up to 100
+  const forecastPct = Math.round(forecastDays / (factDays + forecastDays) * 100);
+  return (
+    <Tip label="About the forecast" className="gy-projnote" trigger={<span className="gy-projnote-text">*{forecastPct}% forecast</span>}>
+      {(id) => (
+        <span id={id} className="gy-hint-body gy-hint-left" role="tooltip">
+          <span className="gy-projnote-line">Actual: {spanText(factWindow, factDays, 100 - forecastPct, year)}{actual !== null && ` · ${formatValue(actual, metric)}`}</span>
+          <span className="gy-projnote-line">Forecast: {spanText(forecastWindow, forecastDays, forecastPct, year)}</span>
+          <span className="gy-projnote-line">{source.kind === 'mart' ? `From ${martTitle}, ${fieldName}` : `Trend and weekday pattern of the last ${source.days} days`}</span>
+        </span>
+      )}
+    </Tip>
   );
 }
 
@@ -360,6 +383,12 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   const sign: Sign = directionOf(res, key, comparingNow);
   // a failed query shows no number; the error rides in the tooltip and the card offers a retry
   const warning = res.warning ?? res.error;
+  /** The forecast mart's title and field name as the user knows them; the ids when the title or alias is not known. */
+  const projectionSource = (src: NonNullable<MetricResult['projection']>['source']) => {
+    if (src.kind !== 'mart') return { martTitle: '', fieldName: '' };
+    const detail = details?.get(src.martId);
+    return { martTitle: detail?.title || (src.martId === cls.martId ? mart?.title : undefined) || src.martId, fieldName: (detail ? fieldAt(detail, src.field)?.alias : undefined) || src.field };
+  };
   const big = failed ? formatValue(null, key) : fact !== null ? `${res.projection && res.forecastApprox ? '≈' : ''}${formatValue(fact, key)}` : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${formatValue(res.forecast, key)}` : formatValue(null, key);
   // Plan and forecast stay off the face of the card; the number names them on hover.
   const detail = [
@@ -377,6 +406,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
         <div className="gy-figure">
           <span className="gy-figure-row">
             <span className="num gy-big" title={detail || undefined}>{big}</span>
+            {res.projection && <ProjectionNote projection={res.projection} metric={key} {...projectionSource(res.projection.source)} year={res.projection.factWindow.to.slice(0, 4)} />}
             {warning && <WarningHint text={warning} />}
           </span>
           {/* An all-time metric has no period to compare against. */}

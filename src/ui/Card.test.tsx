@@ -629,3 +629,30 @@ test('a projected approximate forecast keeps its ≈', () => {
   render(<Card cls={cls} metrics={[arr]} cache={cache({ fact: 400, forecast: 1240, forecastApprox: true, comparison: 1000, projection })} comparisonOn compareLabel="Last Quarter" refreshing={false} onRetry={() => {}} />);
   expect(screen.getByText('≈1.24K')).toBeInTheDocument();
 });
+
+describe('projection footnote', () => {
+  const projection = { actual: 1_000_000, factWindow: { from: '2026-01-01', to: '2026-11-04' }, forecastWindow: { from: '2026-11-05', to: '2026-12-31' }, source: { kind: 'trend' as const, days: 90 } };
+  const show = (over: Partial<MetricResult>, extra: Partial<Parameters<typeof Card>[0]> = {}) => render(<Card cls={cls} metrics={[arr, uc]} cache={cache(over)} comparisonOn={false} refreshing={false} onRetry={() => {}} {...extra} />);
+
+  test('shows the forecast share and the two parts on hover', () => {
+    const { container } = show({ projection });
+    expect(screen.getByText('*16% forecast')).toBeInTheDocument();
+    const tip = container.querySelector('.gy-projnote [role="tooltip"]')!.textContent!;
+    expect(tip).toContain('Actual: Jan 1 – Nov 4 · 308 days · 84% · 1M');
+    expect(tip).toContain('Forecast: Nov 5 – Dec 31 · 57 days · 16%');
+    expect(tip).toContain('Trend and weekday pattern of the last 90 days');
+  });
+
+  test('a mart source names the mart and the field alias', () => {
+    const detail: MartDetail = { id: 'f', title: 'Forecasts', fields: [{ name: 'arr_f', alias: 'ARR forecast', type: 'NUMBER', isPrimaryKey: false }] };
+    const { container } = show({ projection: { ...projection, actual: null, source: { kind: 'mart', martId: 'f', field: 'arr_f' } } }, { details: new Map([['f', detail]]) });
+    const tip = container.querySelector('.gy-projnote [role="tooltip"]')!.textContent!;
+    expect(tip).toContain('From Forecasts, ARR forecast');
+    expect(tip).not.toMatch(/84% ·/);
+  });
+
+  test('no footnote without a projection', () => {
+    const { container } = show({});
+    expect(container.querySelector('.gy-projnote')).toBeNull();
+  });
+});
