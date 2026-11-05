@@ -15,6 +15,8 @@ function setup(range: RangeChoice = Q, compare: CompareChoice = PREV) {
   return onChange;
 }
 const open = () => fireEvent.click(screen.getByRole('button', { name: 'Date range' }));
+/** The month and year shown in a calendar's title, which is two buttons. */
+const title = (cal: HTMLElement) => `${within(cal).getByRole('button', { name: 'Month' }).textContent} ${within(cal).getByRole('button', { name: 'Year' }).textContent}`;
 const day = (cal: string, name: string) => within(screen.getByRole('group', { name: cal })).getByRole('button', { name });
 
 test('trigger label reflects compare', () => {
@@ -70,7 +72,7 @@ test('comparison preset and custom comparison', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Custom', pressed: false }));
   // Seeded with the previous quarter (props still say previous_period); reversed clicks swap.
   const cal = within(screen.getByRole('group', { name: 'Comparison calendar' }));
-  expect(cal.getByText('August 2026')).toBeInTheDocument();
+  expect(title(screen.getByRole('group', { name: 'Comparison calendar' }))).toBe('August 2026');
   fireEvent.click(cal.getByRole('button', { name: 'Monday, August 31, 2026' }));
   fireEvent.click(cal.getByRole('button', { name: 'Monday, August 3, 2026' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -128,7 +130,7 @@ test('comparison days after yesterday are disabled', () => {
   open();
   fireEvent.click(screen.getByRole('button', { name: 'Custom', pressed: false }));
   const cal = screen.getByRole('group', { name: 'Comparison calendar' });
-  for (let i = 0; i < 6 && !within(cal).queryByText('November 2026'); i++) {
+  for (let i = 0; i < 6 && title(cal) !== 'November 2026'; i++) {
     fireEvent.click(within(cal).getByRole('button', { name: 'Next month' }));
   }
   expect(within(cal).getByRole('button', { name: 'Tuesday, November 3, 2026' })).toBeDisabled();
@@ -229,6 +231,60 @@ describe('presets, comparison windows and the forecast footnote (today = Nov 5)'
   test('a custom comparison of a projected quarter opens on the month where the whole previous quarter ends', () => {
     mount({ kind: 'preset', preset: 'cur_quarter' });
     fireEvent.click(screen.getByRole('button', { name: 'Custom', pressed: false }));
-    expect(within(screen.getByRole('group', { name: 'Comparison calendar' })).getByText('September 2026')).toBeInTheDocument();
+    expect(title(screen.getByRole('group', { name: 'Comparison calendar' }))).toBe('September 2026');
+  });
+});
+
+describe('month and year lists in the calendar title', () => {
+  const cal = () => within(screen.getByRole('group', { name: 'Range calendar' }));
+  const shown = () => `${cal().getByRole('button', { name: 'Month' }).textContent} ${cal().getByRole('button', { name: 'Year' }).textContent}`;
+
+  test('picking March keeps the year and the selected range', () => {
+    const onChange = setup();
+    open();
+    expect(shown()).toBe('November 2026');
+    fireEvent.click(cal().getByRole('button', { name: 'Month' }));
+    expect(within(cal().getByRole('listbox')).getAllByRole('option')).toHaveLength(12);
+    fireEvent.click(cal().getByRole('option', { name: 'March' }));
+    expect(cal().queryByRole('listbox')).toBeNull();
+    expect(shown()).toBe('March 2026');
+    expect(cal().getByRole('button', { name: 'Sunday, March 1, 2026' })).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test('the year list runs 10 years back to one ahead and marks the current year; 2024 keeps the month', () => {
+    setup();
+    open();
+    fireEvent.click(cal().getByRole('button', { name: 'Year' }));
+    const opts = cal().getAllByRole('option').map((o) => o.textContent);
+    expect(opts[0]).toBe('2016');
+    expect(opts[opts.length - 1]).toBe('2027');
+    expect(cal().getByRole('option', { name: '2026' })).toHaveAttribute('aria-current', 'date');
+    fireEvent.click(cal().getByRole('option', { name: '2024' }));
+    expect(shown()).toBe('November 2024');
+  });
+
+  test('arrows and Enter pick; Escape closes the list and leaves the panel open', () => {
+    setup();
+    open();
+    fireEvent.click(cal().getByRole('button', { name: 'Month' }));
+    const list = cal().getByRole('listbox');
+    expect(list).toHaveFocus();
+    fireEvent.keyDown(list, { key: 'ArrowDown' });
+    fireEvent.keyDown(list, { key: 'Enter' });
+    expect(shown()).toBe('December 2026');
+    fireEvent.click(cal().getByRole('button', { name: 'Month' }));
+    fireEvent.keyDown(cal().getByRole('listbox'), { key: 'Escape' });
+    expect(cal().queryByRole('listbox')).toBeNull();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  test('the comparison calendar has the lists too', () => {
+    setup();
+    open();
+    const c = within(screen.getByRole('group', { name: 'Comparison calendar' }));
+    fireEvent.click(c.getByRole('button', { name: 'Year' }));
+    fireEvent.click(c.getByRole('option', { name: '2020' }));
+    expect(c.getByRole('button', { name: 'Year' })).toHaveTextContent('2020');
   });
 });

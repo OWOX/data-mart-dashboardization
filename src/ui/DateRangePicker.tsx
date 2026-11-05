@@ -162,12 +162,12 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
       </div>
       <div className="gy-drp-right">
         <div className="gy-drp-cal">
-          <Calendar month={rangeMonth} selected={drawn} weekStart={weekStart} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
+          <Calendar month={rangeMonth} selected={drawn} weekStart={weekStart} anchorYear={Number(anchor.slice(0, 4))} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
         </div>
         {compareOn && <div className="gy-drp-sep" role="separator" />}
         {compareOn && (
           <div className="gy-drp-cmpcal">
-            <Calendar month={compareMonth} selected={comparison} weekStart={weekStart} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />
+            <Calendar month={compareMonth} selected={comparison} weekStart={weekStart} anchorYear={Number(anchor.slice(0, 4))} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />
           </div>
         )}
       </div>

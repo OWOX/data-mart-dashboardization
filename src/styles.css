@@ -358,9 +358,15 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-drp-note:hover, .gy-drp-note:focus-visible { opacity: 1; }
 .gy-drp-note .gy-hint-body { max-width: min(20rem, 80vw); white-space: normal; }
 .gy-drp-win { margin-left: 0.5rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; white-space: nowrap; }
-.gy-cal { width: 17.5rem; }
+.gy-cal { position: relative; width: 17.5rem; }
 .gy-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
-.gy-cal-title { font-weight: 500; }
+.gy-cal-titles { display: flex; gap: 0.125rem; }
+.gy-cal-title { padding: 0.125rem 0.375rem; border: 0; border-radius: 0.375rem; background: transparent; color: inherit; font: inherit; font-weight: 500; cursor: pointer; }
+.gy-cal-title:hover { background: var(--muted); }
+.gy-cal-title:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
+/* The month/year list opens under the head, over the grid; it scrolls when the panel is short. */
+.gy-cal-list { top: 2rem; left: 50%; min-width: 7rem; max-height: 14rem; transform: translateX(-50%); outline: none; }
+.gy-cal-now { color: var(--primary); }
 .gy-cal-nav {
   display: inline-grid; place-items: center; width: 1.75rem; height: 1.75rem; padding: 0; border: 0; border-radius: 0.375rem;
   background: transparent; color: var(--muted-foreground); cursor: pointer;
