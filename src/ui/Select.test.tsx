@@ -95,3 +95,12 @@ test('with the list closed, a letter, Home and End change the value', () => {
   expect(onChange).toHaveBeenLastCalledWith('c');
   expect(box).toHaveAttribute('aria-expanded', 'false');
 });
+
+test('the arrow keys do nothing when every option is disabled', () => {
+  render(<Select label="Pick" value="" options={[{ value: '', label: 'Select…', disabled: true }]} onChange={vi.fn()} />);
+  const box = screen.getByRole('combobox', { name: 'Pick' });
+  fireEvent.click(box);
+  fireEvent.keyDown(box, { key: 'ArrowUp' });
+  fireEvent.keyDown(box, { key: 'ArrowDown' });
+  expect(box).not.toHaveAttribute('aria-activedescendant');
+});

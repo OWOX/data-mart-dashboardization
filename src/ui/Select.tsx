@@ -37,7 +37,7 @@ export function Select({ label, value, options, className = '', invalid, describ
   const pick = (i: number) => { const o = options[i]; if (o && !o.disabled) { if (o.value !== value) onChange(o.value); close(); } };
   // the next enabled option from `from` in direction `d`, or `from` when there is none
   const seek = (from: number, d: number) => { for (let i = from + d; i >= 0 && i < options.length; i += d) if (enabled(i)) return i; return from; };
-  const step = (i: number) => { if (i < 0) return; byKeys.current = true; setActiveValue(options[i]!.value); };
+  const step = (i: number) => { if (!enabled(i)) return; byKeys.current = true; setActiveValue(options[i]!.value); };
   // the next enabled option after `from` whose label starts with `k`, wrapping; -1 when there is none
   const typed = (from: number, k: string) => {
     const n = options.length;
