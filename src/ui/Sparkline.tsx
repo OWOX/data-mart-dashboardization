@@ -1,4 +1,5 @@
-import type { SeriesPack, Trend } from '../types';
+import type { SeriesPack, Trend, WeekStart } from '../types';
+import { addDays, weekdayIndex } from '../lib/dates';
 
 type Pt = [number, number];
 
@@ -27,12 +28,48 @@ export function smooth(pts: Pt[]): string {
   return d;
 }
 
+/** Longer series than this many days plot one point per week. */
+export const DAILY_MAX = 62;
+
+const mean = (xs: number[]): number | null => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+
+/**
+ * The series in weeks once it runs past `DAILY_MAX` days, so a quarter or a year reads as a shape
+ * rather than noise. Each point is the average day of its week, so a part week at either end is
+ * not a false dip and a unique count or a ratio is not summed. The week holding the last actual
+ * day plots those days only; the forecast picks up at the next week.
+ */
+export function weekly(spark: SeriesPack, ws: WeekStart = 'monday'): SeriesPack {
+  const n = spark.values.length;
+  if (n + spark.forecast.length <= DAILY_MAX) return spark;
+  const weekOf = (i: number) => Math.floor((i + weekdayIndex(spark.start, ws)) / 7);
+  const fact: number[][] = [];
+  spark.values.forEach((v, i) => {
+    const w = weekOf(i);
+    fact[w] ??= [];
+    if (v !== null) fact[w].push(v);
+  });
+  const after = n ? weekOf(n - 1) + 1 : 0;
+  const ahead: number[][] = [];
+  spark.forecast.forEach((v, i) => {
+    const w = weekOf(n + i);
+    if (w >= after) (ahead[w - after] ??= []).push(v);
+  });
+  return {
+    start: addDays(spark.start, -weekdayIndex(spark.start, ws)),
+    values: Array.from(fact, (xs) => mean(xs ?? [])),
+    forecastStart: ahead.length ? addDays(spark.start, after * 7 - weekdayIndex(spark.start, ws)) : null,
+    forecast: ahead.map((xs) => mean(xs)!),
+  };
+}
+
 /**
  * The series as a filled area along the card's bottom edge, with a 1px line on its top. The
  * forecast continues it in a paler fill under a dashed line. The SVG stretches to its box, so the
  * line keeps 1px however wide the card is.
  */
-export function Sparkline({ spark, trend, width = 280, height = 48 }: { spark: SeriesPack; trend: Trend; width?: number; height?: number }) {
+export function Sparkline({ spark: daily, trend, weekStart, width = 280, height = 48 }: { spark: SeriesPack; trend: Trend; weekStart?: WeekStart; width?: number; height?: number }) {
+  const spark = weekly(daily, weekStart);
   const all = [...spark.values.filter((v): v is number => v !== null), ...spark.forecast];
   const total = spark.values.length + spark.forecast.length;
   if (all.length === 0 || total === 0) return <svg className="gy-spark" data-trend={trend} role="img" aria-label={`trend ${trend}`} />;

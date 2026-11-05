@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ExternalLink, Info, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert } from 'lucide-react';
 import { qualityBadge, type QualitySummary } from '../owox/quality';
-import type { CardCache, ClassNode, MetricDef } from '../types';
+import type { CardCache, ClassNode, MetricDef, WeekStart } from '../types';
 import type { MartDetail } from '../owox/sources';
 import type { MarkdownHtml } from '../lib/markdown';
 import { fieldAt } from '../model/aggregations';
@@ -42,6 +42,8 @@ interface Props {
   details?: ReadonlyMap<string, MartDetail>;
   /** Renders the Data Mart description's Markdown; without it the raw text shows. */
   markdown?: MarkdownHtml;
+  /** Where a week starts in a sparkline that plots weeks. */
+  weekStart?: WeekStart;
   onRetry: () => void;
 }
 
@@ -275,7 +277,7 @@ function CardSkeleton({ badges, spark }: { badges: number; spark: boolean }) {
   );
 }
 
-export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', quality, details, markdown, onOpen, onRetry }: Props) {
+export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', quality, details, markdown, onOpen, weekStart, onRetry }: Props) {
   const nameOf = (m: MetricDef) => metricName(m, details?.get(m.martId));
   // The metric the reader swapped in for this session, with the secondary order it leaves behind.
   const [swap, setSwap] = useState<{ main: string; rest: string[] } | null>(null);
@@ -388,7 +390,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       )}
       {/* A swapped-in metric shows its own series; one without a series keeps the slot's height so the card doesn't shrink. */}
       {cache?.spark && (spark
-        ? <Sparkline spark={spark} trend={sign} />
+        ? <Sparkline spark={spark} trend={sign} weekStart={weekStart} />
         : <div className="gy-spark-slot" aria-hidden="true" />)}
     </article>
   );

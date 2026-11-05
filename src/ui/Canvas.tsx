@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Network, Target } from 'lucide-react';
-import type { CacheDoc, ClassNode, Model, Status } from '../types';
+import type { CacheDoc, ClassNode, Model, Status, WeekStart } from '../types';
 import type { MartDetail } from '../owox/sources';
 import type { QualitySummary } from '../owox/quality';
 import type { MarkdownHtml } from '../lib/markdown';
@@ -34,6 +34,7 @@ interface Props {
   /** Renders a mart description's Markdown; without it the card shows the raw text. */
   markdown?: MarkdownHtml;
   onOpen?: (path: string) => void;
+  weekStart?: WeekStart;
   onRetry: () => void;
 }
 
@@ -83,7 +84,7 @@ export function curve(a: Box, b: Box): string {
   return `M${x1} ${y1} C${right ? x1 + pull : x1 - pull} ${y1} ${right ? x2 - pull : x2 + pull} ${y2} ${x2} ${y2}`;
 }
 
-export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, details, missingIds, marts, compareLabel, tools, progress = null, quality, projectId, markdown, onOpen, onRetry }: Props) {
+export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, details, missingIds, marts, compareLabel, tools, progress = null, quality, projectId, markdown, onOpen, weekStart, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const [hover, setHover] = useState<string | null>(null);
@@ -161,6 +162,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         projectId={projectId}
         markdown={markdown}
         onOpen={onOpen}
+        weekStart={weekStart}
         onRetry={onRetry}
       />
     </div>
