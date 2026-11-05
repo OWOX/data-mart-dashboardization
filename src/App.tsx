@@ -404,6 +404,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             quality={quality?.model === model ? quality.data : null}
             projectId={ctx.projectId}
             markdown={markdown}
+            weekStart={settings.weekStart}
             onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}
             comparisonOn={compare.kind !== 'off'} refreshing={refreshing || loading} onRetry={() => void refresh(true)}
           />

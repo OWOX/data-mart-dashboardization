@@ -163,7 +163,7 @@ export const COMPARE_LABELS: Record<Preset, string> = {
 };
 
 export const PRESET_GROUPS: { label: string; presets: Preset[] }[] = [
-  { label: 'Past', presets: ['last_year', 'last_quarter', 'last_month', 'last_week', 'last_28d', 'last_7d', 'yesterday'] },
-  { label: 'To date', presets: ['ytd'] },
   { label: 'Current', presets: ['this_year', 'this_quarter', 'this_month', 'this_week'] },
+  { label: 'To date', presets: ['ytd'] },
+  { label: 'Past', presets: ['last_year', 'last_quarter', 'last_month', 'last_week', 'last_28d', 'last_7d', 'yesterday'] },
 ];
