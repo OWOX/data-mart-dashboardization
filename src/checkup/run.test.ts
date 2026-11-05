@@ -107,6 +107,17 @@ test('a stand-in main Data Mart without a key or a date field still warns: no go
   expect(c['connections.facts']!.status).toBe('ok');
 });
 
+test('a stand-in main Data Mart with no fact link is still checked for a key and a date field', async () => {
+  const base = data();
+  const bare = { ...base.details[C]!, fields: base.details[C]!.fields.filter((f) => f.name !== 'id' && f.name !== 'date') };
+  // the context links its fact to Plan, so nothing links Customers
+  const contexts = [{ id: 'k1', name: 'Sales', description: table(`| Leading | Plan | [Plan](${url(P, 'revenue')}) | [Plan](${url(P, 'revenue')}) |`) }];
+  const c = byId(await run({ ...base, contexts, marts: base.marts.filter((m) => m.id !== G), details: { ...base.details, [C]: bare } }));
+  expect(c['connections.reachable']!.detail).toContain('Customers');
+  expect(c['connections.pk']).toMatchObject({ status: 'warn', detail: 'No primary key: Customers' });
+  expect(c['connections.date']).toMatchObject({ status: 'warn', detail: 'No date field: Customers (the main Data Mart)' });
+});
+
 test('a goal without a primary key or a date fails both', async () => {
   const c = byId(await run(data({ details: { ...data().details, [G]: { id: G, title: 'Orders', fields: [{ name: 'revenue', type: 'FLOAT', isPrimaryKey: false }] } } })));
   expect(c['goal.pk']!.status).toBe('fail');

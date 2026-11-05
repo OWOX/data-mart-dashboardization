@@ -196,6 +196,14 @@ test('the hash changes when a hidden field gains or loses the primary key flag',
   expect(await currentInputHash(fakeOwox(hidden(false)), inputs, [GID, 'c'])).not.toBe(withKey);
 });
 
+test('a mart whose primary keys are all visible hashes as it did in 0.3.8', async () => {
+  const d = data();
+  const inputs = await fetchInputs(fakeOwox(d));
+  const hash = await currentInputHash(fakeOwox(d), inputs, [GID, 'c']);
+  // computed on 270be5d (release 0.3.8) from this fixture; a change here re-proposes a rebuild to every member
+  expect(hash).toBe('b9be9f95');
+});
+
 test('currentInputHash leaves a Data Mart that fails to fetch out, so the hash changes instead of throwing', async () => {
   const owox = fakeOwox(data());
   const inputs = await fetchInputs(owox);

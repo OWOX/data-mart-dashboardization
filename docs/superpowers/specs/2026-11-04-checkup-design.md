@@ -60,9 +60,12 @@ OWOX paths are relative to `/ui/{projectId}`.
 | | Calculated fields reference other Data Marts | Warning: "No calculated field references another Data Mart" | `/data-marts` |
 | | Each Data Mart with a fact link connects to the goal | Warning, listing the Data Marts that won't show on the canvas | that Data Mart |
 | | Each Data Mart with a fact link has a primary key | Warning, listing them | that Data Mart |
+| | Each Data Mart with a fact link has a date field | Warning: "No date field, so not on the canvas: …"; a stand-in main Data Mart reads "No date field: … (the main Data Mart)", since it stays on the canvas | that Data Mart |
 | Housekeeping | An AI credential is mapped | Failed | `/plugins` |
-| | No broken references | Warning, with the count | Metrics tab |
-| | It matches the descriptions | Warning: "The descriptions changed since the model was built" | Metrics tab |
+| | The saved model has no broken references | Warning, with the count | Metrics tab |
+| | The saved model matches the descriptions | Warning: "The descriptions changed since the model was built" | Metrics tab |
+
+The primary key and date field checks leave out the goal's own Data Mart, which the goal checks cover. When the goal's Data Mart can't be accessed and a referrer stands in as the main Data Mart, the two checks cover that stand-in too, with or without a fact link: it is always drawn, and no goal check looks at it.
 
 With no saved model, both Housekeeping model checks are skipped with the detail "No model built yet".
 

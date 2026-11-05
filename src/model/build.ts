@@ -24,17 +24,23 @@ export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'
     'model-v4',
     inputs.projectDescription,
     [...inputs.contexts].sort((a, b) => byText(a.id, b.id)).map((c) => [c.id, c.description]),
-    [...marts].sort((a, b) => byText(a.id, b.id)).map((m) => [
-      m.id,
-      flattenFields(m.detail.fields)
-        .map((x) => [x.path, x.field.type, x.field.isPrimaryKey, x.field.calculated?.formula ?? null, x.field.description ?? null] as const)
-        .sort((a, b) => byText(a[0], b[0])),
-      m.blendable.availableSources
-        .map((s) => [s.aliasPath, s.dataMartId] as const)
-        .sort((a, b) => byText(a[0], b[0]) || byText(a[1], b[1])),
-      // the flattened fields above skip hidden ones, and a hidden primary key still decides whether the mart is a class
-      primaryKeyPaths(m.detail.fields).sort(byText),
-    ]),
+    [...marts].sort((a, b) => byText(a.id, b.id)).map((m) => {
+      const flat = flattenFields(m.detail.fields);
+      // a hidden primary key still decides whether the mart is a class, and the flattened fields skip it; added only when
+      // there is one, so a mart whose keys are all visible keeps the hash it had
+      const shown = new Set(flat.filter((x) => x.field.isPrimaryKey).map((x) => x.path));
+      const hiddenKeys = primaryKeyPaths(m.detail.fields).filter((p) => !shown.has(p)).sort(byText);
+      return [
+        m.id,
+        flat
+          .map((x) => [x.path, x.field.type, x.field.isPrimaryKey, x.field.calculated?.formula ?? null, x.field.description ?? null] as const)
+          .sort((a, b) => byText(a[0], b[0])),
+        m.blendable.availableSources
+          .map((s) => [s.aliasPath, s.dataMartId] as const)
+          .sort((a, b) => byText(a[0], b[0]) || byText(a[1], b[1])),
+        ...(hiddenKeys.length ? [hiddenKeys] : []),
+      ];
+    }),
   ]));
 }
 

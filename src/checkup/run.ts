@@ -23,10 +23,10 @@ export const LABELS: Record<string, string> = {
   'project.fact': "The Critical number's fact links a Data Mart field",
   'project.plan': "The Critical number's plan links a Data Mart field",
   'project.links': 'Every Data Mart and field linked in the description exists',
-  'goal.access': 'It is published and you can access it',
-  'goal.field': 'The goal field exists in it',
-  'goal.pk': 'It has a primary key',
-  'goal.date': 'It has a date field',
+  'goal.access': 'Goal Data Mart: it is published and you can access it',
+  'goal.field': 'Goal Data Mart: the goal field exists in it',
+  'goal.pk': 'Goal Data Mart: it has a primary key',
+  'goal.date': 'Goal Data Mart: it has a date field',
   'contexts.exist': 'At least two contexts exist',
   'context.description': "The description isn't empty",
   'context.marts': 'At least one Data Mart is in it',
@@ -38,8 +38,8 @@ export const LABELS: Record<string, string> = {
   'connections.facts': 'Each Data Mart with a fact link connects to the goal',
   'connections.pk': 'Each Data Mart with a fact link has a primary key',
   'connections.date': 'Each Data Mart with a fact link has a date field',
-  'model.health': 'No broken references',
-  'model.fresh': 'It matches the descriptions',
+  'model.health': 'The saved model has no broken references',
+  'model.fresh': 'The saved model matches the descriptions',
 };
 const FIXED: [GroupId, string][] = [['heading', 'project.description'], ['heading', 'project.table'], ['heading', 'project.critical'], ['heading', 'project.fact'], ['heading', 'project.plan'], ['heading', 'project.links'],
   ['heading', 'goal.access'], ['heading', 'goal.field'], ['heading', 'goal.pk'], ['heading', 'goal.date'], ['drivers', 'contexts.exist'],
@@ -203,7 +203,9 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
 
     const factIds = [...new Set([...projectRows, ...[...contextRows.values()].flat()].flatMap((r) => r.fact.filter(isFieldLink).map((l) => l.martId!)))].filter((id) => visible.has(id));
     const names = (ids: string[]) => ids.map((id) => titles.get(id) ?? id).join(', ');
-    const lacking = (has: (d: MartDetail) => boolean) => factIds.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !has(n.detail); });
+    // a stand-in main is drawn whether or not a fact links it, and no goal check looks at it
+    const checked = main?.viaFallback && !factIds.includes(main.id) ? [...factIds, main.id] : factIds;
+    const lacking = (has: (d: MartDetail) => boolean) => checked.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !has(n.detail); });
     // the main class stays on the canvas without a key or a date field; the goal checks report those, unless main stands in for a goal you can't access
     const reported = main && !main.viaFallback ? main.id : null;
     const noPk = lacking(hasPrimaryKey).filter((id) => id !== reported);
