@@ -412,7 +412,7 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-onto-shape { width: 6rem; }
 .gy-onto-pick { min-width: 6.5rem; width: 100%; }
 /* The handle stays in view when a narrow window scrolls the table sideways. */
-.gy-onto-table .gy-onto-end { position: sticky; right: 0; background: var(--card); }
+.gy-onto-table .gy-onto-end { position: sticky; right: 0; z-index: 1; background: var(--card); }
 .gy-combo { position: relative; display: block; flex: 1; }
 .gy-combo-list { position: absolute; z-index: 20; top: 100%; left: 0; min-width: 100%; max-height: 18rem; overflow-y: auto; margin-top: 0.25rem; padding: 0.25rem 0; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card); box-shadow: 0 4px 12px rgb(0 0 0 / 0.12); }
 .gy-combo-head { padding: 0.375rem 0.625rem 0.125rem; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-foreground); }
