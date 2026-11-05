@@ -444,18 +444,17 @@ test('the metric (i) follows the swapped-in metric and is absent when its field 
   expect(document.querySelector('.gy-metric-tip')).toBeNull();
 });
 
-test('the Data Mart (i) shows raw text first, then OWOX-rendered HTML once, with links opening in a new tab', async () => {
+test('the Data Mart (i) shows raw text first, then OWOX-rendered HTML once, with links in the same tab', async () => {
   const parse = vi.fn(async ({ markdown }: { markdown: string }) => `<h2>Title</h2><p>${markdown}</p><a href="https://x.test">link</a>`);
   const markdown = createMarkdownHtml(parse);
   const { container } = render(<Card cls={cls} mart={{ description: ' **bold** ', icon: null }} metrics={[arr, uc]} cache={cache()} markdown={markdown} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   const hint = screen.getByLabelText(`About ${cls.title}`);
-  expect(hint.textContent).toBe('**bold**');
+  expect(hint.querySelector('.gy-hint-about strong')!.textContent).toBe('bold');
   expect(parse).not.toHaveBeenCalled();
   fireEvent.mouseEnter(hint);
   await waitFor(() => expect(container.querySelector('.gy-md h2')?.textContent).toBe('Title'));
   const a = container.querySelector('.gy-md a')!;
-  expect(a.getAttribute('target')).toBe('_blank');
-  expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+  expect(a.hasAttribute('target')).toBe(false);
   fireEvent.mouseLeave(hint);
   fireEvent.mouseEnter(hint);
   expect(parse).toHaveBeenCalledTimes(1);
@@ -481,12 +480,12 @@ test('a failed or missing markdown call leaves the raw text', async () => {
   fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
   await act(async () => { await Promise.resolve(); });
   expect(parse).toHaveBeenCalled();
-  expect(failing.container.querySelector('.gy-md')).toBeNull();
-  expect(failing.container.querySelector('.gy-hint-about')!.textContent).toBe('plain\ntext');
+  expect(failing.container.querySelector('.gy-md:not(.gy-hint-about)')).toBeNull();
+  expect(failing.container.querySelector('.gy-hint-about')!.textContent).toBe('plain text');
   failing.unmount();
   const none = render(<Card {...props} markdown={createMarkdownHtml(undefined)} />);
   fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
-  expect(none.container.querySelector('.gy-hint-about')!.textContent).toBe('plain\ntext');
+  expect(none.container.querySelector('.gy-hint-about')!.textContent).toBe('plain text');
 });
 
 test('a metric wears the same arrow as a badge and as the main number, falling series or not', () => {
@@ -515,7 +514,6 @@ test('card tips are shown by data-open alone, so Escape hides them; they name th
   const rule = css.split('\n').find((l) => l.includes('.gy-hint:not(.gy-cardtip):hover .gy-hint-body'))!;
   expect(rule).toBeDefined();
   expect(css).not.toMatch(/\.gy-hint:hover \.gy-hint-body/);
-  expect(css).toMatch(/\.gy-hint-about \{ white-space: pre-wrap/);
 });
 
 test('a parse result for a description that changed meanwhile is dropped', async () => {
@@ -526,6 +524,50 @@ test('a parse result for a description that changed meanwhile is dropped', async
   fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
   rerender(<Card {...props} mart={{ description: 'new', icon: null }} />);
   await act(async () => { release('<p>stale</p>'); });
-  expect(container.querySelector('.gy-md')).toBeNull();
+  expect(container.querySelector('.gy-md:not(.gy-hint-about)')).toBeNull();
   expect(container.querySelector('.gy-hint-about')!.textContent).toBe('new');
+});
+
+test('without OWOX rendering, the Data Mart (i) parses Markdown itself: links stay in the same tab, hard wraps fold', () => {
+  const text = 'Everyone who registered, with the channel that first\nbrought them in (a [Traffic Sources](https://app.owox.com/ui/p/data-marts/m) row).\n\nSee https://owox.com. Not [this](javascript:alert(1)).';
+  const { container } = render(<Card cls={cls} mart={{ description: text, icon: null }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  const about = container.querySelector('.gy-hint-about')!;
+  const paras = about.querySelectorAll('p');
+  expect(paras).toHaveLength(2);
+  expect(paras[0]!.textContent).toBe('Everyone who registered, with the channel that first brought them in (a Traffic Sources row).');
+  const links = [...about.querySelectorAll('a')];
+  expect(links.map((a) => a.getAttribute('href'))).toEqual(['https://app.owox.com/ui/p/data-marts/m', 'https://owox.com']);
+  expect(links.every((a) => !a.hasAttribute('target'))).toBe(true);
+  expect(about.textContent).toContain('Not this');
+});
+
+test('a tip lingers briefly after the pointer leaves, so it can reach a link in the bubble', () => {
+  vi.useFakeTimers();
+  try {
+    render(<Card cls={cls} mart={{ description: 'text', icon: null }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+    const hint = screen.getByLabelText(`About ${cls.title}`);
+    fireEvent.mouseEnter(hint);
+    fireEvent.mouseLeave(hint);
+    expect(hint).toHaveAttribute('data-open', 'true');
+    fireEvent.mouseEnter(hint);
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(hint).toHaveAttribute('data-open', 'true');
+    fireEvent.mouseLeave(hint);
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(hint).toHaveAttribute('data-open', 'false');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('"vs" sits beside the chip with two or fewer secondary metrics and under it with three or more', () => {
+  const extra = (id: string): MetricDef => ({ ...arr, id, alias: id, measure: { field: id, fn: 'SUM' } });
+  const few = [arr, uc, extra('m3')];
+  const many = [...few, extra('m4')];
+  const c = (ms: MetricDef[]): CardCache => ({ ...cache(), metrics: Object.fromEntries(ms.map((m) => [m.id, res({})])) });
+  const cl = (ms: MetricDef[]): ClassNode => ({ ...cls, metricIds: ms.map((m) => m.id) });
+  const { container, rerender } = render(<Card cls={cl(few)} metrics={few} cache={c(few)} comparisonOn compareLabel="Previous 7 Days" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-compare')).toHaveAttribute('data-stacked', 'false');
+  rerender(<Card cls={cl(many)} metrics={many} cache={c(many)} comparisonOn compareLabel="Previous 7 Days" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-compare')).toHaveAttribute('data-stacked', 'true');
 });
