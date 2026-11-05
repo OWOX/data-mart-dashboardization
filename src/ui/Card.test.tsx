@@ -321,6 +321,23 @@ test('a swapped-in metric shows its own sparkline', () => {
   expect(container.querySelector('.gy-spark-line')!.getAttribute('d')).not.toBe(before);
 });
 
+test('a swapped-in metric shows its own sparkline when the key metric has none', () => {
+  const own = { start: '2026-10-01', values: [9, 8, 7, 6, 5], forecastStart: null, forecast: [] };
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={{ ...cache(), spark: null, sparks: { uc: own } }} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  // the key metric's own slot holds the card's height
+  expect(container.querySelector('.gy-spark-line')).toBeNull();
+  expect(container.querySelector('.gy-spark-slot')).not.toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Show Customers, 7.15K' }));
+  expect(container.querySelector('.gy-spark-line')).not.toBeNull();
+  expect(container.querySelector('.gy-spark-slot')).toBeNull();
+});
+
+test('a card with no series at all has no sparkline slot', () => {
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={{ ...cache(), spark: null }} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-spark-slot')).toBeNull();
+  expect(container.querySelector('.gy-spark')).toBeNull();
+});
+
 test('the difference sits under the number, and the period under the difference', () => {
   const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
   const main = container.querySelector('.gy-figure')!;

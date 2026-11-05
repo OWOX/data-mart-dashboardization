@@ -299,12 +299,14 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       </article>
     );
   }
+  // the card has a sparkline row when any of its metrics has a series, so a swap never changes its height
+  const sparkRow = !!cache?.spark || Object.keys(cache?.sparks ?? {}).length > 0;
   // While a load runs, a card with nothing good to show yet holds its shape instead of a dash or an error.
   if (refreshing && (!res || res.error != null)) {
     return (
       <article className="gy-card" data-class-id={cls.id} data-status="loading" aria-busy="true">
         {header}
-        <CardSkeleton badges={Math.min(secondary.length, SHOWN)} spark={!!cache?.spark} />
+        <CardSkeleton badges={Math.min(secondary.length, SHOWN)} spark={sparkRow} />
       </article>
     );
   }
@@ -364,7 +366,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
         </footer>
       )}
       {/* A swapped-in metric shows its own series; one without a series keeps the slot's height so the card doesn't shrink. */}
-      {cache?.spark && (spark
+      {sparkRow && (spark
         ? <Sparkline spark={spark} trend={res.trend} />
         : <div className="gy-spark-slot" aria-hidden="true" />)}
     </article>
