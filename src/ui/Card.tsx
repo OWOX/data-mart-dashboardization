@@ -2,6 +2,10 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ExternalLink, Info, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert } from 'lucide-react';
 import { qualityBadge, type QualitySummary } from '../owox/quality';
 import type { CardCache, ClassNode, MetricDef } from '../types';
+import type { MartDetail } from '../owox/sources';
+import type { MarkdownHtml } from '../lib/markdown';
+import { fieldAt } from '../model/aggregations';
+import { metricName } from '../model/metricName';
 import { diffPct } from '../lib/stats';
 import { formatDeltaFor, formatPct, formatValue } from '../lib/format';
 import { Badge } from './Badge';
@@ -31,13 +35,21 @@ interface Props {
   projectId?: string;
   /** Opens an OWOX page by path; without it the card has no link to its Data Mart. */
   onOpen?: (path: string) => void;
+  /** Live schemas by Data Mart id: metric names and descriptions come from their fields. */
+  details?: ReadonlyMap<string, MartDetail>;
+  /** Renders the Data Mart description's Markdown; without it the raw text shows. */
+  markdown?: MarkdownHtml;
   onRetry: () => void;
 }
 
 const SHOWN = 3;
 
+/** The live description of a metric's field, trimmed; undefined when there is none. */
+const fieldNote = (detail: MartDetail | undefined, path: string): string | undefined =>
+  (detail ? fieldAt(detail, path)?.description?.trim() : undefined) || undefined;
+
 /** The first three secondary metrics; the rest open as a panel over whatever is under the card, so the card keeps its height. */
-function Badges({ items, cache, onPick }: { items: MetricDef[]; cache: CardCache | undefined; onPick: (id: string) => void }) {
+function Badges({ items, cache, nameOf, onPick }: { items: MetricDef[]; cache: CardCache | undefined; nameOf: (m: MetricDef) => string; onPick: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -52,7 +64,7 @@ function Badges({ items, cache, onPick }: { items: MetricDef[]; cache: CardCache
     return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key, true); };
   }, [open]);
   const badge = (m: MetricDef) => (
-    <Badge key={m.id} metric={m} result={cache?.metrics[m.id]} onPick={() => { setOpen(false); onPick(m.id); }} />
+    <Badge key={m.id} metric={m} name={nameOf(m)} result={cache?.metrics[m.id]} onPick={() => { setOpen(false); onPick(m.id); }} />
   );
   return (
     <div className="gy-badges" ref={ref}>
@@ -87,21 +99,74 @@ function QualityTool({ quality, path, onOpen }: { quality?: QualitySummary; path
   );
 }
 
+/** An (i) whose bubble opens on hover or focus and closes on Escape, blur or leaving; `onOpen` fires each time it opens. */
+function Tip({ label, className = '', onOpen, children }: { label: string; className?: string; onOpen?: () => void; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const show = () => { if (!open) onOpen?.(); setOpen(true); };
+  return (
+    <span
+      className={`gy-hint gy-cardtip ${className}`.trim()} tabIndex={0} aria-label={label} data-open={open}
+      onMouseEnter={show} onMouseLeave={() => setOpen(false)} onFocus={show} onBlur={() => setOpen(false)}
+      onKeyDown={(e) => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); } }}
+    >
+      <Info size={14} />
+      {children}
+    </span>
+  );
+}
+
+/** The Data Mart's description, as Markdown rendered by OWOX once it arrives; the raw text until then, or when it can't be had. */
+function MartAbout({ martId, title, text, markdown }: { martId: string; title: string; text: string; markdown?: MarkdownHtml }) {
+  const [html, setHtml] = useState<string | null>(() => markdown?.peek(martId, text) ?? null);
+  const body = useRef<HTMLDivElement>(null);
+  const live = useRef(true);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  // a changed description starts over from the raw text
+  useEffect(() => { setHtml(markdown?.peek(martId, text) ?? null); }, [martId, text, markdown]);
+  const load = () => {
+    if (!markdown || html !== null) return;
+    void markdown.load(martId, text).then((h) => { if (live.current && h !== null) setHtml(h); });
+  };
+  // the sanitized HTML has plain links; they open beside the plugin, never in it
+  useEffect(() => {
+    body.current?.querySelectorAll('a').forEach((a) => { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); });
+  }, [html]);
+  return (
+    <Tip label={`About ${title}`} onOpen={load}>
+      <span className="gy-hint-body gy-hint-md" role="tooltip">
+        {html !== null
+          ? <div ref={body} className="gy-md" dangerouslySetInnerHTML={{ __html: html }} />
+          : <span className="gy-hint-about">{text}</span>}
+      </span>
+    </Tip>
+  );
+}
+
 /** The mart's icon, then two lines: the class in grey and the metric under it. */
-function CardHead({ title, metric, mart, metrics, openPath, onOpen, tools }: {
-  title: string; metric?: string; mart?: MartInfo; metrics: MetricDef[]; openPath?: string; onOpen?: (path: string) => void; tools?: ReactNode;
+function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath, onOpen, tools }: {
+  title: string; martId: string; metric?: string; metricNote?: string; mart?: MartInfo; markdown?: MarkdownHtml; openPath?: string; onOpen?: (path: string) => void; tools?: ReactNode;
 }) {
   const about = mart?.description?.trim() || null;
-  const described = metrics.filter((m) => m.description);
   const link = onOpen && openPath;
   return (
     <header className="gy-card-head">
       <span className="gy-logo"><MartIcon icon={mart?.icon} size={20} /></span>
       <span className="gy-card-names">
         <span className="gy-card-title">{title}</span>
-        {metric && <span className="gy-card-metric">{metric}</span>}
+        {metric && (
+          <span className="gy-card-metric-row">
+            <span className="gy-card-metric">{metric}</span>
+            {metricNote && (
+              <span className="gy-metric-tip">
+                <Tip label={`About ${metric}`}>
+                  <span className="gy-hint-body gy-hint-left" role="tooltip">{metricNote}</span>
+                </Tip>
+              </span>
+            )}
+          </span>
+        )}
       </span>
-      {(about || described.length > 0 || link || tools) && (
+      {(about || link || tools) && (
         <CardTools>
           {tools}
           {link && (
@@ -109,17 +174,7 @@ function CardHead({ title, metric, mart, metrics, openPath, onOpen, tools }: {
               <ExternalLink size={14} />
             </button>
           )}
-          {(about || described.length > 0) && (
-            <span className="gy-hint" tabIndex={0} aria-label={`About ${title}`}>
-              <Info size={14} />
-              <span className="gy-hint-body" role="tooltip">
-                {about && <span className="gy-hint-about">{about}</span>}
-                {described.map((m) => (
-                  <span key={m.id}><b>{m.alias}</b> · {m.description}</span>
-                ))}
-              </span>
-            </span>
-          )}
+          {about && <MartAbout martId={martId} title={title} text={about} markdown={markdown} />}
         </CardTools>
       )}
     </header>
@@ -178,7 +233,8 @@ function TrendArrow({ sign }: { sign: Sign }) {
   );
 }
 
-export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', quality, onOpen, onRetry }: Props) {
+export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', quality, details, markdown, onOpen, onRetry }: Props) {
+  const nameOf = (m: MetricDef) => metricName(m, details?.get(m.martId));
   // The metric the reader swapped in for this session, with the secondary order it leaves behind.
   const [swap, setSwap] = useState<{ main: string; rest: string[] } | null>(null);
   const home = metrics.find((m) => m.id === cls.keyMetricId);
@@ -193,7 +249,9 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   useEffect(() => setSwap(null), [cls.keyMetricId, order]);
   const pick = (id: string) => { if (key) setSwap({ main: id, rest: secondary.map((m) => (m.id === id ? key.id : m.id)) }); };
   const res = key ? cache?.metrics[key.id] : undefined;
-  const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} tools={onOpen && !noAccess && !missing ? <QualityTool quality={quality} path={`/ui/${projectId}/data-marts/${cls.martId}/quality`} onOpen={onOpen} /> : undefined} />;
+  const hidden = noAccess || missing || !key;
+  const note = key && !key.isUniqueCount ? fieldNote(details?.get(key.martId), key.measure.field) : undefined;
+  const header = <CardHead title={cls.title} martId={cls.martId} metric={hidden ? undefined : key.isUniqueCount ? 'Count' : nameOf(key)} metricNote={hidden ? undefined : note} mart={mart} markdown={markdown} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} tools={onOpen && !noAccess && !missing ? <QualityTool quality={quality} path={`/ui/${projectId}/data-marts/${cls.martId}/quality`} onOpen={onOpen} /> : undefined} />;
 
   if (missing) {
     return (
@@ -253,7 +311,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
         <span className="gy-trend" data-sign={sign}><TrendArrow sign={sign} /></span>
         <span className="num gy-big" title={detail || undefined}>{big}</span>
         {warning && <WarningHint text={warning} />}
-        {secondary.length > 0 && <Badges items={secondary} cache={cache} onPick={pick} />}
+        {secondary.length > 0 && <Badges items={secondary} cache={cache} nameOf={nameOf} onPick={pick} />}
       </div>
       {failed && <button type="button" className="gy-link" onClick={onRetry}>Retry</button>}
       {/* An all-time metric has no period to compare against. */}

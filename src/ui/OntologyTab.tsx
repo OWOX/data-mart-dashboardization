@@ -7,6 +7,7 @@ import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources
 import { uncomputable } from '../model/aggregations';
 import { applyChanges, diffModels, type Change } from '../model/diff';
 import { deriveKeys } from '../model/shown';
+import { metricName } from '../model/metricName';
 import type { BuildStep } from '../model/build';
 import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricFormat, Model, Measure, PlanDef, PlanShape } from '../types';
 import { useBelow } from './anchor';
@@ -38,7 +39,8 @@ function canvasOrder(model: Model): ClassNode[] {
 }
 
 /** The first problem that stops a save, or null. */
-export function validateDraft(model: Model): string | null {
+export function validateDraft(model: Model, details?: ReadonlyMap<string, MartDetail | undefined>): string | null {
+  const nameOf = (m: MetricDef) => metricName(m, details?.get(m.martId));
   const byId = new Map(model.metrics.map((m) => [m.id, m]));
   for (const c of model.classes) {
     if (c.shown === false && c.id !== model.goal.classId) continue;
@@ -46,10 +48,9 @@ export function validateDraft(model: Model): string | null {
     if (shown.length > 0 && (!c.keyMetricId || !shown.includes(c.keyMetricId))) return `${c.title} needs a key metric`;
   }
   for (const m of model.metrics) {
-    if (m.alias.trim() === '') return 'Every metric needs a name';
-    if (m.format === 'currency' && m.currency && !normalizeCurrency(m.currency)) return `${m.alias} has an invalid currency code`;
-    if (m.plan && (!m.plan.measure.field || !m.plan.dateField)) return `The plan of ${m.alias} needs a field and a date field`;
-    if (m.forecast && (!m.forecast.measure.field || !m.forecast.dateField)) return `The forecast of ${m.alias} needs a field and a date field`;
+    if (m.format === 'currency' && m.currency && !normalizeCurrency(m.currency)) return `${nameOf(m)} has an invalid currency code`;
+    if (m.plan && (!m.plan.measure.field || !m.plan.dateField)) return `The plan of ${nameOf(m)} needs a field and a date field`;
+    if (m.forecast && (!m.forecast.measure.field || !m.forecast.dateField)) return `The forecast of ${nameOf(m)} needs a field and a date field`;
   }
   return null;
 }
@@ -178,6 +179,9 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     return { detail, status: extra.get(id) === null ? 'unreadable' : 'loading' };
   };
 
+  /** A metric's name is its field's alias in the live schema (else the field name), never edited here. */
+  const nameOf = (m: MetricDef): string => metricName(m, detailOf(m.martId).detail);
+
   /** What the pickers flag for a class: 1 when its Data Mart is gone, else one per flagged reference of its metrics. */
   const brokenIn = (c: ClassNode): number => {
     if (detailOf(c.martId).status === 'gone') return 1;
@@ -231,7 +235,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     if (at < 0 || to < 0 || to >= c.metricIds.length) return;
     focusAfter.current = m.id;
     moveMetric(c.id, m.id, to);
-    setAnnouncement(`${m.alias} moved to position ${to + 1} of ${c.metricIds.length}`);
+    setAnnouncement(`${nameOf(m)} moved to position ${to + 1} of ${c.metricIds.length}`);
   };
   /** Where the pointer would drop the dragged metric, from the rows' boxes. */
   const dropAt = (handle: HTMLElement, id: string, y: number): number => {
@@ -259,12 +263,12 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     if (!commit || !d || d.drop === c.metricIds.indexOf(m.id)) return;
     focusAfter.current = m.id;
     moveMetric(c.id, m.id, d.drop);
-    setAnnouncement(`${m.alias} moved to position ${d.drop + 1} of ${c.metricIds.length}`);
+    setAnnouncement(`${nameOf(m)} moved to position ${d.drop + 1} of ${c.metricIds.length}`);
   };
 
   const save = async () => {
     const next = deriveKeys(draft);
-    const problem = validateDraft(next);
+    const problem = validateDraft(next, new Map([...referenced].map((id) => [id, detailOf(id).detail])));
     // the named metric may sit in a folded class, so unfold them all
     if (problem) { setError(problem); setOpenIds(new Set(draft.classes.map((c) => c.id))); return; }
     setError(null);
@@ -364,7 +368,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         <RebuildProposal
           changes={rebuild.changes} busy={saving} error={error}
           titleOf={(id) => model.classes.find((c) => c.id === id)?.title ?? rebuild.candidate.classes.find((c) => c.id === id)?.title ?? id}
-          nameOf={(id) => model.metrics.find((m) => m.id === id)?.alias ?? id}
+          nameOf={(id) => { const m = model.metrics.find((x) => x.id === id); return m ? nameOf(m) : id; }}
           needs={(c) => (c.kind === 'class_removed' && c.classId === model.goal.classId
             ? rebuild.changes.find((x) => x.kind === 'class_added' && x.classId === rebuild.candidate.goal.classId) ?? null : null)}
           onApply={(picked) => void applyProposal(rebuild.candidate, picked)} onDiscard={() => { onDismiss?.(); closeRebuild(); }} onClose={() => void closeMatching()}
@@ -419,7 +423,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                     </tr>
                   </thead>
                   {metrics.map((m) => {
-                    const label = original.get(m.id)?.alias ?? m.alias;
+                    const label = nameOf(original.get(m.id) ?? m);
                     const plan = m.plan;
                     const forecast = m.forecast;
                     const forecastMart = forecast ? detailOf(forecast.martId) : null;
@@ -444,7 +448,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                       <tbody key={m.id} aria-label={`Metric ${label}`} data-metric-id={m.id} className={`gy-onto-metric${dragging?.id === m.id ? ' is-dragging' : ''}${dropMark === m.id ? ' is-drop-before' : ''}${dropEnd === m.id ? ' is-drop-end' : ''}`}>
                         <tr>
                           <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, shown: e.target.checked }))} /></span></td>
-                          <td rowSpan={3}><input className="gy-input gy-onto-name" aria-label="Name" value={m.alias} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, alias: e.target.value }))} /></td>
+                          <td rowSpan={3}><span className="gy-onto-name" title={label}>{label}</span></td>
                           <td rowSpan={3}>
                             <span className="gy-onto-stack">
                               <select className="gy-select" aria-label="Format" value={m.format} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, format: e.target.value as MetricFormat, currency: e.target.value === 'currency' ? x.currency : null }))}>
@@ -473,7 +477,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                           <td rowSpan={3} className="gy-onto-end">
                             <span className="gy-onto-first">
                               <button
-                                type="button" className="gy-onto-grip" aria-label={`Reorder ${m.alias}`} title="Drag to reorder, or use the arrow keys" data-handle={m.id}
+                                type="button" className="gy-onto-grip" aria-label={`Reorder ${label}`} title="Drag to reorder, or use the arrow keys" data-handle={m.id}
                                 onPointerDown={(e) => startDrag(e, c, m)} onPointerMove={overDrag}
                                 onPointerUp={() => endDrag(true, c, m)} onPointerCancel={() => endDrag(false, c, m)} onLostPointerCapture={() => endDrag(false, c, m)}
                                 onKeyDown={(e) => {

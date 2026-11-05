@@ -133,3 +133,11 @@ test('the AI format reaches the metric, and currency only rides with currency', 
   const p = validate({ ai: ai({ format: 'percent', currency: 'USD' }), links, details, visible });
   expect(p.ok && p.metrics[0]).toMatchObject({ format: 'percent', currency: null });
 });
+
+test('a metric is named after its field: the alias when set, else the field name, not the AI alias', () => {
+  const named = new Map([['m1', { ...arrMart, fields: arrMart.fields.map((f) => (f.name === 'arr' ? { ...f, alias: ' Annual revenue ' } : f)) }]]);
+  const a = validate({ ai: ai(), links, details: named, visible });
+  expect(a.ok && a.metrics[0]!.alias).toBe('Annual revenue');
+  const b = validate({ ai: ai(), links, details, visible });
+  expect(b.ok && b.metrics[0]!.alias).toBe('arr');
+});

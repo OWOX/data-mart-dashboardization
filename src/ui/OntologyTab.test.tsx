@@ -20,7 +20,9 @@ const model = (): Model => ({
   edges: [],
   metrics: [metric('a:revenue:SUM', 'a', 'Revenue', 'revenue'), metric('a:qty:SUM', 'a', 'Units', 'qty', { role: 'leading' }), metric('c:qty:SUM', 'c', 'Customers', 'qty')],
 });
-const DETAILS = new Map([['a', detail('a', 'Orders')], ['c', detail('c', 'Customers')], ['p', detail('p', 'Targets', [field('goal'), field('stat_day', 'DATE'), field('note', 'STRING')])]]);
+const named = (name: string, alias: string, type = 'FLOAT'): SchemaField => ({ ...field(name, type), alias });
+// the field aliases are the metric names
+const DETAILS = new Map([['a', detail('a', 'Orders', [named('revenue', 'Revenue'), named('qty', 'Units'), field('day', 'DATE')])], ['c', detail('c', 'Customers', [named('qty', 'Customers'), field('day', 'DATE')])], ['p', detail('p', 'Targets', [field('goal'), field('stat_day', 'DATE'), field('note', 'STRING')])]]);
 const MARTS: { id: string; title: string; description?: string | null }[] = [{ id: 'a', title: 'Orders' }, { id: 'c', title: 'Customers' }, { id: 'p', title: 'Targets' }];
 
 const openAll = () => { for (const b of screen.queryAllByRole('button', { expanded: false })) fireEvent.click(b); };
@@ -65,10 +67,9 @@ test('says the changes are the member\'s own, lists the goal first and locks its
   expect(screen.getByRole('checkbox', { name: 'Customers' })).toBeEnabled();
 });
 
-test('editing name, fact, plan and forecast, then Save, writes the doc with editedAt', async () => {
+test('editing fact, plan and forecast, then Save, writes the doc with editedAt', async () => {
   const { onSave } = setup();
   const r = row('Units');
-  fireEvent.change(r.getByLabelText('Name'), { target: { value: 'Items sold' } });
   fireEvent.change(r.getByLabelText('Fact field'), { target: { value: 'revenue' } });
   fireEvent.change(r.getByLabelText('Fact aggregation'), { target: { value: 'AVG' } });
   fireEvent.change(r.getByLabelText('Fact date field'), { target: { value: '' } });
@@ -85,7 +86,7 @@ test('editing name, fact, plan and forecast, then Save, writes the doc with edit
   const saved = (onSave.mock.calls[0] as unknown as [Model])[0];
   expect(saved.editedAt).toBe('2026-11-04T10:00:00.000Z');
   expect(saved.metrics.find((m) => m.id === 'a:qty:SUM')).toMatchObject({
-    alias: 'Items sold', measure: { field: 'revenue', fn: 'AVG' }, dateField: null,
+    alias: 'Units', measure: { field: 'revenue', fn: 'AVG' }, dateField: null,
     plan: { martId: 'p', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day', shape: 'cumulative' },
     forecast: { martId: 'p', measure: { field: 'goal', fn: 'MAX' }, dateField: 'stat_day' },
   });
@@ -100,7 +101,7 @@ test('the date pickers offer only date fields', () => {
 
 test('Cancel writes nothing', () => {
   const { onSave, onCancel } = setup();
-  fireEvent.change(row('Revenue').getByLabelText('Name'), { target: { value: 'X' } });
+  fireEvent.change(row('Revenue').getByLabelText('Format'), { target: { value: 'percent' } });
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(onCancel).toHaveBeenCalled();
   expect(onSave).not.toHaveBeenCalled();
@@ -191,7 +192,7 @@ test('an empty name or a plan without a field stops the save', async () => {
 
 test('a missing field is flagged red and the old value kept', () => {
   const details = new Map(DETAILS);
-  details.set('a', detail('a', 'Orders', [field('qty'), field('day', 'DATE')]));
+  details.set('a', detail('a', 'Orders', [named('qty', 'Units'), field('day', 'DATE')]));
   setup(model(), details);
   const pick = row('Revenue').getByLabelText('Fact field') as HTMLSelectElement;
   expect(pick.value).toBe('revenue');
@@ -304,15 +305,15 @@ test('the folded header shows the shown count and a broken count, and no input s
 
 test('draft edits inside a block survive folding and Save', async () => {
   const { onSave } = setup();
-  fireEvent.change(row('Revenue').getByLabelText('Name'), { target: { value: 'Sales' } });
+  fireEvent.change(row('Revenue').getByLabelText('Format'), { target: { value: 'percent' } });
   fireEvent.click(header('Orders'));
   expect(screen.queryByRole('rowgroup', { name: 'Metric Revenue' })).toBeNull();
   fireEvent.click(header('Orders'));
-  expect((row('Revenue').getByLabelText('Name') as HTMLInputElement).value).toBe('Sales');
+  expect(row('Revenue').getByLabelText('Format')).toHaveValue('percent');
   fireEvent.click(header('Orders'));
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(onSave).toHaveBeenCalled());
-  expect((onSave.mock.calls[0] as unknown as [Model])[0].metrics[0]!.alias).toBe('Sales');
+  expect((onSave.mock.calls[0] as unknown as [Model])[0].metrics[0]!.format).toBe('percent');
 });
 
 test('the (i) icons show the live mart and field descriptions, not the stored ones', () => {
@@ -427,10 +428,10 @@ test('a folded class with a metric OWOX cannot compute shows the count in its he
 
 test('the field lists show aliases and keep the field path as the value', () => {
   const details = new Map(DETAILS);
-  details.set('a', detail('a', 'Orders', [{ ...field('revenue'), alias: 'Net revenue' }, field('qty'), field('day', 'DATE')]));
+  details.set('a', detail('a', 'Orders', [named('revenue', 'Net revenue'), named('qty', 'Units'), field('day', 'DATE')]));
   setup(model(), details);
-  const pick = row('Revenue').getByLabelText('Fact field') as HTMLSelectElement;
-  expect(within(pick).getAllByRole('option').map((o) => o.textContent)).toEqual(['Net revenue', 'qty', 'day']);
+  const pick = row('Net revenue').getByLabelText('Fact field') as HTMLSelectElement;
+  expect(within(pick).getAllByRole('option').map((o) => o.textContent)).toEqual(['Net revenue', 'Units', 'day']);
   expect(pick.value).toBe('revenue');
 });
 
@@ -491,10 +492,10 @@ test('a forecast field that no longer exists turns the box red', () => {
 
 test('aliases shared by several fields get the path added', () => {
   const details = new Map(DETAILS);
-  details.set('a', detail('a', 'Orders', [{ ...field('revenue'), alias: 'Amount' }, { ...field('qty'), alias: 'Amount' }, field('day', 'DATE')]));
+  details.set('a', detail('a', 'Orders', [named('revenue', 'Revenue'), named('qty', 'Units'), named('x', 'Amount'), named('y', 'Amount'), field('day', 'DATE')]));
   setup(model(), details);
   expect(within(row('Revenue').getByLabelText('Fact field')).getAllByRole('option').map((o) => o.textContent))
-    .toEqual(['Amount (revenue)', 'Amount (qty)', 'day']);
+    .toEqual(['Revenue', 'Units', 'Amount (x)', 'Amount (y)', 'day']);
 });
 
 test('Enter on a forecast whose field is not listed changes nothing', async () => {
@@ -541,4 +542,19 @@ test('Escape cancels a pointer drag, arrows are ignored during it, and a lost ca
   fireEvent.pointerDown(handle(), { pointerId: 1, clientY: 0 });
   fireEvent.lostPointerCapture(handle(), { pointerId: 1 });
   expect(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).not.toHaveClass('is-dragging');
+});
+
+test('the Name column is read-only text: the field alias, else the field name, else the stored name; long names truncate with the full text in title', () => {
+  const m = model();
+  m.metrics[1] = { ...m.metrics[1]!, measure: { field: 'bare', fn: 'SUM' }, alias: 'Stored' };
+  const details = new Map(DETAILS);
+  details.set('a', detail('a', 'Orders', [named('revenue', 'A very long alias that cannot fit in the column'), field('bare'), field('day', 'DATE')]));
+  details.delete('c');
+  setup(m, details);
+  expect(screen.queryByLabelText('Name')).toBeNull();
+  const long = row('A very long alias that cannot fit in the column');
+  expect(long.getByTitle('A very long alias that cannot fit in the column')).toHaveClass('gy-onto-name');
+  expect(row('bare').getByTitle('bare')).toBeInTheDocument();
+  // no schema for the Data Mart: the stored alias stands in
+  expect(row('Customers').getByTitle('Customers')).toBeInTheDocument();
 });

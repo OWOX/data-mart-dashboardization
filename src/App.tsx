@@ -18,6 +18,8 @@ import {
 import { Blocked } from './ui/Blocked';
 import { BuildProgress } from './ui/BuildProgress';
 import { Canvas } from './ui/Canvas';
+import { createMarkdownHtml } from './lib/markdown';
+import { metricName } from './model/metricName';
 import { LoadingLine } from './ui/LoadingLine';
 import { Header, RangeControls } from './ui/Header';
 import { SettingsPage, type SettingsTab } from './ui/SettingsPage';
@@ -201,6 +203,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   );
 
   const issuesNow = useMemo<Issue[]>(() => (health && health.model === model ? health.issues : []), [health, model]);
+  const markdown = useMemo(() => createMarkdownHtml(owox.markdown ? (r) => owox.markdown!.parseToHtml(r) : undefined), [owox]);
   const detailsNow = useMemo(() => (health && health.model === model ? health.details : undefined), [health, model]);
   const missingIds = useMemo(() => new Set(issuesNow.filter((i) => i.kind === 'mart_missing' && i.metricId === null).map((i) => i.classId)), [issuesNow]);
 
@@ -366,7 +369,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const notices = issuesNow.length > 0 || showOutdated ? {
         issues: issuesNow.map((i) => ({
           classTitle: model.classes.find((c) => c.id === i.classId)?.title ?? i.classId,
-          metricName: i.metricId ? (model.metrics.find((m) => m.id === i.metricId)?.alias ?? null) : null,
+          metricName: i.metricId ? (() => { const m = model.metrics.find((x) => x.id === i.metricId); return m ? metricName(m, detailsNow?.get(m.martId)) : null; })() : null,
           text: i.text,
         })),
         outdated: showOutdated,
@@ -385,6 +388,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             progress={progress}
             quality={quality?.model === model ? quality.data : null}
             projectId={ctx.projectId}
+            markdown={markdown}
             onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}
             comparisonOn={compare.kind !== 'off'} refreshing={refreshing || loading} onRetry={() => void refresh(true)}
           />

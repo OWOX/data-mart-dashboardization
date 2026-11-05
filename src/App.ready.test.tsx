@@ -20,7 +20,7 @@ const data = (): FakeOwoxData => ({
   projectDescription: `| Critical number | Revenue | [Revenue](https://app.owox.com/ui/p/data-marts/${GID}/data-setup?field=revenue) |`,
   contexts: [],
   marts: [mart(GID, 'Orders')],
-  details: { [GID]: { id: GID, title: 'Orders', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'revenue', type: 'FLOAT', isPrimaryKey: false }] } },
+  details: { [GID]: { id: GID, title: 'Orders', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'revenue', type: 'FLOAT', alias: 'Revenue', isPrimaryKey: false }] } },
   blendables: { [GID]: { availableSources: [], mainUniqueCountKeyFields: ['id'] } },
 });
 
@@ -91,7 +91,8 @@ const openOntology = async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
 };
-const renamedAi = { ...goalAi, metrics: [{ ...goalAi.metrics[0]!, alias: 'Sales' }] };
+// the metric's name is the field's alias, so a rebuild can no longer rename it; a changed kind is a difference it still proposes
+const changedAi = { ...goalAi, metrics: [{ ...goalAi.metrics[0]!, kind: 'level' }] };
 
 test('Rebuild with nothing new says the model matches and saves nothing', async () => {
   const { deps, store } = await setup();
@@ -119,29 +120,28 @@ test('Rebuild from Settings shows the build progress', async () => {
 test('Rebuild proposes changes; Apply selected saves them and returns to the canvas', async () => {
   const { deps, store } = await setup();
   const before = await loadOntology(store);
-  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => renamedAi }} />);
+  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => changedAi }} />);
   await openOntology();
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
-  const row = await screen.findByRole('checkbox', { name: 'Revenue: name' });
+  const row = await screen.findByRole('checkbox', { name: 'Revenue: kind' });
   expect(row).toBeChecked();
-  expect(screen.getByText('Revenue → Sales')).toBeInTheDocument();
+  expect(screen.getByText('flow → level')).toBeInTheDocument();
   // nothing is saved while the proposal is open
   expect(await loadOntology(store)).toEqual(before);
   fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
   expect(await screen.findByRole('button', { name: 'Date range' })).toBeInTheDocument();
   const saved = await loadOntology(store);
-  expect(saved?.metrics.find((m) => m.alias === 'Sales')).toBeDefined();
-  expect(saved?.metrics.some((m) => m.alias === 'Revenue')).toBe(false);
+  expect(saved?.metrics.find((m) => m.alias === 'Revenue')?.kind).toBe('level');
   expect(saved?.editedAt).toBe(NOW.toISOString());
 });
 
 test('Discard leaves the stored model as it was', async () => {
   const { deps, store } = await setup();
   const before = await loadOntology(store);
-  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => renamedAi }} />);
+  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => changedAi }} />);
   await openOntology();
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
-  await screen.findByRole('checkbox', { name: 'Revenue: name' });
+  await screen.findByRole('checkbox', { name: 'Revenue: kind' });
   fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
   expect(await screen.findByRole('button', { name: 'Rebuild model' })).toBeEnabled();
   expect(await loadOntology(store)).toEqual(before);
@@ -153,7 +153,7 @@ test('Rebuild is off while the draft has unsaved edits', async () => {
   await openOntology();
   const rebuild = await screen.findByRole('button', { name: 'Rebuild model' });
   fireEvent.click(within(screen.getAllByRole('region').find((r) => r.classList.contains('gy-onto-class'))!).getAllByRole('button')[0]!);
-  fireEvent.change(screen.getAllByLabelText('Name')[0]!, { target: { value: 'Edited' } });
+  fireEvent.change(screen.getAllByLabelText('Format')[0]!, { target: { value: 'percent' } });
   expect(rebuild).toBeDisabled();
   expect(screen.getByText('Save or cancel your edits first')).toBeInTheDocument();
 });
@@ -179,11 +179,11 @@ test('Closing a rebuild with no differences stores the new input hash, keeps edi
 test('Discard hides the out-of-date notice for this session without touching the doc', async () => {
   const { deps, store } = await setup({ inputHash: 'old' });
   const before = await loadOntology(store);
-  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => renamedAi }} />);
+  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => changedAi }} />);
   fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
   fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
-  await screen.findByRole('checkbox', { name: 'Revenue: name' });
+  await screen.findByRole('checkbox', { name: 'Revenue: kind' });
   fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Back' }));
   await screen.findByRole('button', { name: 'Date range' });
@@ -220,7 +220,7 @@ test('Discarding a proposal that adds a class hides the notice', async () => {
 test('a partial Apply that leaves a new class unchecked does not bring the notice back', async () => {
   const { deps, store } = await setup({ withCustomers: true });
   await dropCustomers(store);
-  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => renamedAi }} />);
+  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => changedAi }} />);
   fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
   fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));

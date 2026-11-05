@@ -49,10 +49,11 @@ test('every change kind is found', () => {
   cand.edges = [{ from: 'a', to: 'd' }];
   const changes = diffModels(base(), cand);
   expect(changes.map((c) => c.kind === 'metric_changed' ? `changed:${c.field}` : c.kind).sort()).toEqual([
-    'changed:alias', 'changed:dateField', 'changed:kind', 'changed:plan',
+    'changed:dateField', 'changed:kind', 'changed:plan',
     'class_added', 'class_removed', 'metric_added', 'metric_removed',
   ]);
-  expect(changes).toContainEqual({ kind: 'metric_changed', classId: 'a', metricId: 'a:rev:SUM', field: 'alias', before: 'Revenue', after: 'Sales' });
+  // names follow the Data Mart's fields, so a different alias is never a change
+  expect(changes.some((c) => c.kind === 'metric_changed' && (c.field as string) === 'alias')).toBe(false);
   expect(changes).toContainEqual({ kind: 'metric_removed', classId: 'a', metricId: 'a:qty:SUM', alias: 'Units' });
   // the metrics of an added or removed class ride on the class row
   expect(changes.filter((c) => c.kind.startsWith('metric_') && c.classId !== 'a')).toEqual([]);
@@ -72,25 +73,26 @@ test('an id that no longer matches pairs by Data Mart, field and aggregation, an
   cur.metrics[1] = { ...cur.metrics[1]!, id: 'a:old:SUM', alias: 'Mine' }; // same measure as the candidate's a:qty:SUM
   cur.classes[0]!.metricIds = ['a:rev:SUM', 'a:old:SUM'];
   const cand = copy(base());
+  cand.metrics[1] = { ...cand.metrics[1]!, kind: 'level' };
   const changes = diffModels(cur, cand);
-  expect(changes).toEqual([{ kind: 'metric_changed', classId: 'a', metricId: 'a:old:SUM', field: 'alias', before: 'Mine', after: 'Units' }]);
+  expect(changes).toEqual([{ kind: 'metric_changed', classId: 'a', metricId: 'a:old:SUM', field: 'kind', before: 'flow', after: 'level' }]);
   const next = applyChanges(cur, cand, changes, 'now');
   expect(next.metrics.map((m) => m.id)).toEqual(['a:rev:SUM', 'a:old:SUM', 'c:n:SUM']);
-  expect(next.metrics[1]!.alias).toBe('Units');
+  expect(next.metrics[1]).toMatchObject({ alias: 'Mine', kind: 'level' });
 });
 
 test('a subset applies; unpicked changes stay, shown and forecast are preserved', () => {
   const cur = base();
   cur.metrics[0] = { ...cur.metrics[0]!, shown: false, forecast: { martId: 'f', measure: { field: 'x', fn: 'SUM' }, dateField: 'day' } };
   const cand = copy(base());
-  cand.metrics[0] = { ...cand.metrics[0]!, alias: 'Sales', shown: true };
-  cand.metrics[1] = { ...cand.metrics[1]!, alias: 'Pieces' };
+  cand.metrics[0] = { ...cand.metrics[0]!, kind: 'level', shown: true };
+  cand.metrics[1] = { ...cand.metrics[1]!, kind: 'level' };
   const changes = diffModels(cur, cand);
-  const picked = changes.filter((c) => c.kind === 'metric_changed' && c.field === 'alias' && c.metricId === 'a:rev:SUM');
+  const picked = changes.filter((c) => c.kind === 'metric_changed' && c.field === 'kind' && c.metricId === 'a:rev:SUM');
   expect(picked).toHaveLength(1);
   const next = applyChanges(cur, cand, picked, '2026-11-04T10:00:00Z');
-  expect(next.metrics[0]).toEqual({ ...cur.metrics[0], alias: 'Sales' }); // shown and forecast kept
-  expect(next.metrics[1]!.alias).toBe('Units');
+  expect(next.metrics[0]).toEqual({ ...cur.metrics[0], kind: 'level' }); // shown and forecast kept
+  expect(next.metrics[1]!.kind).toBe('flow');
   expect(next.editedAt).toBe('2026-11-04T10:00:00Z');
   expect(cur.metrics[0]!.alias).toBe('Revenue'); // input untouched
 });

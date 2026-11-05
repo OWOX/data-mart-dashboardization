@@ -15,7 +15,7 @@ const data = () => ({
   details: {
     '11111111-1111-1111-1111-111111111111': { id: '11111111-1111-1111-1111-111111111111', title: 'Orders', fields: [
       { name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'date', type: 'DATE', isPrimaryKey: false },
-      { name: 'revenue', type: 'FLOAT', isPrimaryKey: false },
+      { name: 'revenue', type: 'FLOAT', alias: 'Revenue', isPrimaryKey: false },
       { name: 'cust_ltv', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'AVG({{ref path="customers" field="ltv"}})', level: 'metric' as const } },
     ] },
     c: { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }] },
@@ -112,7 +112,8 @@ test('metrics sort by role rank across sources', async () => {
   expect(r.ok).toBe(true);
   if (!r.ok) return;
   const aliases = r.model.classes[0]!.metricIds.map((id) => r.model.metrics.find((m) => m.id === id)!.alias);
-  expect(aliases).toEqual(['m1', 'm4', 'm2', 'm3', 'Orders']);
+  // named after their fields, not the AI's aliases
+  expect(aliases).toEqual(['Revenue', 'date', 'Revenue', 'id', 'Orders']);
 });
 
 test('inputHash ignores modifiedAt churn but changes with a class-mart formula', async () => {

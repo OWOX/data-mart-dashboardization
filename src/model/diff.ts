@@ -1,6 +1,6 @@
 import type { ClassNode, Edge, MetricDef, Model } from '../types';
 
-export type MetricField = 'alias' | 'measure' | 'dateField' | 'plan' | 'kind' | 'format';
+export type MetricField = 'measure' | 'dateField' | 'plan' | 'kind' | 'format';
 
 export type Change =
   | { kind: 'class_added' | 'class_removed'; classId: string; title: string }
@@ -15,7 +15,6 @@ const dateText = (m: MetricDef): string => m.dateField ?? 'no date';
 const formatText = (m: MetricDef): string => (m.format === 'currency' && m.currency ? `currency (${m.currency})` : m.format);
 
 const FIELDS: { field: MetricField; text: (m: MetricDef) => string }[] = [
-  { field: 'alias', text: (m) => m.alias },
   { field: 'measure', text: measureText },
   { field: 'dateField', text: dateText },
   { field: 'plan', text: planText },
@@ -132,7 +131,6 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
       metrics = metrics.map((m) => {
         if (m.id !== p.metricId) return m;
         switch (p.field) {
-          case 'alias': return { ...m, alias: next.alias };
           case 'kind': return { ...m, kind: next.kind };
           case 'format': return { ...m, format: next.format, currency: next.currency };
           case 'dateField': return { ...m, dateField: next.dateField };

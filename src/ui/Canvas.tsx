@@ -3,6 +3,7 @@ import { Network, Target } from 'lucide-react';
 import type { CacheDoc, ClassNode, Model, Status } from '../types';
 import type { MartDetail } from '../owox/sources';
 import type { QualitySummary } from '../owox/quality';
+import type { MarkdownHtml } from '../lib/markdown';
 import { shownModel } from '../model/shown';
 import { Card, type MartInfo } from './Card';
 import { LoadingLine, type LoadingProgress } from './LoadingLine';
@@ -30,6 +31,8 @@ interface Props {
   /** Data-quality summaries by Data Mart id; absent when the call failed. */
   quality?: ReadonlyMap<string, QualitySummary> | null;
   projectId?: string;
+  /** Renders a mart description's Markdown; without it the card shows the raw text. */
+  markdown?: MarkdownHtml;
   onOpen?: (path: string) => void;
   onRetry: () => void;
 }
@@ -80,7 +83,7 @@ export function curve(a: Box, b: Box): string {
   return `M${x1} ${y1} C${right ? x1 + pull : x1 - pull} ${y1} ${right ? x2 - pull : x2 + pull} ${y2} ${x2} ${y2}`;
 }
 
-export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, details, missingIds, marts, compareLabel, tools, progress = null, quality, projectId, onOpen, onRetry }: Props) {
+export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, details, missingIds, marts, compareLabel, tools, progress = null, quality, projectId, markdown, onOpen, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const [hover, setHover] = useState<string | null>(null);
@@ -145,6 +148,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         cls={cls}
         mart={marts?.get(cls.id)}
         metrics={cls.metricIds.flatMap((id) => metricsById.get(id) ?? [])}
+        details={details}
         cache={cache?.cards[cls.id]}
         comparisonOn={comparisonOn}
         refreshing={refreshing}
@@ -155,6 +159,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         onToggleDiff={() => setAbsolute((a) => !a)}
         quality={quality?.get(cls.martId)}
         projectId={projectId}
+        markdown={markdown}
         onOpen={onOpen}
         onRetry={onRetry}
       />

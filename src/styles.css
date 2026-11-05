@@ -405,7 +405,7 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-onto-label { font-weight: 500; color: var(--muted-foreground); }
 .gy-onto-mart { color: var(--muted-foreground); }
 .gy-onto-cell { display: flex; align-items: center; gap: 0.25rem; }
-.gy-onto-name { width: 8.5rem; }
+.gy-onto-name { display: block; width: 8.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
 .gy-onto-stack { display: flex; flex-direction: column; align-items: stretch; gap: 0.25rem; }
 .gy-onto-stack .gy-select { width: 6.5rem; }
 .gy-onto-cur { width: 4.5rem; text-transform: uppercase; }
@@ -453,3 +453,34 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-quality[data-tone='ok'] { color: var(--green); }
 .gy-quality[data-tone='warn'] { color: var(--orange); }
 .gy-quality[data-tone='bad'] { color: var(--red); }
+
+/* Card tips: opened by script (hover, focus), closed by Escape, so the bubble follows data-open alone. */
+.gy-cardtip .gy-hint-body { opacity: 0; visibility: hidden; translate: 0 -0.25rem; }
+.gy-cardtip[data-open="true"] .gy-hint-body { opacity: 1; visibility: visible; translate: 0 0; }
+.gy-card-metric-row { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
+.gy-card-metric-row .gy-card-metric { min-width: 0; }
+/* The metric's (i): out of sight until the card is pointed at or has focus in it, like the corner's icons. */
+.gy-metric-tip { display: inline-flex; flex-shrink: 0; opacity: 0; pointer-events: none; transition: opacity 120ms; }
+.gy-card:hover .gy-metric-tip, .gy-card:focus-within .gy-metric-tip { opacity: 1; pointer-events: auto; }
+@media (hover: none), (any-hover: none) { .gy-metric-tip { opacity: 1; pointer-events: auto; } }
+.gy-metric-tip .gy-hint { align-self: center; }
+.gy-hint-left { right: auto; left: -0.25rem; }
+/* The Data Mart description: Markdown rendered by OWOX, so it needs room and readable type. */
+.gy-hint-md { display: block; width: 22rem; max-width: min(22rem, 80vw); max-height: 16rem; overflow: auto; white-space: normal; }
+.gy-md { font-size: 0.8125rem; line-height: 1.45; overflow-wrap: anywhere; }
+.gy-md > :first-child { margin-top: 0; }
+.gy-md > :last-child { margin-bottom: 0; }
+.gy-md :is(h1, h2, h3, h4, h5, h6) { margin: 0.625rem 0 0.25rem; font-weight: 600; line-height: 1.3; }
+.gy-md h1 { font-size: 1rem; } .gy-md h2 { font-size: 0.9375rem; } .gy-md :is(h3, h4, h5, h6) { font-size: 0.8125rem; }
+.gy-md :is(p, ul, ol, pre, table, blockquote) { margin: 0 0 0.5rem; }
+.gy-md :is(ul, ol) { padding-left: 1.125rem; }
+.gy-md li { margin: 0.125rem 0; }
+.gy-md a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.gy-md code { font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0 0.25rem; border-radius: 0.25rem; background: color-mix(in oklab, var(--background) 18%, transparent); }
+.gy-md pre { overflow: auto; padding: 0.375rem 0.5rem; border-radius: 0.375rem; background: color-mix(in oklab, var(--background) 18%, transparent); }
+.gy-md pre code { padding: 0; background: none; }
+.gy-md blockquote { padding-left: 0.5rem; border-left: 2px solid color-mix(in oklab, var(--background) 40%, transparent); opacity: 0.85; }
+.gy-md table { border-collapse: collapse; width: 100%; }
+.gy-md :is(th, td) { padding: 0.125rem 0.375rem; border: 1px solid color-mix(in oklab, var(--background) 30%, transparent); text-align: left; vertical-align: top; }
+.gy-md th { font-weight: 600; }
+.gy-md hr { border: 0; border-top: 1px solid color-mix(in oklab, var(--background) 30%, transparent); margin: 0.5rem 0; }

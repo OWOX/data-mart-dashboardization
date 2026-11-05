@@ -5,6 +5,7 @@ import type { Blendable, MartDetail, SchemaField } from '../owox/sources';
 import { hasPrimaryKey } from './graph';
 import type { AiMetric, AiOutput } from './interpret';
 import { allowsAggregation, fieldAt } from './aggregations';
+import { fieldLabel } from './metricName';
 
 export interface ValidateInput { ai: AiOutput; links: MartLink[]; details: Map<string, MartDetail>; visible: ReadonlySet<string> }
 export type ValidateResult =
@@ -84,7 +85,7 @@ export function validate(input: ValidateInput): ValidateResult {
     }
 
     const m_: MetricDef = {
-      id: metricId(link.martId, measure), martId: link.martId, alias: m.alias, measure, kind: measure.fn === null ? 'flow' : m.kind,
+      id: metricId(link.martId, measure), martId: link.martId, alias: fieldLabel(hit.field.alias, link.field), measure, kind: measure.fn === null ? 'flow' : m.kind,
       dateField: m.factDateField, role: m.role, source: m.source, isUniqueCount: false, plan, shown: true, forecast: null,
       calculated: !!hit.field.calculated, format: m.format, currency: m.format === 'currency' ? m.currency : null,
       description: hit.field.description?.trim() || null,

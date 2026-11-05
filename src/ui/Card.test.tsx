@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Card } from './Card';
 import type { QualitySummary } from '../owox/quality';
+import type { MartDetail } from '../owox/sources';
+import { createMarkdownHtml } from '../lib/markdown';
 import type { CardCache, ClassNode, MetricDef, MetricResult } from '../types';
 
 const cls: ClassNode = { id: 'c', martId: 'c', title: 'Customers', contexts: [], depth: 0, keyMetricId: 'arr', metricIds: ['arr', 'uc'], shown: true };
@@ -64,17 +66,16 @@ test('error card offers retry; empty card says no metric', () => {
   expect(screen.getByText('No metric yet')).toBeInTheDocument();
 });
 
-test('header shows the mart kind glyph; the info hint carries mart and metric descriptions', () => {
+test('header shows the mart kind glyph; the top-right info hint carries only the Data Mart description', () => {
   const described = { ...arr, description: 'Annual recurring revenue at period end' };
   const { container } = render(<Card cls={cls} mart={{ description: 'One row per paying customer', icon: 'customers' }} metrics={[described, uc]} cache={cache({})} comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(container.querySelector('.gy-logo svg')).not.toBeNull();
   const hint = screen.getByLabelText(`About ${cls.title}`);
-  expect(hint.textContent).toContain('One row per paying customer');
-  expect(hint.textContent).toContain('Annual recurring revenue at period end');
+  expect(hint.textContent).toBe('One row per paying customer');
 });
 
-test('no info hint when nothing is described', () => {
-  render(<Card cls={cls} mart={{ description: '  ', icon: null }} metrics={[arr, uc]} cache={cache({})} comparisonOn refreshing={false} onRetry={() => {}} />);
+test('no info hint when the Data Mart has no description, even if its metrics do', () => {
+  render(<Card cls={cls} mart={{ description: '  ', icon: null }} metrics={[{ ...arr, description: 'stored' }, uc]} cache={cache({})} comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(screen.queryByLabelText(`About ${cls.title}`)).toBeNull();
 });
 
@@ -349,4 +350,109 @@ describe('data quality icon', () => {
     fireEvent.click(screen.getByRole('button', { name: /Data quality/ }));
     expect(onOpen).toHaveBeenCalledWith('/ui/p1/data-marts/c/quality');
   });
+});
+
+test('the big arrow follows the shown metric after a swap, with comparison on or off', () => {
+  for (const on of [false, true]) {
+    const c: CardCache = { ...cache(), metrics: { arr: res({ trend: 'up', comparison: null, compareFact: null }), uc: res({ fact: 7148, trend: 'down', comparison: null, compareFact: null }) } };
+    const { container, unmount } = render(<Card cls={cls} metrics={[arr, uc]} cache={c} comparisonOn={on} compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+    expect(container.querySelector('.gy-trend')!.getAttribute('data-sign')).toBe('up');
+    fireEvent.click(screen.getByRole('button', { name: 'Show Customers, 7.15K' }));
+    expect(container.querySelector('.gy-trend')!.getAttribute('data-sign')).toBe('down');
+    expect(container.querySelector('.gy-trend-arrow')!.getAttribute('aria-label')).toBe('direction down');
+    unmount();
+  }
+});
+
+const mdetail = (fields: MartDetail['fields']): ReadonlyMap<string, MartDetail> => new Map([['c', { id: 'c', title: 'Customers', fields }]]);
+const FIELDS = [
+  { name: 'arr', type: 'FLOAT', isPrimaryKey: false, alias: 'Annual revenue', description: '  Recurring revenue at period end  ' },
+  { name: 'id', type: 'STRING', isPrimaryKey: true, alias: 'Customer id', description: 'Key of the customer' },
+];
+
+test('metric names come from the live field alias, else the field name, else the stored alias', () => {
+  const { container, rerender } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} details={mdetail(FIELDS)} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-card-metric')!.textContent).toBe('Annual revenue');
+  expect(screen.getByRole('button', { name: 'Show Customers, 7.15K' })).toBeInTheDocument(); // the unique count keeps its label
+  fireEvent.click(screen.getByRole('button', { name: 'Show Customers, 7.15K' }));
+  expect(screen.getByRole('button', { name: 'Show Annual revenue, 1.24M' })).toBeInTheDocument();
+  expect(container.querySelector('.gy-badge')!.getAttribute('title')).toBe('1.24M Annual revenue');
+  rerender(<Card cls={cls} metrics={[arr, uc]} cache={cache()} details={mdetail([{ name: 'arr', type: 'FLOAT', isPrimaryKey: false }])} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Show arr, 1.24M' }));
+  expect(container.querySelector('.gy-card-metric')!.textContent).toBe('arr');
+  rerender(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-card-metric')!.textContent).toBe('ARR');
+});
+
+test('an (i) by the main metric name shows the live field description, follows a swap, and is absent without one', () => {
+  render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} details={mdetail(FIELDS)} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  const tip = screen.getByLabelText('About Annual revenue');
+  expect(tip.textContent).toBe('Recurring revenue at period end');
+  expect(tip).toHaveAttribute('data-open', 'false');
+  fireEvent.focus(tip);
+  expect(tip).toHaveAttribute('data-open', 'true');
+  fireEvent.keyDown(tip, { key: 'Escape' });
+  expect(tip).toHaveAttribute('data-open', 'false');
+  // a swapped-in unique count has no description of its own to show
+  fireEvent.click(screen.getByRole('button', { name: 'Show Customers, 7.15K' }));
+  expect(screen.queryByLabelText('About Annual revenue')).toBeNull();
+  expect(screen.queryByLabelText('About Count')).toBeNull();
+});
+
+test('the metric (i) follows the swapped-in metric and is absent when its field has no description', () => {
+  const two: MetricDef = { ...arr, id: 'two', alias: 'Two', measure: { field: 'two', fn: 'SUM' } };
+  const c2: ClassNode = { ...cls, metricIds: ['arr', 'two'] };
+  const fields = [...FIELDS, { name: 'two', type: 'FLOAT', isPrimaryKey: false, alias: 'Second', description: 'Second description' }];
+  const cc: CardCache = { ...cache(), metrics: { arr: res({}), two: res({ fact: 5 }) } };
+  const { rerender } = render(<Card cls={c2} metrics={[arr, two]} cache={cc} details={mdetail(fields)} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Show Second, 5' }));
+  expect(screen.getByLabelText('About Second').textContent).toBe('Second description');
+  rerender(<Card cls={c2} metrics={[arr, two]} cache={cc} details={mdetail([fields[0]!, { ...fields[2]!, description: '  ' }])} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(screen.queryByLabelText('About Second')).toBeNull();
+  expect(document.querySelector('.gy-metric-tip')).toBeNull();
+});
+
+test('the Data Mart (i) shows raw text first, then OWOX-rendered HTML once, with links opening in a new tab', async () => {
+  const parse = vi.fn(async ({ markdown }: { markdown: string }) => `<h2>Title</h2><p>${markdown}</p><a href="https://x.test">link</a>`);
+  const markdown = createMarkdownHtml(parse);
+  const { container } = render(<Card cls={cls} mart={{ description: ' **bold** ', icon: null }} metrics={[arr, uc]} cache={cache()} markdown={markdown} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  const hint = screen.getByLabelText(`About ${cls.title}`);
+  expect(hint.textContent).toBe('**bold**');
+  expect(parse).not.toHaveBeenCalled();
+  fireEvent.mouseEnter(hint);
+  await waitFor(() => expect(container.querySelector('.gy-md h2')?.textContent).toBe('Title'));
+  const a = container.querySelector('.gy-md a')!;
+  expect(a.getAttribute('target')).toBe('_blank');
+  expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+  fireEvent.mouseLeave(hint);
+  fireEvent.mouseEnter(hint);
+  expect(parse).toHaveBeenCalledTimes(1);
+});
+
+test('the rendered description is cached per mart across cards', async () => {
+  const parse = vi.fn(async () => '<p>cached</p>');
+  const markdown = createMarkdownHtml(parse);
+  const props = { cls, mart: { description: 'text', icon: null }, metrics: [arr, uc], cache: cache(), markdown, comparisonOn: false, refreshing: false, onRetry: () => {} };
+  const first = render(<Card {...props} />);
+  fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
+  await waitFor(() => expect(first.container.querySelector('.gy-md')).not.toBeNull());
+  first.unmount();
+  const second = render(<Card {...props} />);
+  expect(second.container.querySelector('.gy-md')!.textContent).toBe('cached');
+  expect(parse).toHaveBeenCalledTimes(1);
+});
+
+test('a failed or missing markdown call leaves the raw text', async () => {
+  const parse = vi.fn(async () => { throw new Error('500'); });
+  const props = { cls, mart: { description: 'plain\ntext', icon: null }, metrics: [arr, uc], cache: cache(), comparisonOn: false, refreshing: false, onRetry: () => {} };
+  const failing = render(<Card {...props} markdown={createMarkdownHtml(parse)} />);
+  fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
+  await act(async () => { await Promise.resolve(); });
+  expect(parse).toHaveBeenCalled();
+  expect(failing.container.querySelector('.gy-md')).toBeNull();
+  expect(failing.container.querySelector('.gy-hint-about')!.textContent).toBe('plain\ntext');
+  failing.unmount();
+  const none = render(<Card {...props} markdown={createMarkdownHtml(undefined)} />);
+  fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
+  expect(none.container.querySelector('.gy-hint-about')!.textContent).toBe('plain\ntext');
 });

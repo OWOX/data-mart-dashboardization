@@ -9,6 +9,8 @@ export interface FakeOwoxData {
   /** Returns rows for a traverseData call; tests inspect the options. */
   /** Answers the data-quality summaries POST; omit and the fake has no postJson. Throw to simulate a refusal. */
   quality?: (ids: string[]) => unknown;
+  /** Answers markdown.parseToHtml; omit and the fake has no markdown. Throw to simulate a failure. */
+  markdown?: (markdown: string) => string | Promise<string>;
   rows?: (id: string, options: Record<string, unknown>) => Record<string, unknown>[];
 }
 
@@ -33,6 +35,7 @@ export function fakeOwox(data: FakeOwoxData): OwoxLike & { calls: { path: string
         throw miss(path);
       },
     } : {}),
+    ...(data.markdown ? { markdown: { async parseToHtml(r: { markdown: string }) { calls.push({ path: 'markdown' }); return data.markdown!(r.markdown); } } } : {}),
     project: { getSettings: async () => ({ description: data.projectDescription }) },
     dataMarts: {
       list: async () => data.marts,
