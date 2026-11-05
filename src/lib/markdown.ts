@@ -1,4 +1,6 @@
 /** Renders a Data Mart description to sanitized HTML through OWOX's own endpoint; results live in memory for the session. */
+import { sanitizeHtml } from './sanitizeHtml';
+
 export interface MarkdownHtml {
   /** The HTML already fetched for this mart's current description, if any. */
   peek(martId: string, markdown: string): string | undefined;
@@ -19,7 +21,7 @@ export function createMarkdownHtml(parse: ((r: { markdown: string }) => Promise<
       const pending = inflight.get(key);
       if (pending) return pending;
       const p = Promise.resolve().then(() => parse({ markdown })).then(
-        (html) => { if (typeof html !== 'string') return null; done.set(id, { markdown, html }); return html; },
+        (html) => { if (typeof html !== 'string') return null; const safe = sanitizeHtml(html); done.set(id, { markdown, html: safe }); return safe; },
         () => null,
       ).finally(() => inflight.delete(key));
       inflight.set(key, p);
