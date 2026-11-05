@@ -1,11 +1,12 @@
 import { MoveRight, TrendingDown, TrendingUp, TriangleAlert } from 'lucide-react';
 import type { MetricDef, MetricResult } from '../types';
 import { formatValue } from '../lib/format';
+import { directionOf } from '../lib/direction';
 
-export function Badge({ metric, name = metric.alias, result, onPick }: { metric: MetricDef; name?: string; result: MetricResult | undefined; onPick?: () => void }) {
+export function Badge({ metric, name = metric.alias, comparing = false, result, onPick }: { metric: MetricDef; name?: string; comparing?: boolean; result: MetricResult | undefined; onPick?: () => void }) {
   const failed = !result || result.error != null;
   const status = failed ? 'neutral' : result.status;
-  const trend = failed ? 'flat' : result.trend;
+  const trend = directionOf(result, metric, comparing);
   // The same trend glyphs as the one before the main number, and as the owox.com map's badges.
   const Icon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : MoveRight;
   const value = failed ? '—' : formatValue(result.fact ?? result.forecast, metric);

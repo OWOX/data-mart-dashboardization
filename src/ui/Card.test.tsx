@@ -456,3 +456,16 @@ test('a failed or missing markdown call leaves the raw text', async () => {
   fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
   expect(none.container.querySelector('.gy-hint-about')!.textContent).toBe('plain\ntext');
 });
+
+test('a metric wears the same arrow as a badge and as the main number, falling series or not', () => {
+  // a falling series that still beats the comparison
+  const c: CardCache = { ...cache(), metrics: { arr: res({ trend: 'up', fact: 100, comparison: 100, compareFact: null }), uc: res({ fact: 150, comparison: 100, compareFact: null, trend: 'down' }) } };
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={c} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  const badge = screen.getByRole('button', { name: 'Show Customers, 150' });
+  expect(badge.querySelector('[aria-label="trend up"]')).not.toBeNull();
+  fireEvent.click(badge);
+  expect(container.querySelector('.gy-trend')!.getAttribute('data-sign')).toBe('up');
+  // comparison off: both fall back to the series' own trend
+  const off = render(<Card cls={cls} metrics={[arr, uc]} cache={c} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(off.container.querySelector('.gy-badge [aria-label="trend down"]')).not.toBeNull();
+});

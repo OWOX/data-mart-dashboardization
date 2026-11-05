@@ -7,6 +7,7 @@ import type { MarkdownHtml } from '../lib/markdown';
 import { fieldAt } from '../model/aggregations';
 import { metricName } from '../model/metricName';
 import { diffPct } from '../lib/stats';
+import { directionOf } from '../lib/direction';
 import { formatDeltaFor, formatPct, formatValue } from '../lib/format';
 import { Badge } from './Badge';
 import { MartIcon } from './MartIcon';
@@ -49,7 +50,7 @@ const fieldNote = (detail: MartDetail | undefined, path: string): string | undef
   (detail ? fieldAt(detail, path)?.description?.trim() : undefined) || undefined;
 
 /** The first three secondary metrics; the rest open as a panel over whatever is under the card, so the card keeps its height. */
-function Badges({ items, cache, nameOf, onPick }: { items: MetricDef[]; cache: CardCache | undefined; nameOf: (m: MetricDef) => string; onPick: (id: string) => void }) {
+function Badges({ items, cache, nameOf, comparing, onPick }: { items: MetricDef[]; cache: CardCache | undefined; nameOf: (m: MetricDef) => string; comparing: boolean; onPick: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -64,7 +65,7 @@ function Badges({ items, cache, nameOf, onPick }: { items: MetricDef[]; cache: C
     return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key, true); };
   }, [open]);
   const badge = (m: MetricDef) => (
-    <Badge key={m.id} metric={m} name={nameOf(m)} result={cache?.metrics[m.id]} onPick={() => { setOpen(false); onPick(m.id); }} />
+    <Badge key={m.id} metric={m} name={nameOf(m)} comparing={comparing} result={cache?.metrics[m.id]} onPick={() => { setOpen(false); onPick(m.id); }} />
   );
   return (
     <div className="gy-badges" ref={ref}>
@@ -249,6 +250,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   useEffect(() => setSwap(null), [cls.keyMetricId, order]);
   const pick = (id: string) => { if (key) setSwap({ main: id, rest: secondary.map((m) => (m.id === id ? key.id : m.id)) }); };
   const res = key ? cache?.metrics[key.id] : undefined;
+  const comparingNow = comparisonOn && !!compareLabel;
   const hidden = noAccess || missing || !key;
   const note = key && !key.isUniqueCount ? fieldNote(details?.get(key.martId), key.measure.field) : undefined;
   const header = <CardHead title={cls.title} martId={cls.martId} metric={hidden ? undefined : key.isUniqueCount ? 'Count' : nameOf(key)} metricNote={hidden ? undefined : note} mart={mart} markdown={markdown} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} tools={onOpen && !noAccess && !missing ? <QualityTool quality={quality} path={`/ui/${projectId}/data-marts/${cls.martId}/quality`} onOpen={onOpen} /> : undefined} />;
@@ -293,7 +295,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   const canCompare = !failed && comparisonOn && !!compareLabel && res.fact !== null && key.dateField !== null;
   const delta = canCompare && fact !== null && comparison !== null ? fact - comparison : null;
   // Against the comparison when there is one, else the series' own direction.
-  const sign: Sign = delta !== null ? (delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat') : res.trend;
+  const sign: Sign = directionOf(res, key, comparingNow);
   // a failed query shows no number; the error rides in the tooltip and the card offers a retry
   const warning = res.warning ?? res.error;
   const big = failed ? formatValue(null, key) : fact !== null ? formatValue(fact, key) : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${formatValue(res.forecast, key)}` : formatValue(null, key);
@@ -311,7 +313,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
         <span className="gy-trend" data-sign={sign}><TrendArrow sign={sign} /></span>
         <span className="num gy-big" title={detail || undefined}>{big}</span>
         {warning && <WarningHint text={warning} />}
-        {secondary.length > 0 && <Badges items={secondary} cache={cache} nameOf={nameOf} onPick={pick} />}
+        {secondary.length > 0 && <Badges items={secondary} cache={cache} nameOf={nameOf} comparing={comparingNow} onPick={pick} />}
       </div>
       {failed && <button type="button" className="gy-link" onClick={onRetry}>Retry</button>}
       {/* An all-time metric has no period to compare against. */}
