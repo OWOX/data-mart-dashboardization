@@ -6,12 +6,14 @@ import type { MartDetail } from '../owox/sources';
 import type { MarkdownHtml } from '../lib/markdown';
 import { fieldAt } from '../model/aggregations';
 import { metricName } from '../model/metricName';
+import { owoxHosts, owoxPath } from '../lib/links';
 import { diffPct } from '../lib/stats';
 import { directionOf } from '../lib/direction';
 import { formatDeltaFor, formatPct, formatValue } from '../lib/format';
 import { Badge } from './Badge';
 import { MartIcon } from './MartIcon';
 import { Sparkline } from './Sparkline';
+import { MarkdownText } from './MarkdownText';
 
 /** What the mart list says about a class's mart; read live, so it is never older than the page. */
 export interface MartInfo { description: string | null; icon: string | null }
@@ -100,16 +102,35 @@ function QualityTool({ quality, path, onOpen }: { quality?: QualitySummary; path
   );
 }
 
-/** An (i) whose bubble opens on hover or focus and closes on Escape, blur or leaving; `onOpen` fires each time it opens. */
-function Tip({ label, className = '', onOpen, children }: { label: string; className?: string; onOpen?: () => void; children: (bubbleId: string) => ReactNode }) {
+/** How long a bubble stays after the pointer leaves, so it can cross the gap to a link in it. */
+const LINGER_MS = 200;
+
+/** The OWOX page this plugin is framed in; its links open in place like owox.com's. */
+const HOSTS = owoxHosts(typeof location !== 'undefined' && location.ancestorOrigins ? [...location.ancestorOrigins] : []);
+
+/**
+ * An (i) whose bubble opens on hover or focus and closes on Escape, blur or leaving; `onOpen` fires each time it opens.
+ * A link in the bubble to an OWOX page goes through `onNavigate`, so the app opens it in the same tab; any other link opens a new one.
+ */
+function Tip({ label, className = '', onOpen, onNavigate, children }: { label: string; className?: string; onOpen?: () => void; onNavigate?: (path: string) => void; children: (bubbleId: string) => ReactNode }) {
   const bubble = useId();
   const [open, setOpen] = useState(false);
-  const show = () => { if (!open) onOpen?.(); setOpen(true); };
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const cancel = () => clearTimeout(timer.current);
+  useEffect(() => cancel, []);
+  const show = () => { cancel(); if (!open) onOpen?.(); setOpen(true); };
+  const hide = () => { cancel(); setOpen(false); };
   return (
     <span
       className={`gy-hint gy-cardtip ${className}`.trim()} tabIndex={0} role="button" aria-label={label} aria-describedby={bubble} data-open={open}
-      onMouseEnter={show} onMouseLeave={() => setOpen(false)} onFocus={show} onBlur={() => setOpen(false)}
-      onKeyDown={(e) => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); } }}
+      onMouseEnter={show} onMouseLeave={() => { cancel(); timer.current = setTimeout(hide, LINGER_MS); }}
+      onFocus={show} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) hide(); }}
+      onKeyDown={(e) => { if (e.key === 'Escape' && open) { e.stopPropagation(); hide(); } }}
+      onClick={(e) => {
+        const a = (e.target as Element).closest('a');
+        const path = a && onNavigate ? owoxPath(a.getAttribute('href') ?? '', HOSTS) : null;
+        if (path) { e.preventDefault(); hide(); onNavigate!(path); }
+      }}
     >
       <Info size={14} />
       {children(bubble)}
@@ -118,7 +139,7 @@ function Tip({ label, className = '', onOpen, children }: { label: string; class
 }
 
 /** The Data Mart's description, as Markdown rendered by OWOX once it arrives; the raw text until then, or when it can't be had. */
-function MartAbout({ martId, title, text, markdown }: { martId: string; title: string; text: string; markdown?: MarkdownHtml }) {
+function MartAbout({ martId, title, text, markdown, onNavigate }: { martId: string; title: string; text: string; markdown?: MarkdownHtml; onNavigate?: (path: string) => void }) {
   const [html, setHtml] = useState<string | null>(() => markdown?.peek(martId, text) ?? null);
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
@@ -133,12 +154,12 @@ function MartAbout({ martId, title, text, markdown }: { martId: string; title: s
     void markdown.load(martId, text).then((h) => { if (live.current && h !== null && current.current === asked) setHtml(h); });
   };
   return (
-    <Tip label={`About ${title}`} onOpen={load}>
+    <Tip label={`About ${title}`} onOpen={load} onNavigate={onNavigate}>
       {(id) => (
         <span id={id} className="gy-hint-body gy-hint-md" role="tooltip">
           {html !== null
             ? <div className="gy-md" dangerouslySetInnerHTML={{ __html: html }} />
-            : <span className="gy-hint-about">{text}</span>}
+            : <div className="gy-md gy-hint-about"><MarkdownText text={text} /></div>}
         </span>
       )}
     </Tip>
@@ -161,8 +182,8 @@ function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath,
             <span className="gy-card-metric">{metric}</span>
             {metricNote && (
               <span className="gy-metric-tip">
-                <Tip label={`About ${metric}`}>
-                  {(id) => <span id={id} className="gy-hint-body gy-hint-left" role="tooltip">{metricNote}</span>}
+                <Tip label={`About ${metric}`} onNavigate={onOpen}>
+                  {(id) => <span id={id} className="gy-hint-body gy-hint-left gy-hint-md" role="tooltip"><div className="gy-md"><MarkdownText text={metricNote} /></div></span>}
                 </Tip>
               </span>
             )}
@@ -177,22 +198,22 @@ function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath,
               <ExternalLink size={14} />
             </button>
           )}
-          {about && <MartAbout martId={martId} title={title} text={about} markdown={markdown} />}
+          {about && <MartAbout martId={martId} title={title} text={about} markdown={markdown} onNavigate={onOpen} />}
         </CardTools>
       )}
     </header>
   );
 }
 
-/** A chip with the difference (pressing it swaps relative and absolute), and "vs" with the comparison's name under it. */
-function Compare({ delta, pct, metric, sign, label, absolute, onToggle }: {
-  delta: number | null; pct: number | null; metric: MetricDef; sign: Sign; label: string; absolute: boolean; onToggle?: () => void;
+/** A chip with the difference (pressing it swaps relative and absolute), and "vs" with the comparison's name beside it, or under it when `stacked`. */
+function Compare({ delta, pct, metric, sign, label, absolute, stacked, onToggle }: {
+  delta: number | null; pct: number | null; metric: MetricDef; sign: Sign; label: string; absolute: boolean; stacked: boolean; onToggle?: () => void;
 }) {
   // A zero comparison has no relative difference, so the chip can only say the absolute one.
   const showAbs = absolute || pct === null;
   const text = delta === null ? '—' : showAbs ? formatDeltaFor(delta, metric) : formatPct(pct);
   return (
-    <div className="gy-compare" data-sign={sign}>
+    <div className="gy-compare" data-sign={sign} data-stacked={stacked}>
       <button
         type="button" className="num gy-delta" onClick={onToggle} disabled={!onToggle || pct === null}
         title={showAbs ? 'Show the difference in %' : 'Show the difference in absolute numbers'}
@@ -354,6 +375,8 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
             <Compare
               delta={delta} metric={key} pct={fact !== null ? diffPct(fact, comparison) : null} sign={sign}
               label={compareLabel} absolute={absolute} onToggle={onToggleDiff}
+              // Three or more secondary metrics take the room to the right, so the period's name goes under the chip.
+              stacked={secondary.length >= SHOWN}
             />
           )}
         </div>
@@ -367,7 +390,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       )}
       {/* A swapped-in metric shows its own series; one without a series keeps the slot's height so the card doesn't shrink. */}
       {sparkRow && (spark
-        ? <Sparkline spark={spark} trend={res.trend} />
+        ? <Sparkline spark={spark} trend={sign} />
         : <div className="gy-spark-slot" aria-hidden="true" />)}
     </article>
   );

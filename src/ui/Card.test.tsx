@@ -148,6 +148,13 @@ test('the arrow before the number follows the comparison, or the series when com
   expect(container.querySelector('.gy-trend')!.getAttribute('data-sign')).toBe('down');
 });
 
+test('the sparkline takes the arrow\'s colour: the comparison when on, the series when off', () => {
+  const { container, rerender } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ trend: 'down' })} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-spark')!.getAttribute('data-trend')).toBe('up');
+  rerender(<Card cls={cls} metrics={[arr, uc]} cache={cache({ trend: 'down' })} comparisonOn={false} compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-spark')!.getAttribute('data-trend')).toBe('down');
+});
+
 test('plan and forecast stay off the card face; the number names them on hover', () => {
   const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ forecast: 1_500_000 })} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   expect(container.textContent).not.toMatch(/plan|forecast/i);
@@ -466,7 +473,7 @@ test('the Data Mart (i) shows raw text first, then OWOX-rendered HTML once, with
   const markdown = createMarkdownHtml(parse);
   const { container } = render(<Card cls={cls} mart={{ description: ' **bold** ', icon: null }} metrics={[arr, uc]} cache={cache()} markdown={markdown} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   const hint = screen.getByLabelText(`About ${cls.title}`);
-  expect(hint.textContent).toBe('**bold**');
+  expect(hint.querySelector('.gy-hint-about strong')!.textContent).toBe('bold');
   expect(parse).not.toHaveBeenCalled();
   fireEvent.mouseEnter(hint);
   await waitFor(() => expect(container.querySelector('.gy-md h2')?.textContent).toBe('Title'));
@@ -498,12 +505,12 @@ test('a failed or missing markdown call leaves the raw text', async () => {
   fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
   await act(async () => { await Promise.resolve(); });
   expect(parse).toHaveBeenCalled();
-  expect(failing.container.querySelector('.gy-md')).toBeNull();
-  expect(failing.container.querySelector('.gy-hint-about')!.textContent).toBe('plain\ntext');
+  expect(failing.container.querySelector('.gy-md:not(.gy-hint-about)')).toBeNull();
+  expect(failing.container.querySelector('.gy-hint-about')!.textContent).toBe('plain text');
   failing.unmount();
   const none = render(<Card {...props} markdown={createMarkdownHtml(undefined)} />);
   fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
-  expect(none.container.querySelector('.gy-hint-about')!.textContent).toBe('plain\ntext');
+  expect(none.container.querySelector('.gy-hint-about')!.textContent).toBe('plain text');
 });
 
 test('a metric wears the same arrow as a badge and as the main number, falling series or not', () => {
@@ -532,7 +539,6 @@ test('card tips are shown by data-open alone, so Escape hides them; they name th
   const rule = css.split('\n').find((l) => l.includes('.gy-hint:not(.gy-cardtip):hover .gy-hint-body'))!;
   expect(rule).toBeDefined();
   expect(css).not.toMatch(/\.gy-hint:hover \.gy-hint-body/);
-  expect(css).toMatch(/\.gy-hint-about \{ white-space: pre-wrap/);
 });
 
 test('a parse result for a description that changed meanwhile is dropped', async () => {
@@ -543,6 +549,61 @@ test('a parse result for a description that changed meanwhile is dropped', async
   fireEvent.focus(screen.getByLabelText(`About ${cls.title}`));
   rerender(<Card {...props} mart={{ description: 'new', icon: null }} />);
   await act(async () => { release('<p>stale</p>'); });
-  expect(container.querySelector('.gy-md')).toBeNull();
+  expect(container.querySelector('.gy-md:not(.gy-hint-about)')).toBeNull();
   expect(container.querySelector('.gy-hint-about')!.textContent).toBe('new');
+});
+
+test('without OWOX rendering, the Data Mart (i) parses Markdown itself: links open in a new tab, hard wraps fold', () => {
+  const text = 'Everyone who registered, with the channel that first\nbrought them in (a [Traffic Sources](https://app.owox.com/ui/p/data-marts/m) row).\n\nSee https://owox.com. Not [this](javascript:alert(1)).';
+  const { container } = render(<Card cls={cls} mart={{ description: text, icon: null }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  const about = container.querySelector('.gy-hint-about')!;
+  const paras = about.querySelectorAll('p');
+  expect(paras).toHaveLength(2);
+  expect(paras[0]!.textContent).toBe('Everyone who registered, with the channel that first brought them in (a Traffic Sources row).');
+  const links = [...about.querySelectorAll('a')];
+  expect(links.map((a) => a.getAttribute('href'))).toEqual(['https://app.owox.com/ui/p/data-marts/m', 'https://owox.com']);
+  expect(links.every((a) => a.getAttribute('target') === '_blank' && a.getAttribute('rel') === 'noopener noreferrer')).toBe(true);
+  expect(about.textContent).toContain('Not this');
+});
+
+test('a tip lingers briefly after the pointer leaves, so it can reach a link in the bubble', () => {
+  vi.useFakeTimers();
+  try {
+    render(<Card cls={cls} mart={{ description: 'text', icon: null }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+    const hint = screen.getByLabelText(`About ${cls.title}`);
+    fireEvent.mouseEnter(hint);
+    fireEvent.mouseLeave(hint);
+    expect(hint).toHaveAttribute('data-open', 'true');
+    fireEvent.mouseEnter(hint);
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(hint).toHaveAttribute('data-open', 'true');
+    fireEvent.mouseLeave(hint);
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(hint).toHaveAttribute('data-open', 'false');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('"vs" sits beside the chip with two or fewer secondary metrics and under it with three or more', () => {
+  const extra = (id: string): MetricDef => ({ ...arr, id, alias: id, measure: { field: id, fn: 'SUM' } });
+  const few = [arr, uc, extra('m3')];
+  const many = [...few, extra('m4')];
+  const c = (ms: MetricDef[]): CardCache => ({ ...cache(), metrics: Object.fromEntries(ms.map((m) => [m.id, res({})])) });
+  const cl = (ms: MetricDef[]): ClassNode => ({ ...cls, metricIds: ms.map((m) => m.id) });
+  const { container, rerender } = render(<Card cls={cl(few)} metrics={few} cache={c(few)} comparisonOn compareLabel="Previous 7 Days" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-compare')).toHaveAttribute('data-stacked', 'false');
+  rerender(<Card cls={cl(many)} metrics={many} cache={c(many)} comparisonOn compareLabel="Previous 7 Days" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-compare')).toHaveAttribute('data-stacked', 'true');
+});
+
+test('a tooltip link to an OWOX page opens through the app in the same tab; other links are left to the browser', () => {
+  const onOpen = vi.fn();
+  const text = 'See [Orders](https://app.owox.com/ui/p1/data-marts/m1/overview?x=1) and [docs](https://docs.example.com/a).';
+  const { container } = render(<Card cls={cls} mart={{ description: text, icon: null }} metrics={[arr, uc]} cache={cache()} onOpen={onOpen} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  const [owox, other] = [...container.querySelectorAll('.gy-hint-about a')];
+  expect(fireEvent.click(owox!)).toBe(false);
+  expect(onOpen).toHaveBeenCalledWith('/ui/p1/data-marts/m1/overview?x=1');
+  expect(fireEvent.click(other!)).toBe(true);
+  expect(onOpen).toHaveBeenCalledTimes(1);
 });

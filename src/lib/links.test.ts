@@ -1,4 +1,4 @@
-import { extractLinks } from './links';
+import { extractLinks, owoxHosts, owoxPath } from './links';
 
 const MD = `| Critical number | ARR | [Plan · ARR](https://app.owox.com/ui/p1/data-marts/<PLAN_ID>/data-setup?field=arr) | [ARR](https://app.owox.com/ui/p1/data-marts/86d5294a-a33d-4c06-9944-8680e7c96d72/data-setup?field=arr) |
 See [docs](https://docs.owox.com) and [Visitors](https://app.owox.com/ui/p1/data-marts/3be86edb-b880-498b-b533-459640b99106/data-setup?x=1&field=last+Visit%2EDate).`;
@@ -26,4 +26,17 @@ test('two links in one cell with a bracketed label stay separate', () => {
   const id = '3bae3f18-d3e1-4a8d-b16b-21ce547353dc';
   const links = extractLinks(`[\\[Demo\\] Orders](https://app.owox.com/ui/p/data-marts/${id}/data-setup?field=a) and [B](https://app.owox.com/ui/p/data-marts/${id}/data-setup?field=b)`, 'project', 0);
   expect(links.map((l) => [l.text, l.field])).toEqual([['[Demo] Orders', 'a'], ['B', 'b']]);
+});
+
+test('owoxPath maps OWOX app links to their path and leaves other links alone', () => {
+  const self = owoxHosts(['https://odm.acme.test']);
+  expect(owoxPath('https://app.owox.com/ui/p/data-marts/m/overview?f=1#h', [])).toBe('/ui/p/data-marts/m/overview?f=1#h');
+  expect(owoxPath('/ui/p/data-marts/m', [])).toBe('/ui/p/data-marts/m');
+  expect(owoxPath('https://odm.acme.test/ui/p', self)).toBe('/ui/p');
+  expect(owoxPath('https://odm.acme.test/ui/p', [])).toBeNull();
+  expect(owoxPath('https://evil.test/ui/p', self)).toBeNull();
+  expect(owoxPath('https://notowox.com/ui/p', [])).toBeNull();
+  expect(owoxPath('https://owox.com/blog', [])).toBeNull();
+  expect(owoxPath('//evil.test/ui/p', [])).toBeNull();
+  expect(owoxPath('mailto:a@owox.com', [])).toBeNull();
 });

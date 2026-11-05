@@ -1,7 +1,8 @@
 const KEEP = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'span']);
 const DROP = new Set(['script', 'style', 'iframe', 'object', 'embed', 'svg', 'math', 'template', 'form', 'input', 'noscript', 'textarea', 'select', 'button', 'link', 'meta', 'base', 'frame', 'frameset', 'applet']);
 
-const safeHref = (v: string): boolean => {
+/** True for http, https, mailto and relative links; false for javascript: and the like. */
+export const safeHref = (v: string): boolean => {
   // browsers ignore tabs, newlines and other control characters inside a scheme
   const t = v.replace(/[\u0000- \u007f-\u009f]/g, '').toLowerCase();
   const scheme = /^([a-z][a-z0-9+.-]*):/.exec(t);
