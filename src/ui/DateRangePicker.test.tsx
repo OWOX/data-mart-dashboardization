@@ -178,3 +178,51 @@ test('the separator shows only with Compare on', () => {
   fireEvent.click(screen.getByRole('checkbox', { name: 'Compare' }));
   expect(screen.getByRole('separator')).toBeInTheDocument();
 });
+
+describe('presets, comparison windows and the forecast footnote (today = Nov 5)', () => {
+  const today = new Date('2026-11-05T12:00:00Z');
+  const mount = (range: RangeChoice, compare: CompareChoice = PREV) => { render(<DateRangePicker range={range} compare={compare} now={today} onChange={() => {}} />); open(); };
+
+  test('the list runs Current, To date, Past, then Custom', () => {
+    mount({ kind: 'preset', preset: 'cur_month' }, OFF);
+    const list = screen.getByRole('dialog').querySelector('.gy-drp-list')!;
+    expect([...list.children].map((c) => c.textContent)).toEqual([
+      'This year', 'This quarter', 'This month', 'This week',
+      'This year to date', 'This quarter to date', 'This month to date', 'This week to date',
+      'Last year', 'Last quarter', 'Last month', 'Last week', 'Last 28 days', 'Last 7 days', 'Yesterday', 'Custom',
+    ]);
+  });
+
+  test('each comparison option shows its window in grey', () => {
+    mount({ kind: 'preset', preset: 'cur_month' });
+    const wins = (name: string) => screen.getByRole('button', { name }).querySelector('.gy-drp-win')!.textContent;
+    expect(wins('Previous period')).toBe('Oct 1–31');
+    expect(wins('Same period last year')).toBe('Nov 1–30, 2025');
+  });
+
+  test('a past range names the preceding days', () => {
+    mount({ kind: 'preset', preset: 'last_month' });
+    expect(screen.getByRole('button', { name: 'Previous 31 days' }).querySelector('.gy-drp-win')!.textContent).toBe('Aug 31 – Sep 30');
+  });
+
+  test('a projected range gets a footnote with the forecast tooltip', () => {
+    mount({ kind: 'preset', preset: 'cur_month' });
+    const head = screen.getByRole('dialog').querySelector('.gy-drp-windows')!;
+    expect(head.querySelector('sup')).toHaveTextContent('*');
+    expect(head).toHaveTextContent('Nov 1–30* vs Oct 1–31, 2026');
+    expect(head.querySelector('.gy-drp-note')).toHaveTextContent('* Nov 5–30 forecast');
+    expect(screen.getByRole('tooltip')).toHaveTextContent("Nov 5–30 hasn't happened yet. Each card fills these days with its metric's forecast: from the forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last 90 days.");
+  });
+
+  test('a to-date range has no footnote', () => {
+    mount({ kind: 'preset', preset: 'mtd' });
+    expect(screen.getByRole('dialog').querySelector('sup')).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  test('a custom comparison of a projected quarter opens on the month where the whole previous quarter ends', () => {
+    mount({ kind: 'preset', preset: 'cur_quarter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Custom', pressed: false }));
+    expect(within(screen.getByRole('group', { name: 'Comparison calendar' })).getByText('September 2026')).toBeInTheDocument();
+  });
+});

@@ -353,6 +353,11 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-drp-compare input { flex: none; }
 .gy-drp-head { grid-column: 1 / -1; grid-row: 1; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
 .gy-drp-windows { flex: 1; color: var(--muted-foreground); }
+/* The forecast footnote sits under the range, smaller; its tooltip is the app's usual hint bubble. */
+.gy-drp-note { display: flex; align-self: auto; margin-top: 0.125rem; font-size: 0.75rem; opacity: 0.8; cursor: help; }
+.gy-drp-note:hover, .gy-drp-note:focus-visible { opacity: 1; }
+.gy-drp-note .gy-hint-body { max-width: min(20rem, 80vw); white-space: normal; }
+.gy-drp-win { margin-left: 0.5rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 400; white-space: nowrap; }
 .gy-cal { width: 17.5rem; }
 .gy-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
 .gy-cal-title { font-weight: 500; }
