@@ -527,7 +527,7 @@ test('the refresh icon shows the line', async () => {
   await screen.findByText(/Updated 1 h ago/);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect(await screen.findByText(/Loading metrics 0 of \d+/)).toBeInTheDocument();
-  expect(line()).toHaveAttribute('aria-valuenow', '0');
+  await waitFor(() => expect(line()).toHaveAttribute('aria-valuenow', '0'));
   g.open();
   await waitFor(() => expect(line()).toBeNull());
 });

@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { HostLoadingContext, LoadingBar } from './LoadingBar';
 
 const host = () => {
@@ -8,22 +8,35 @@ const host = () => {
   return { calls, start };
 };
 
-test('drives the host bar and draws nothing', () => {
+beforeEach(() => { vi.useFakeTimers(); });
+afterEach(() => { vi.useRealTimers(); });
+
+test('one loading from sliding to filled, stopped a tick after unmount; draws nothing', () => {
   const { calls, start } = host();
   const { container, rerender, unmount } = render(<HostLoadingContext value={start}><LoadingBar /></HostLoadingContext>);
   expect(container).toBeEmptyDOMElement();
   rerender(<HostLoadingContext value={start}><LoadingBar progress={{ done: 3, total: 12 }} /></HostLoadingContext>);
   rerender(<HostLoadingContext value={start}><LoadingBar progress={{ done: 6, total: 12 }} /></HostLoadingContext>);
   unmount();
-  // a total arriving starts a determinate loading; the sliding one stops
-  expect(calls).toEqual(['start 1', 'stop 1', 'start 2', '2 0.25', '2 0.5', 'stop 2']);
+  expect(calls).toEqual(['start 1', '1 0.25', '1 0.5']);
+  act(() => { vi.runAllTimers(); });
+  expect(calls).toEqual(['start 1', '1 0.25', '1 0.5', 'stop 1']);
 });
 
-test('a lost total starts a sliding loading again', () => {
+test('a lost total starts a new loading before stopping the old one', () => {
   const { calls, start } = host();
   const { rerender } = render(<HostLoadingContext value={start}><LoadingBar progress={{ done: 1, total: 2 }} /></HostLoadingContext>);
   rerender(<HostLoadingContext value={start}><LoadingBar progress={null} /></HostLoadingContext>);
-  expect(calls).toEqual(['start 1', '1 0.5', 'stop 1', 'start 2']);
+  rerender(<HostLoadingContext value={start}><LoadingBar progress={{ done: 2, total: 2 }} /></HostLoadingContext>);
+  expect(calls).toEqual(['start 1', '1 0.5', 'start 2', 'stop 1', '2 1']);
+});
+
+test('a bar in the next view starts before the old one stops', () => {
+  const { calls, start } = host();
+  const { rerender } = render(<HostLoadingContext value={start}><LoadingBar key="a" /></HostLoadingContext>);
+  rerender(<HostLoadingContext value={start}><LoadingBar key="b" /></HostLoadingContext>);
+  act(() => { vi.runAllTimers(); });
+  expect(calls).toEqual(['start 1', 'start 2', 'stop 1']);
 });
 
 test('without the host bar, nothing shows and nothing throws', () => {

@@ -9,7 +9,7 @@ const root = createRoot(document.getElementById('root')!);
 connect().then(
   (ctx) => {
     document.documentElement.classList.toggle('dark', ctx.theme === 'dark');
-    root.render(<HostLoadingContext value={() => ctx.ui.startLoading()}><App ctx={ctx} /></HostLoadingContext>);
+    root.render(<HostLoadingContext value={ctx.ui.startLoading}><App ctx={ctx} /></HostLoadingContext>);
   },
   () => {
     root.render(<p style={{ padding: 24 }}>Open Gyroscope from Plugins in OWOX Data Marts.</p>);
