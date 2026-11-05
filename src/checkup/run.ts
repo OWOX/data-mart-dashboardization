@@ -50,11 +50,13 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate }: CheckupArgs): Promise<Check[]> {
   // Every Data Mart schema is requested once per run, however many checks (and checkHealth) ask for it.
   const cache = new Map<string, Promise<unknown>>();
-  const owox: OwoxLike = { ...raw, getJson: <T,>(path: string, ...rest: unknown[]) => {
-    if (!/^\/api\/data-marts\/[^/]+(\/blendable-schema)?$/.test(path)) return (raw.getJson as (...a: unknown[]) => Promise<T>)(path, ...rest);
-    if (!cache.has(path)) cache.set(path, (raw.getJson as (...a: unknown[]) => Promise<T>)(path, ...rest));
+  // Object.create keeps every other member (prototype methods, getters) bound to the real client.
+  const owox: OwoxLike = Object.create(raw, { getJson: { value: <T,>(path: string, ...rest: unknown[]): Promise<T> => {
+    const call = () => (raw.getJson as (...a: unknown[]) => Promise<T>).call(raw, path, ...rest);
+    if (!/^\/api\/data-marts\/[^/]+(\/blendable-schema)?$/.test(path)) return call();
+    if (!cache.has(path)) cache.set(path, call());
     return cache.get(path) as Promise<T>;
-  } } as OwoxLike;
+  } } });
   const map = new Map<string, Check>();
   const publish = () => onUpdate([...map.values()]);
   const add = (id: string, group: GroupId, context?: Check['context']) => { map.set(id, { id, group, label: label(id), status: 'running', ...(context ? { context } : {}) }); };

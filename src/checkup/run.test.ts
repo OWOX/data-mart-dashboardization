@@ -167,3 +167,16 @@ test('each Data Mart schema is requested once per run, with a saved model', asyn
     expect(paths.filter((p) => p === `/api/data-marts/${id}/blendable-schema`), id).toHaveLength(1);
   }
 });
+
+test('works with a class-instance client whose methods use this', async () => {
+  const inner = fakeOwox(data());
+  class Client {
+    private readonly transport = inner;
+    getJson<T>(path: string): Promise<T> { return this.transport.getJson<T>(path); }
+    get project() { return this.transport.project; }
+    get dataMarts() { return this.transport.dataMarts; }
+  }
+  const cs = await runCheckup({ owox: new Client() as never, hasAi: true, model: null, projectId: 'p', onUpdate: () => {} });
+  expect(byId(cs)['project.description']!.status).toBe('ok');
+  expect(byId(cs)['goal.field']!.status).toBe('ok');
+});
