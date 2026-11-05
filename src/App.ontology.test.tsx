@@ -135,3 +135,16 @@ test('a saved unique count on an INTEGER key shows no card metric and sends no C
   expect(sent.some((x) => x.id === GID)).toBe(true);
   expect(sent.filter((x) => x.id === CID && JSON.stringify(x.o.aggregation ?? []).includes('"COUNT_DISTINCT"'))).toEqual([]);
 });
+
+test('/settings/checkup opens the Checkup tab and runs the checks; clicking the tab sets the route', async () => {
+  const { deps } = await setup();
+  const owox = fakeOwox(data());
+  const a = render(<App ctx={ctxWith('/settings/checkup').ctx} deps={{ ...deps, owox }} />);
+  expect(await screen.findByRole('tab', { name: 'Checkup', selected: true })).toBeInTheDocument();
+  await waitFor(() => expect(owox.calls.map((c) => c.path)).toContain('/api/contexts'));
+  a.unmount();
+  const { ctx, setRoute } = ctxWith('/settings');
+  render(<App ctx={ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Checkup' }));
+  expect(setRoute).toHaveBeenLastCalledWith('/settings/checkup');
+});

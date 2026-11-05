@@ -8,6 +8,8 @@ Gyroscope is an OWOX Data Marts plugin that answers one question first: are we o
 2. An AI Credential is mapped when the plugin is installed. Gyroscope uses it to build the model of classes and metrics.
 3. Calculated fields in your Data Marts reference other Data Marts. Gyroscope draws a connection for each reference.
 
+Settings, then Checkup, checks each of these live and links to the page where a failing one is fixed.
+
 ## Develop
 
 ```bash

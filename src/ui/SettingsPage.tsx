@@ -5,9 +5,10 @@ import type { MartDetail, OwoxLike } from '../owox/sources';
 import type { BuildStep } from '../model/build';
 import { LoadingLine } from './LoadingLine';
 import { OntologyTab } from './OntologyTab';
+import { CheckupTab, type CheckupProps } from './CheckupTab';
 
-export type SettingsTab = 'general' | 'ontology';
-const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'ontology', label: 'Metrics' }];
+export type SettingsTab = 'general' | 'ontology' | 'checkup';
+const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'ontology', label: 'Metrics' }, { id: 'checkup', label: 'Checkup' }];
 
 /** What the Metrics tab edits; null while the Data Marts are still being read. */
 export interface OntologyProps {
@@ -20,13 +21,15 @@ export interface OntologyProps {
   hashOf?: (m: Model) => Promise<string | null>;
 }
 
-export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology }: {
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
   /** Reads the descriptions and schemas again into a candidate model; the Ontology tab shows it as a proposal. */
   onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void;
   /** A proposal was discarded: the canvas stops calling the model out of date against the hash it checked. */
   onDismiss?: () => void; error?: string | null;
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
+  /** What the Checkup tab runs; the tab is mounted only while selected, so each visit starts a run. */
+  checkup?: CheckupProps | null;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -68,6 +71,9 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
           {ontology
             ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} />
             : <><LoadingLine /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
+        </div>
+        <div className="dm-page-content" role="tabpanel" id="gy-panel-checkup" aria-labelledby="gy-tab-checkup" hidden={tab !== 'checkup'}>
+          {tab === 'checkup' && checkup && <CheckupTab {...checkup} onOpen={onOpen} onOpenTab={(t) => go(t)} />}
         </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>
           <form className="dm-card gy-form" onSubmit={(e) => { e.preventDefault(); save(); }}>

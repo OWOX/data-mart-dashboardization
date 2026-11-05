@@ -22,6 +22,7 @@ import { createMarkdownHtml } from './lib/markdown';
 import { metricName } from './model/metricName';
 import { LoadingLine } from './ui/LoadingLine';
 import { Header, RangeControls } from './ui/Header';
+import { runCheckup } from './checkup/run';
 import { SettingsPage, type SettingsTab } from './ui/SettingsPage';
 
 export interface AppDeps {
@@ -56,11 +57,11 @@ export function depsFrom(ctx: PluginContext): AppDeps {
 
 const SEED_NOTE = "Couldn't save your model; it will be saved next time.";
 
-const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology' };
+const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology', checkup: '/settings/checkup' };
 /** The settings tab a route opens; anything else opens the canvas. */
 const tabOf = (route: string | undefined): SettingsTab | null => {
   const path = route?.replace(/\/+$/, '');
-  return path === ROUTES.ontology ? 'ontology' : path === ROUTES.general ? 'general' : null;
+  return path === ROUTES.ontology ? 'ontology' : path === ROUTES.checkup ? 'checkup' : path === ROUTES.general ? 'general' : null;
 };
 
 const rangeOf = (s: Settings): RangeChoice => ({ kind: 'preset', preset: s.defaultPreset });
@@ -351,6 +352,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           tab={view.tab}
           onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
           ontology={ontologyProps}
+          checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
           onBack={leaveSettings}
           onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), onStep })}
           projectId={ctx.projectId}
