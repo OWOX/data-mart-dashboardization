@@ -201,8 +201,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
 
   const periodShown = useMemo(() => {
     const spec = resolveRange(range, compare, now(), settings.weekStart);
-    // with a comparison, show the windows actually compared: the days so far (cut when it is shorter), not the whole range
-    const fact = spec.compareFact ?? spec.factWindow;
+    // with a comparison, show the windows actually compared: the days so far (cut when it is shorter), not the whole range;
+    // a projected range is compared whole, so it shows whole
+    const fact = spec.forecastWindow ? spec.range : spec.compareFact ?? spec.factWindow;
     return spec.comparison && fact ? { range: fact, comparison: spec.comparison } : { range: spec.range, comparison: null };
   }, [range, compare, now, settings.weekStart]);
 

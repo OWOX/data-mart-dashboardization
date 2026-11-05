@@ -418,6 +418,13 @@ test('with a comparison the header shows the days so far, not the whole range', 
   await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–\d+ vs Jul 1–\d+, 2026 · /));
 });
 
+test('a projected range shows the whole period against the whole previous one', async () => {
+  const { deps, store } = await setup({ cache: 'none' });
+  await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'cur_month' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–31 vs Sep 1–30, 2026 · /));
+});
+
 test('opens on the saved range and comparison', async () => {
   const { deps, store } = await setup({ cache: 'none' });
   await savePreferences(store, { range: { kind: 'preset', preset: 'last_month' }, compare: { kind: 'off' } });
