@@ -237,11 +237,20 @@ test('the external link opens the Data Mart overview; with no onOpen there is no
   expect(screen.queryByRole('button', { name: /in OWOX/ })).toBeNull();
 });
 
-test('the corner icons sit in one group the stylesheet shows on hover and focus', () => {
+test('the corner icons sit in one group the stylesheet shows on hover and focus, without the (i)', () => {
   const { container } = render(<Card cls={cls} mart={{ description: 'About', icon: null }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onOpen={() => {}} onRetry={() => {}} />);
   const tools = container.querySelector('.gy-card-tools')!;
-  expect(tools.querySelector('.gy-hint')).not.toBeNull();
+  expect(tools.querySelector('.gy-hint')).toBeNull();
   expect(tools.querySelector('[aria-label="Open Customers in OWOX"]')).not.toBeNull();
+});
+
+test("the Data Mart's (i) sits beside its name, sized to the line", () => {
+  const { container, rerender } = render(<Card cls={cls} mart={{ description: 'About', icon: null }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  const tip = container.querySelector('.gy-card-title + .gy-line-tip')!;
+  expect(tip.querySelector('[aria-label="About Customers"]')).not.toBeNull();
+  expect(tip.querySelector('svg')!.getAttribute('width')).toBe('10');
+  rerender(<Card cls={cls} mart={{ description: '  ', icon: null }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-card-title + .gy-line-tip')).toBeNull();
 });
 
 test('a warning on the key number shows the icon, with the text in the tooltip', () => {
@@ -465,7 +474,7 @@ test('the metric (i) follows the swapped-in metric and is absent when its field 
   expect(screen.getByLabelText('About Second').textContent).toBe('Second description');
   rerender(<Card cls={c2} metrics={[arr, two]} cache={cc} details={mdetail([fields[0]!, { ...fields[2]!, description: '  ' }])} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   expect(screen.queryByLabelText('About Second')).toBeNull();
-  expect(document.querySelector('.gy-metric-tip')).toBeNull();
+  expect(document.querySelector('.gy-card-metric + .gy-line-tip')).toBeNull();
 });
 
 test('the Data Mart (i) shows raw text first, then OWOX-rendered HTML once, with links opening in a new tab', async () => {

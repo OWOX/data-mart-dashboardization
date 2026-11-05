@@ -152,7 +152,7 @@ h2 { margin: 0; }
 .gy-card-title { font-size: 0.75rem; color: var(--muted-foreground); }
 .gy-card-metric { font-size: 0.9375rem; font-weight: 500; color: var(--foreground); }
 /* With no metric to name, the class name is the only line and reads as the title. */
-.gy-card-title:only-child { font-size: 0.9375rem; font-weight: 500; color: var(--foreground); }
+.gy-card-line:only-child .gy-card-title { font-size: 0.9375rem; font-weight: 500; color: var(--foreground); }
 /* The corner's icons: out of sight until the card is pointed at or has focus in it, so keyboard users still reach them. */
 .gy-card-tools { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.375rem; flex-shrink: 0; opacity: 0; pointer-events: none; transition: opacity 120ms; }
 .gy-card:hover .gy-card-tools, .gy-card:focus-within .gy-card-tools { opacity: 1; pointer-events: auto; }
@@ -331,14 +331,14 @@ button.gy-badge:hover { color: var(--foreground); }
   max-width: calc(100vw - 2rem); padding: 0.75rem;
   background: var(--card); border: 1px solid var(--border); border-radius: 0.625rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); font-size: 0.8125rem;
 }
-/* Rows: 1 range (list | calendar), 2 Compare checkbox | line (Compare on), 3 comparison (list | calendar), 4 footer.
+/* Rows: 1 header (windows, Cancel, Apply), 2 range (list | calendar), 3 Compare checkbox | line (Compare on), 4 comparison (list | calendar).
    No row gap, so the column divider runs unbroken; the cells carry their own spacing. */
 .gy-drp-left, .gy-drp-right { display: contents; }
 .gy-drp-left > * { grid-column: 1; min-width: 10.5rem; padding-right: 0.75rem; border-right: 1px solid var(--border); }
 .gy-drp-right > * { grid-column: 2; padding-left: 0.75rem; }
-.gy-drp-presets, .gy-drp-cal { grid-row: 1; }
-.gy-drp-sep { grid-row: 2; align-self: center; height: 1px; background: var(--border); background-clip: content-box; } /* as wide as the calendar */
-.gy-drp-cmplist, .gy-drp-cmpcal { grid-row: 3; }
+.gy-drp-presets, .gy-drp-cal { grid-row: 2; }
+.gy-drp-sep { grid-row: 3; align-self: center; height: 1px; background: var(--border); background-clip: content-box; } /* as wide as the calendar */
+.gy-drp-cmplist, .gy-drp-cmpcal { grid-row: 4; }
 /* The list adds no height of its own: the calendar sets the row and the list scrolls inside it. */
 .gy-drp-presets { position: relative; min-height: 0; }
 .gy-drp-list { position: absolute; inset: 0 0.75rem 0 0; display: flex; flex-direction: column; gap: 0.125rem; overflow-y: auto; }
@@ -350,9 +350,9 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-drp-preset:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .gy-drp-custom { cursor: default; color: var(--muted-foreground); }
 .gy-drp-custom[aria-current='true'] { background: var(--muted); font-weight: 500; }
-.gy-drp-compare { grid-row: 2; display: flex; padding: 0.75rem 0.75rem 0.75rem 0.625rem; }
+.gy-drp-compare { grid-row: 3; display: flex; padding: 0.75rem 0.75rem 0.75rem 0.625rem; }
 .gy-drp-compare input { flex: none; }
-.gy-drp-foot { grid-column: 1 / -1; grid-row: 4; margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.gy-drp-head { grid-column: 1 / -1; grid-row: 1; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
 .gy-drp-windows { flex: 1; color: var(--muted-foreground); }
 .gy-cal { width: 17.5rem; }
 .gy-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
@@ -375,7 +375,7 @@ button.gy-badge:hover { color: var(--foreground); }
   .gy-drp-panel { display: flex; flex-direction: column; }
   .gy-drp-left > *, .gy-drp-right > * { padding: 0; border-right: 0; }
   .gy-drp-presets { order: 1; } .gy-drp-cal { order: 2; } .gy-drp-compare { order: 3; padding: 0.75rem 0; }
-  .gy-drp-sep { display: none; } .gy-drp-cmplist { order: 5; } .gy-drp-cmpcal { order: 6; } .gy-drp-foot { order: 7; }
+  .gy-drp-sep { display: none; } .gy-drp-cmplist { order: 5; } .gy-drp-cmpcal { order: 6; } .gy-drp-head { order: 0; }
   .gy-drp-presets { position: static; }
   .gy-drp-list { position: static; overflow: visible; }
   .gy-drp-presets { padding-bottom: 0.5rem; }
@@ -484,13 +484,14 @@ button.gy-badge:hover { color: var(--foreground); }
 /* Card tips: opened by script (hover, focus), closed by Escape, so the bubble follows data-open alone. */
 .gy-cardtip .gy-hint-body { opacity: 0; visibility: hidden; translate: 0 -0.25rem; }
 .gy-cardtip[data-open="true"] .gy-hint-body { opacity: 1; visibility: visible; translate: 0 0; }
-.gy-card-metric-row { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
-.gy-card-metric-row .gy-card-metric { min-width: 0; }
-/* The metric's (i): out of sight until the card is pointed at or has focus in it, like the corner's icons. */
-.gy-metric-tip { display: inline-flex; flex-shrink: 0; opacity: 0; pointer-events: none; transition: opacity 120ms; }
-.gy-card:hover .gy-metric-tip, .gy-card:focus-within .gy-metric-tip { opacity: 1; pointer-events: auto; }
-@media (hover: none), (any-hover: none) { .gy-metric-tip { opacity: 1; pointer-events: auto; } }
-.gy-metric-tip .gy-hint { align-self: center; }
+.gy-card-line { display: flex; align-items: baseline; gap: 0.25rem; min-width: 0; }
+.gy-card-line > :first-child { min-width: 0; }
+/* A line's (i): out of sight until the card is pointed at or has focus in it, like the corner's icons.
+   The circle is as tall as the capitals (12px icon at 15px, 10px at 12px); the box sits on the baseline
+   and drops by the circle's inset, so the circle runs from cap top to baseline. */
+.gy-line-tip { display: inline-flex; flex-shrink: 0; position: relative; top: 1px; opacity: 0; pointer-events: none; transition: opacity 120ms; }
+.gy-card:hover .gy-line-tip, .gy-card:focus-within .gy-line-tip { opacity: 1; pointer-events: auto; }
+@media (hover: none), (any-hover: none) { .gy-line-tip { opacity: 1; pointer-events: auto; } }
 .gy-hint-left { right: auto; left: -0.25rem; }
 /* The Data Mart description: Markdown rendered by OWOX, so it needs room and readable type. */
 .gy-hint-md { display: block; width: 22rem; max-width: min(22rem, 80vw); max-height: 16rem; overflow: auto; white-space: normal; }

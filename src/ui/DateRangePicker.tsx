@@ -104,6 +104,13 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
   return (
     <div ref={panelRef} className="gy-drp-panel" tabIndex={-1} role="dialog" aria-label="Date range"
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+      <div className="gy-drp-head">
+        <span className="gy-drp-windows">
+          {formatPeriod(drawn, compareOn ? comparison : null)}
+        </span>
+        <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
+        <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>
+      </div>
       {/* The columns' wrappers don't box their children: each list shares a grid row with its calendar, so it is as tall as the calendar. */}
       <div className="gy-drp-left">
         <div className="gy-drp-presets">
@@ -147,13 +154,6 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
             <Calendar month={compareMonth} selected={comparison} weekStart={weekStart} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />
           </div>
         )}
-      </div>
-      <div className="gy-drp-foot">
-        <span className="gy-drp-windows">
-          {formatPeriod(drawn, compareOn ? comparison : null)}
-        </span>
-        <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
-        <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>
       </div>
     </div>
   );
