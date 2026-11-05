@@ -6,7 +6,7 @@ import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields } from '../owox/sources';
 import type { Blendable, Inputs, MartDetail, OwoxLike } from '../owox/sources';
-import { buildEdges, chooseMain, classDepths, hasPrimaryKey } from './graph';
+import { buildEdges, canBeClass, chooseMain, classDepths } from './graph';
 import type { MartNode } from './graph';
 import { interpret } from './interpret';
 import type { AiMetric, Generate } from './interpret';
@@ -19,8 +19,9 @@ const byText = (a: string, b: string) => a.localeCompare(b);
 /** Covers descriptions and the schema/source signatures of the class marts; modifiedAt is left out, it churns on every actualisation. */
 export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'>, marts: HashMart[]): string {
   return hashString(JSON.stringify([
-    // Bumped when a model needs rebuilding to carry new fields (v2: MetricDef.calculated; v3: Unique Count for every class with a primary key).
-    'model-v3',
+    // Bumped when a model needs rebuilding to carry new fields (v2: MetricDef.calculated; v3: Unique Count for every class with a primary key;
+    // v4: only Data Marts with a date field are classes).
+    'model-v4',
     inputs.projectDescription,
     [...inputs.contexts].sort((a, b) => byText(a.id, b.id)).map((c) => [c.id, c.description]),
     [...marts].sort((a, b) => byText(a.id, b.id)).map((m) => [
@@ -198,8 +199,9 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   if (!nodes.some((n) => n.id === main.id)) throw buildFailed(main.id, failures.get(main.id));
 
   const edges = buildEdges(nodes, visible);
-  const withPk = new Set(nodes.filter((n) => hasPrimaryKey(n.detail)).map((n) => n.id));
-  const depths = classDepths(main.id, edges, withPk);
+  // a Data Mart without a date field can't take the date range, so it is neither drawn nor walked through
+  const classable = new Set(nodes.filter((n) => canBeClass(n.detail)).map((n) => n.id));
+  const depths = classDepths(main.id, edges, classable);
 
   const rank = (m: MetricDef) => (m.role === 'critical' ? (m.source === 'project' ? 0 : 1) : m.role === 'leading' ? 2 : m.role === 'lagging' ? 3 : 4);
   const metrics: MetricDef[] = [];

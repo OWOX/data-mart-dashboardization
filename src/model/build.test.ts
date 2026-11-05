@@ -18,7 +18,7 @@ const data = () => ({
       { name: 'revenue', type: 'FLOAT', alias: 'Revenue', isPrimaryKey: false },
       { name: 'cust_ltv', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'AVG({{ref path="customers" field="ltv"}})', level: 'metric' as const } },
     ] },
-    c: { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }] },
+    c: { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false }] },
   },
   blendables: {
     '11111111-1111-1111-1111-111111111111': { availableSources: [{ aliasPath: 'customers', dataMartId: 'c', title: 'Customers', isAccessibleForReporting: true }], mainUniqueCountKeyFields: ['id'] },
@@ -35,6 +35,30 @@ test('builds main on top and a connected class below', async () => {
   const orders = r.model.classes[0]!;
   expect(r.model.metrics.find((m) => m.id === orders.keyMetricId)?.alias).toBe('Revenue');
   expect(orders.metricIds).toHaveLength(2); // Revenue, then unique count
+});
+
+test('a Data Mart without a date field is not a class, and the walk stops there', async () => {
+  const base = data();
+  // Customers lose their date field and reference Products, which has one
+  const d = {
+    ...base,
+    marts: [...base.marts, mart('p', 'Products')],
+    details: {
+      ...base.details,
+      c: { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: true }, { name: 'top', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'MAX({{ref path="products" field="price"}})', level: 'metric' as const } }] },
+      p: { id: 'p', title: 'Products', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'added', type: 'DATE', isPrimaryKey: false }] },
+    },
+    blendables: {
+      ...base.blendables,
+      c: { availableSources: [{ aliasPath: 'products', dataMartId: 'p', title: 'Products', isAccessibleForReporting: true }], mainUniqueCountKeyFields: ['id'] },
+      p: { availableSources: [], mainUniqueCountKeyFields: ['id'] },
+    },
+  };
+  const r = await buildModel({ owox: fakeOwox(d), generate: async () => goalAi, userId: 'u1', now });
+  expect(r.ok).toBe(true);
+  if (!r.ok) return;
+  expect(r.model.classes.map((c) => c.title)).toEqual(['Orders']);
+  expect(r.model.metrics.some((m) => m.martId === 'c' || m.martId === 'p')).toBe(false);
 });
 
 test('no AI handle blocks', async () => {

@@ -99,6 +99,15 @@ test('a goal without a primary key or a date fails both', async () => {
   expect(c['goal.date']!.status).toBe('fail');
 });
 
+test('a fact Data Mart without a date field warns, and it is not connected to the goal', async () => {
+  const d = data();
+  const undated = { ...d.details[C]!, fields: d.details[C]!.fields.filter((f) => f.name !== 'date') };
+  const c = byId(await run({ ...d, details: { ...d.details, [C]: undated } }));
+  expect(c['connections.date']).toMatchObject({ status: 'warn', detail: 'No date field, so not on the canvas: Customers' });
+  expect(c['connections.facts']!.detail).toContain('Customers');
+  expect(c['connections.pk']!.status).toBe('ok');
+});
+
 test('contexts that cannot be read fail and skip the model freshness check', async () => {
   const owox = fakeOwox(data());
   const getJson = owox.getJson.bind(owox);

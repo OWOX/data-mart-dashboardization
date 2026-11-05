@@ -1,6 +1,6 @@
 import type { Edge } from '../types';
 import { parseRefs } from '../lib/refs';
-import type { Blendable, MartDetail, SchemaField } from '../owox/sources';
+import { DATE_TYPES, type Blendable, type MartDetail, type SchemaField } from '../owox/sources';
 
 export interface MartNode {
   id: string; title: string;
@@ -14,6 +14,14 @@ export function hasPrimaryKey(detail: MartDetail): boolean {
   const walk = (fs: SchemaField[]): boolean => fs.some((f) => f.isPrimaryKey || walk(f.fields ?? []));
   return walk(detail.fields);
 }
+
+export function hasDateField(detail: MartDetail): boolean {
+  const walk = (fs: SchemaField[]): boolean => fs.some((f) => DATE_TYPES.has(f.type.toUpperCase()) || walk(f.fields ?? []));
+  return walk(detail.fields);
+}
+
+/** A class needs a primary key to count and a date field to apply the date range to. */
+export const canBeClass = (detail: MartDetail): boolean => hasPrimaryKey(detail) && hasDateField(detail);
 
 function resolveTarget(path: string, b: Blendable, visible: ReadonlySet<string>, allowHiddenTarget?: string): string | null {
   const segs = path.split('.');
@@ -62,13 +70,14 @@ export function chooseMain(args: { goalMartId: string; goalField: string; nodes:
   return { id: toGoal[0]!.from, viaFallback: true };
 }
 
-export function classDepths(mainId: string, edges: Edge[], withPk: ReadonlySet<string>): Map<string, number> {
+/** Depths from the main class, walking only through Data Marts that can be classes; the main class is always in. */
+export function classDepths(mainId: string, edges: Edge[], classable: ReadonlySet<string>): Map<string, number> {
   const depth = new Map([[mainId, 0]]);
   const queue = [mainId];
   while (queue.length) {
     const cur = queue.shift()!;
     for (const e of edges) {
-      if (e.from !== cur || depth.has(e.to) || !withPk.has(e.to)) continue;
+      if (e.from !== cur || depth.has(e.to) || !classable.has(e.to)) continue;
       depth.set(e.to, depth.get(cur)! + 1);
       queue.push(e.to);
     }

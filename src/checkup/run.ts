@@ -1,6 +1,6 @@
 import type { Model } from '../types';
 import { allFieldPaths, DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields, type Inputs, type MartDetail, type OwoxLike } from '../owox/sources';
-import { buildEdges, chooseMain, classDepths, hasPrimaryKey, type MartNode } from '../model/graph';
+import { buildEdges, canBeClass, chooseMain, classDepths, hasDateField, hasPrimaryKey, type MartNode } from '../model/graph';
 import { checkHealth } from '../model/health';
 import { currentInputHash } from '../model/build';
 import { runPool } from '../lib/pool';
@@ -37,12 +37,13 @@ export const LABELS: Record<string, string> = {
   'connections.any': 'Calculated fields reference other Data Marts',
   'connections.facts': 'Each Data Mart with a fact link connects to the goal',
   'connections.pk': 'Each Data Mart with a fact link has a primary key',
+  'connections.date': 'Each Data Mart with a fact link has a date field',
   'model.health': 'No broken references',
   'model.fresh': 'It matches the descriptions',
 };
 const FIXED: [GroupId, string][] = [['plugin', 'plugin.ai'], ['project', 'project.description'], ['project', 'project.table'], ['project', 'project.critical'], ['project', 'project.fact'], ['project', 'project.plan'], ['project', 'project.links'],
   ['goal', 'goal.access'], ['goal', 'goal.field'], ['goal', 'goal.pk'], ['goal', 'goal.date'], ['contexts', 'contexts.exist'],
-  ['connections', 'connections.reachable'], ['connections', 'connections.any'], ['connections', 'connections.facts'], ['connections', 'connections.pk'], ['model', 'model.health'], ['model', 'model.fresh']];
+  ['connections', 'connections.reachable'], ['connections', 'connections.any'], ['connections', 'connections.facts'], ['connections', 'connections.pk'], ['connections', 'connections.date'], ['model', 'model.health'], ['model', 'model.fresh']];
 const label = (id: string) => LABELS[id.startsWith('context:') ? `context.${id.slice(id.indexOf('.') + 1)}` : id] ?? id;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -201,7 +202,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     const names = (ids: string[]) => ids.map((id) => titles.get(id) ?? id).join(', ');
     if (!main) skip('connections.facts', 'connections.reachable');
     else {
-      const depths = classDepths(main.id, edges, new Set(nodes.filter((n) => hasPrimaryKey(n.detail)).map((n) => n.id)));
+      const depths = classDepths(main.id, edges, new Set(nodes.filter((n) => canBeClass(n.detail)).map((n) => n.id)));
       const off = factIds.filter((id) => !depths.has(id));
       if (off.length) put('connections.facts', 'warn', `Not connected to the goal, so not on the canvas: ${names(off)}`, martFix(off[0]!, titles.get(off[0]!)));
       else put('connections.facts', 'ok');
@@ -209,6 +210,9 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     const noPk = factIds.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !hasPrimaryKey(n.detail); });
     if (noPk.length) put('connections.pk', 'warn', `No primary key: ${names(noPk)}`, martFix(noPk[0]!, titles.get(noPk[0]!)));
     else put('connections.pk', 'ok');
+    const noDate = factIds.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !hasDateField(n.detail); });
+    if (noDate.length) put('connections.date', 'warn', `No date field, so not on the canvas: ${names(noDate)}`, martFix(noDate[0]!, titles.get(noDate[0]!)));
+    else put('connections.date', 'ok');
   });
 
   const modelGroup = () => guard('model', async () => {

@@ -28,7 +28,7 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
   const d = data();
   if (opts.withCustomers) {
     d.marts.push(mart(CID, 'Customers'));
-    d.details[CID] = { id: CID, title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }] };
+    d.details[CID] = { id: CID, title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false }] };
     d.blendables[GID] = { availableSources: [{ aliasPath: 'customers', dataMartId: CID, title: 'Customers', isAccessibleForReporting: true }], mainUniqueCountKeyFields: ['id'] };
     d.blendables[CID] = { availableSources: [], mainUniqueCountKeyFields: ['id'] };
     d.details[GID]!.fields.push({ name: 'ltv', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'AVG({{ref path="customers" field="x"}})', level: 'metric' } });
