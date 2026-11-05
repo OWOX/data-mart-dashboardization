@@ -473,8 +473,10 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                               <button
                                 type="button" className="gy-onto-grip" aria-label={`Reorder ${m.alias}`} title="Drag to reorder, or use the arrow keys" data-handle={m.id}
                                 onPointerDown={(e) => startDrag(e, c, m)} onPointerMove={overDrag}
-                                onPointerUp={() => endDrag(true, c, m)} onPointerCancel={() => endDrag(false, c, m)}
+                                onPointerUp={() => endDrag(true, c, m)} onPointerCancel={() => endDrag(false, c, m)} onLostPointerCapture={() => endDrag(false, c, m)}
                                 onKeyDown={(e) => {
+                                  if (e.key === 'Escape' && dragRef.current) { endDrag(false, c, m); return; }
+                                  if (dragRef.current) return;
                                   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); nudge(c, m, e.key === 'ArrowUp' ? -1 : 1); }
                                 }}
                               >

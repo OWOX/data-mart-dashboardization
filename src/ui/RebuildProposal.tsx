@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Change } from '../model/diff';
 
 const FIELD_LABELS: Record<Extract<Change, { kind: 'metric_changed' }>['field'], string> = {
-  alias: 'name', role: 'role', measure: 'fact', dateField: 'date field', plan: 'plan', kind: 'kind', format: 'format',
+  alias: 'name', measure: 'fact', dateField: 'date field', plan: 'plan', kind: 'kind', format: 'format',
 };
 
 function describe(c: Change, nameOf: (id: string) => string): { what: string; detail: string | null } {

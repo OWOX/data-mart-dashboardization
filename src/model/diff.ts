@@ -1,6 +1,6 @@
 import type { ClassNode, Edge, MetricDef, Model } from '../types';
 
-export type MetricField = 'alias' | 'role' | 'measure' | 'dateField' | 'plan' | 'kind' | 'format';
+export type MetricField = 'alias' | 'measure' | 'dateField' | 'plan' | 'kind' | 'format';
 
 export type Change =
   | { kind: 'class_added' | 'class_removed'; classId: string; title: string }
@@ -16,7 +16,6 @@ const formatText = (m: MetricDef): string => (m.format === 'currency' && m.curre
 
 const FIELDS: { field: MetricField; text: (m: MetricDef) => string }[] = [
   { field: 'alias', text: (m) => m.alias },
-  { field: 'role', text: (m) => m.role },
   { field: 'measure', text: measureText },
   { field: 'dateField', text: dateText },
   { field: 'plan', text: planText },
@@ -111,7 +110,7 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
       if (!c || classes.some((x) => x.id === c.id)) continue;
       const own = c.metricIds.flatMap((id) => { const m = candById.get(id); return m && !pairs.has(id) && !metrics.some((x) => x.id === id) ? [{ ...m, shown: true, forecast: null }] : []; });
       metrics = [...metrics, ...own];
-      classes = [...classes, { ...c, shown: true, metricIds: own.map((m) => m.id), keyMetricId: own.some((m) => m.id === c.keyMetricId) ? c.keyMetricId : own[0]?.id ?? null }];
+      classes = [...classes, { ...c, shown: true, metricIds: own.map((m) => m.id), keyMetricId: null }];
       touched.add(p.classId);
     }
   }
@@ -122,7 +121,7 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
       const cls = classes.find((c) => c.id === p.classId);
       if (!m || !cls || metrics.some((x) => x.id === m.id)) continue;
       metrics = [...metrics, { ...m, shown: true, forecast: null }];
-      classes = classes.map((c) => (c.id === cls.id ? { ...c, metricIds: [...c.metricIds, m.id], keyMetricId: c.keyMetricId ?? m.id } : c));
+      classes = classes.map((c) => (c.id === cls.id ? { ...c, metricIds: [...c.metricIds, m.id] } : c));
     } else if (p.kind === 'metric_removed') {
       metrics = metrics.filter((m) => m.id !== p.metricId);
       classes = classes.map((c) => (c.metricIds.includes(p.metricId) ? { ...c, metricIds: c.metricIds.filter((id) => id !== p.metricId) } : c));
@@ -134,7 +133,6 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
         if (m.id !== p.metricId) return m;
         switch (p.field) {
           case 'alias': return { ...m, alias: next.alias };
-          case 'role': return { ...m, role: next.role };
           case 'kind': return { ...m, kind: next.kind };
           case 'format': return { ...m, format: next.format, currency: next.currency };
           case 'dateField': return { ...m, dateField: next.dateField };

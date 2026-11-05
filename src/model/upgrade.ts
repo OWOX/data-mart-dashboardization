@@ -37,7 +37,8 @@ function keyFirst(classes: Record<string, unknown>[], metrics: Record<string, un
   return classes.map((c) => {
     const ids = c.metricIds as string[];
     const key = c.keyMetricId;
-    if (!isStr(key) || !shown.has(key) || ids.indexOf(key) <= 0) return c;
+    // already the first shown one: the order says so, leave it
+    if (!isStr(key) || !shown.has(key) || ids.find((id) => shown.has(id)) === key) return c;
     return { ...c, metricIds: [key, ...ids.filter((id) => id !== key)] };
   });
 }

@@ -188,7 +188,8 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
     ? swapped.rest.flatMap((id) => metrics.find((m) => m.id === id) ?? [])
     : metrics.filter((m) => m.id !== key?.id);
   // a new key metric on the class drops the reader's swap
-  useEffect(() => setSwap(null), [cls.keyMetricId]);
+  const order = cls.metricIds.join();
+  useEffect(() => setSwap(null), [cls.keyMetricId, order]);
   const pick = (id: string) => { if (key) setSwap({ main: id, rest: secondary.map((m) => (m.id === id ? key.id : m.id)) }); };
   const res = key ? cache?.metrics[key.id] : undefined;
   const header = <CardHead title={cls.title} metric={noAccess || missing || !key ? undefined : key.isUniqueCount ? 'Count' : key.alias} mart={mart} metrics={noAccess || missing ? [] : metrics} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} tools={onOpen && !noAccess && !missing ? <QualityTool quality={quality} path={`/ui/${projectId}/data-marts/${cls.martId}/quality`} onOpen={onOpen} /> : undefined} />;

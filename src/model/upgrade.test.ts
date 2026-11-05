@@ -76,3 +76,9 @@ test('a saved key metric that is not first moves to the front once; the rest kee
   const old = { ...v1, classes: [{ ...v1.classes[0], keyMetricId: 'q', metricIds: ['p', 'q'] }], metrics: [{ ...v1.metrics[0], id: 'p' }, { ...v1.metrics[0], id: 'q' }] };
   expect(upgradeModel(old)!.classes[0]!.metricIds).toEqual(['q', 'p']);
 });
+
+test('a key that is already the first shown metric leaves the order alone', () => {
+  const metric = (id: string, shown: boolean) => ({ ...v1.metrics[0], id, shown, forecast: null });
+  const doc = { ...v2, classes: [{ ...v2.classes[0], keyMetricId: 'b', metricIds: ['a', 'b', 'c'] }], metrics: [metric('a', false), metric('b', true), metric('c', true)] };
+  expect(upgradeModel(doc)!.classes[0]!.metricIds).toEqual(['a', 'b', 'c']);
+});

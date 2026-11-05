@@ -517,3 +517,20 @@ test('Enter after a filter with no match keeps the forecast', async () => {
   await waitFor(() => expect(onSave).toHaveBeenCalled());
   expect((onSave.mock.calls[0] as unknown as [Model])[0].metrics[0]!.forecast).toEqual(m.metrics[0]!.forecast);
 });
+
+test('Escape cancels a pointer drag, arrows are ignored during it, and a lost capture clears it', () => {
+  setup();
+  const handle = () => row('Revenue').getByRole('button', { name: 'Reorder Revenue' });
+  fireEvent.pointerDown(handle(), { pointerId: 1, clientY: 0 });
+  fireEvent.keyDown(handle(), { key: 'ArrowDown' });
+  expect(order()).toEqual(['Metric Revenue', 'Metric Units']);
+  expect(screen.getByRole('status')).toHaveTextContent('');
+  expect(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).toHaveClass('is-dragging');
+  fireEvent.keyDown(handle(), { key: 'Escape' });
+  expect(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).not.toHaveClass('is-dragging');
+  fireEvent.pointerUp(handle(), { pointerId: 1 });
+  expect(order()).toEqual(['Metric Revenue', 'Metric Units']);
+  fireEvent.pointerDown(handle(), { pointerId: 1, clientY: 0 });
+  fireEvent.lostPointerCapture(handle(), { pointerId: 1 });
+  expect(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).not.toHaveClass('is-dragging');
+});

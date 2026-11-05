@@ -42,14 +42,14 @@ test('every change kind is found', () => {
   const cand = copy(base());
   cand.classes = [cls('a', 'Orders', 0, ['a:rev:SUM', 'a:new:SUM']), cls('d', 'Deals', 1, ['d:v:SUM'])];
   cand.metrics = [
-    metric('a:rev:SUM', 'a', 'Sales', 'rev', { role: 'lagging', kind: 'level', dateField: null, plan: { martId: 'p', measure: { field: 'g', fn: 'SUM' }, dateField: 'day', shape: 'daily' } }),
+    metric('a:rev:SUM', 'a', 'Sales', 'rev', { kind: 'level', dateField: null, plan: { martId: 'p', measure: { field: 'g', fn: 'SUM' }, dateField: 'day', shape: 'daily' } }),
     metric('a:new:SUM', 'a', 'New', 'new'),
     metric('d:v:SUM', 'd', 'Value', 'v'),
   ];
   cand.edges = [{ from: 'a', to: 'd' }];
   const changes = diffModels(base(), cand);
   expect(changes.map((c) => c.kind === 'metric_changed' ? `changed:${c.field}` : c.kind).sort()).toEqual([
-    'changed:alias', 'changed:dateField', 'changed:kind', 'changed:plan', 'changed:role',
+    'changed:alias', 'changed:dateField', 'changed:kind', 'changed:plan',
     'class_added', 'class_removed', 'metric_added', 'metric_removed',
   ]);
   expect(changes).toContainEqual({ kind: 'metric_changed', classId: 'a', metricId: 'a:rev:SUM', field: 'alias', before: 'Revenue', after: 'Sales' });
@@ -83,13 +83,13 @@ test('a subset applies; unpicked changes stay, shown and forecast are preserved'
   const cur = base();
   cur.metrics[0] = { ...cur.metrics[0]!, shown: false, forecast: { martId: 'f', measure: { field: 'x', fn: 'SUM' }, dateField: 'day' } };
   const cand = copy(base());
-  cand.metrics[0] = { ...cand.metrics[0]!, alias: 'Sales', role: 'lagging', shown: true };
+  cand.metrics[0] = { ...cand.metrics[0]!, alias: 'Sales', shown: true };
   cand.metrics[1] = { ...cand.metrics[1]!, alias: 'Pieces' };
   const changes = diffModels(cur, cand);
   const picked = changes.filter((c) => c.kind === 'metric_changed' && c.field === 'alias' && c.metricId === 'a:rev:SUM');
   expect(picked).toHaveLength(1);
   const next = applyChanges(cur, cand, picked, '2026-11-04T10:00:00Z');
-  expect(next.metrics[0]).toEqual({ ...cur.metrics[0], alias: 'Sales' }); // role unpicked, shown and forecast kept
+  expect(next.metrics[0]).toEqual({ ...cur.metrics[0], alias: 'Sales' }); // shown and forecast kept
   expect(next.metrics[1]!.alias).toBe('Units');
   expect(next.editedAt).toBe('2026-11-04T10:00:00Z');
   expect(cur.metrics[0]!.alias).toBe('Revenue'); // input untouched
