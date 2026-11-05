@@ -98,6 +98,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [refreshing, setRefreshing] = useState(false);
   // loading: the line and step text show, from the first screen until the refresh ends; progress: metrics done of total, once known
   const [loading, setLoading] = useState(false);
+  // the cache check on entering the canvas. The host bar stays on through it, from the first render of the canvas (before the
+  // check starts), so the bar that left with the last view hands over without the host bar finishing in between
+  const [probing, setProbing] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [steps, setSteps] = useState<BuildStep[]>([]);
   // the input hash the model is out of date against, or null; a discarded proposal's hash is dismissed for this session only
@@ -261,8 +264,10 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     // without a cached doc the line shows from the first screen, not empty cards
     const probe = refreshId.current;
     const probeKey = cacheKey(range, compare, settings.weekStart);
+    setProbing(true);
     void (persistable(range, compare) ? loadCache(store, probeKey).catch(() => null) : Promise.resolve(null)).then((saved) => {
       if (!saved && refreshId.current === probe) setLoading(true);
+      setProbing(false);
     });
     fetchInputs(owox).catch(() => null).then(async (data) => {
       // the check lands before the inputs, so the first refresh already knows what is broken
@@ -385,6 +390,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       } : undefined;
       return (
         <main className="gy-main">
+          {(probing || fetchedFor.current !== model) && <LoadingBar />}
           <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} status={status} notices={notices} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
           {seedNote && <p className="gy-muted">{seedNote}</p>}

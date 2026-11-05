@@ -38,7 +38,8 @@ test('the marts point counts up and ticks do not reach the live region', () => {
   const read = (done: number): BuildStep => ({ kind: 'read', what: 'marts', done, total: 12, finished: false });
   const { container, rerender } = render(<BuildProgress steps={[ck('marts', 'running'), read(3)]} />);
   expect(screen.getByText('Data Marts read: 3 of 12')).toBeInTheDocument();
-  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
+  // before the AI step the marts fill the first half: 3 of 12 is 12.5%
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '13');
   const live = () => container.querySelector('section[aria-label="Checklist"] [aria-live]')!.textContent;
   expect(live()).toBe('Data Marts read: in progress');
   rerender(<BuildProgress steps={[ck('marts', 'running'), read(3), read(4)]} />);

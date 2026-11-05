@@ -493,7 +493,7 @@ test('without a cache the line and step text walk through the steps and go away'
   const g = gated(s.deps);
   render(<App ctx={ctxWith().ctx} deps={g.deps} />);
   expect(await screen.findByText(/Reading Data Marts…/)).toBeInTheDocument();
-  expect(line()).not.toHaveAttribute('aria-valuenow');
+  await waitFor(() => expect(line()).toHaveAttribute('data-determinate', 'false'));
   g.openList();
   expect(await screen.findByText(/Loading metrics 0 of \d+/)).toBeInTheDocument();
   g.open();
@@ -501,11 +501,12 @@ test('without a cache the line and step text walk through the steps and go away'
   expect(screen.getByText(/Updated just now/)).toBeInTheDocument();
 });
 
-test('a fresh cache shows no line', async () => {
+test('a fresh cache keeps the line only while the cache is read', async () => {
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await screen.findByText(/Updated 1 h ago/);
-  expect(line()).toBeNull();
+  await waitFor(() => expect(line()).toBeNull());
+  expect(screen.queryByText(/Loading metrics|Reading Data Marts/)).toBeNull();
 });
 
 test('a stale cache refreshes behind the line, cards stay interactive', async () => {
