@@ -16,7 +16,6 @@ function relativeTime(iso: string, now: Date): string {
 }
 
 interface Props {
-  title: string;
   cache: CacheDoc | null;
   now: Date;
   /** The selected range and, when comparison is on, the window it is compared with. */
@@ -27,7 +26,7 @@ interface Props {
   notices?: Notices;
 }
 
-export function Header({ title, cache, now, period, status = null, notices }: Props) {
+export function Header({ cache, now, period, status = null, notices }: Props) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const layer = useRef<HTMLDivElement>(null);
@@ -37,9 +36,8 @@ export function Header({ title, cache, now, period, status = null, notices }: Pr
   const windows = period ? formatPeriod(period.range, period.comparison) : null;
   return (
     <header className="gy-header">
-      <div className="label">GYROSCOPE</div>
       <div className="gy-header-line">
-        <h1 className="gy-header-title">{title}</h1>
+        <h1 className="gy-header-title">Gyroscope</h1>
         {notices && count > 0 && (
           <span className="gy-issues-anchor">
             <button ref={trigger} type="button" className="gy-icon-btn gy-issues-btn" aria-label={`${count} ${count === 1 ? 'issue' : 'issues'}`} title="Issues"

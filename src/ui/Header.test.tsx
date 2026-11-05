@@ -5,11 +5,12 @@ const controls = (over: Partial<Parameters<typeof RangeControls>[0]> = {}) => (
   <RangeControls range={{ kind: 'preset', preset: 'this_quarter' }} compare={{ kind: 'preset', preset: 'previous_period' }} now={new Date('2026-10-24T10:00:00Z')} onChange={() => {}} onRefresh={() => {}} onSettings={() => {}} {...over} />
 );
 
-test('the header holds the title and the update time, no controls', () => {
-  render(<Header title="Customers" cache={null} now={new Date()} />);
-  expect(screen.getByRole('heading', { name: 'Customers' })).toBeInTheDocument();
+test('the header reads Gyroscope with the update time, no controls and no label', () => {
+  render(<Header cache={null} now={new Date()} />);
+  expect(screen.getByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
   expect(screen.getByText('Not loaded yet')).toBeInTheDocument();
   expect(screen.queryByRole('button')).toBeNull();
+  expect(screen.queryByText('GYROSCOPE')).toBeNull();
 });
 
 test('refresh and settings icons follow the date range, settings last', () => {
@@ -48,11 +49,11 @@ test('the windows and the update time sit next to the title', () => {
   const now = new Date('2026-11-03T12:00:00Z');
   const period = { range: { from: '2026-10-01', to: '2026-11-02' }, comparison: { from: '2026-07-01', to: '2026-08-02' } };
   const cache = { refreshedAt: '2026-11-03T11:48:00Z' } as never;
-  const { container, rerender } = render(<Header title="Customers" cache={cache} now={now} period={period} />);
+  const { container, rerender } = render(<Header cache={cache} now={now} period={period} />);
   const line = container.querySelector('.gy-header-line')!;
-  expect(line.firstElementChild).toBe(screen.getByRole('heading', { name: 'Customers' }));
+  expect(line.firstElementChild).toBe(screen.getByRole('heading', { name: 'Gyroscope' }));
   expect(line.querySelector('.gy-header-sub')!.textContent).toBe('Oct 1 – Nov 2 vs Jul 1 – Aug 2, 2026 · Updated 12 min ago');
-  rerender(<Header title="Customers" cache={null} now={now} period={{ ...period, comparison: null }} />);
+  rerender(<Header cache={null} now={now} period={{ ...period, comparison: null }} />);
   expect(line.querySelector('.gy-header-sub')!.textContent).toBe('Oct 1 – Nov 2, 2026 · Not loaded yet');
 });
 
@@ -60,23 +61,23 @@ test('the loading step replaces the update time after the period', () => {
   const win = (from: string, to: string) => ({ from, to });
   const period = { range: win('2026-10-01', '2026-11-01'), comparison: win('2026-07-01', '2026-08-01') };
   const cache = { refreshedAt: '2026-10-24T09:00:00Z' } as never;
-  const { rerender } = render(<Header title="T" cache={cache} now={new Date('2026-10-24T10:00:00Z')} period={period} status="Loading metrics 12 of 31" />);
+  const { rerender } = render(<Header cache={cache} now={new Date('2026-10-24T10:00:00Z')} period={period} status="Loading metrics 12 of 31" />);
   const sub = document.querySelector('.gy-header-sub')!;
   expect(sub).toHaveAttribute('aria-live', 'polite');
   expect(sub.textContent).toMatch(/ · Loading metrics 12 of 31$/);
   expect(sub.textContent).not.toMatch(/Updated/);
-  rerender(<Header title="T" cache={cache} now={new Date('2026-10-24T10:00:00Z')} period={period} status={null} />);
+  rerender(<Header cache={cache} now={new Date('2026-10-24T10:00:00Z')} period={period} status={null} />);
   expect(sub.textContent).toMatch(/ · Updated 1 h ago$/);
 });
 
 describe('issues icon', () => {
   const issue = { classTitle: 'Customers', metricName: 'ARR', text: 'The field "arr" no longer exists.' };
   const withNotices = (over: Partial<NonNullable<Parameters<typeof Header>[0]['notices']>> = {}) => (
-    <Header title="Customers" cache={null} now={new Date()} notices={{ issues: [issue], outdated: false, onReview: () => {}, ...over }} />
+    <Header cache={null} now={new Date()} notices={{ issues: [issue], outdated: false, onReview: () => {}, ...over }} />
   );
 
   test('no icon without notices', () => {
-    render(<Header title="Customers" cache={null} now={new Date()} notices={{ issues: [], outdated: false, onReview: () => {} }} />);
+    render(<Header cache={null} now={new Date()} notices={{ issues: [], outdated: false, onReview: () => {} }} />);
     expect(screen.queryByRole('button')).toBeNull();
   });
 

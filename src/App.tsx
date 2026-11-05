@@ -379,7 +379,6 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     case 'ready': {
       if (!model) return null;
       const status = loading || refreshing ? (progress ? `Loading metrics ${progress.done} of ${progress.total}` : inputsReady ? 'Loading metrics…' : 'Reading Data Marts…') : null;
-      const main = model.classes.find((c) => c.id === model.goal.classId) ?? model.classes[0];
       const showOutdated = outdated !== null && outdated !== model.inputHash && outdated !== dismissedHash;
       const notices = issuesNow.length > 0 || showOutdated ? {
         issues: issuesNow.map((i) => ({
@@ -392,7 +391,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       } : undefined;
       return (
         <main className="gy-main">
-          <Header title={main?.title ?? 'Gyroscope'} cache={cache} now={now()} period={periodShown} status={status} notices={notices} />
+          <Header cache={cache} now={now()} period={periodShown} status={status} notices={notices} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
           {seedNote && <p className="gy-muted">{seedNote}</p>}
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}

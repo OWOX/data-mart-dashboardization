@@ -36,7 +36,6 @@ body { margin: 0; color: var(--foreground); font-size: 0.875rem; line-height: 1.
 button { font: inherit; color: inherit; }
 h2 { margin: 0; }
 .num { font-variant-numeric: tabular-nums; }
-.label { font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-foreground); }
 .gy-page { min-height: 100vh; overflow-x: clip; }
 .gy-main { padding: 1.5rem 3rem 3rem; }
 @media (max-width: 640px) { .gy-main { padding: 1rem 1.25rem; } }
