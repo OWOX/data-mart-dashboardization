@@ -154,3 +154,16 @@ test('onUpdate starts with running checks and ends with the resolved list', asyn
   for (const id of ['plugin.ai', 'project.description', 'connections.reachable']) expect(first[id]!.status, id).toBe('running');
   expect(calls.at(-1)).toEqual(cs);
 });
+
+test('each Data Mart schema is requested once per run, with a saved model', async () => {
+  const owox = fakeOwox(data());
+  const paths: string[] = [];
+  const getJson = owox.getJson.bind(owox) as (...a: unknown[]) => Promise<unknown>;
+  const counting = { ...owox, getJson: ((path: string, ...rest: unknown[]) => { paths.push(path); return getJson(path, ...rest); }) as typeof owox.getJson };
+  const m = { ...savedModel, classes: [G, C, P].map((id) => ({ ...savedModel.classes[0]!, id, martId: id })) };
+  await runCheckup({ owox: counting, hasAi: true, model: m, projectId: 'p', onUpdate: () => {} });
+  for (const id of [G, C, P]) {
+    expect(paths.filter((p) => p === `/api/data-marts/${id}`), id).toHaveLength(1);
+    expect(paths.filter((p) => p === `/api/data-marts/${id}/blendable-schema`), id).toHaveLength(1);
+  }
+});

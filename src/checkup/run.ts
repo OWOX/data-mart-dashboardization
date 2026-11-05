@@ -1,5 +1,5 @@
 import type { Model } from '../types';
-import { allFieldPaths, DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields, type Blendable, type Inputs, type MartDetail, type OwoxLike } from '../owox/sources';
+import { allFieldPaths, DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields, type Inputs, type MartDetail, type OwoxLike } from '../owox/sources';
 import { buildEdges, chooseMain, classDepths, hasPrimaryKey, type MartNode } from '../model/graph';
 import { checkHealth } from '../model/health';
 import { currentInputHash } from '../model/build';
@@ -47,7 +47,14 @@ const label = (id: string) => LABELS[id.startsWith('context:') ? `context.${id.s
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** Runs every check of the spec. Never throws; resolves with the final list. */
-export async function runCheckup({ owox, hasAi, model, projectId, onUpdate }: CheckupArgs): Promise<Check[]> {
+export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate }: CheckupArgs): Promise<Check[]> {
+  // Every Data Mart schema is requested once per run, however many checks (and checkHealth) ask for it.
+  const cache = new Map<string, Promise<unknown>>();
+  const owox: OwoxLike = { ...raw, getJson: <T,>(path: string, ...rest: unknown[]) => {
+    if (!/^\/api\/data-marts\/[^/]+(\/blendable-schema)?$/.test(path)) return (raw.getJson as (...a: unknown[]) => Promise<T>)(path, ...rest);
+    if (!cache.has(path)) cache.set(path, (raw.getJson as (...a: unknown[]) => Promise<T>)(path, ...rest));
+    return cache.get(path) as Promise<T>;
+  } } as OwoxLike;
   const map = new Map<string, Check>();
   const publish = () => onUpdate([...map.values()]);
   const add = (id: string, group: GroupId, context?: Check['context']) => { map.set(id, { id, group, label: label(id), status: 'running', ...(context ? { context } : {}) }); };
@@ -176,7 +183,8 @@ export async function runCheckup({ owox, hasAi, model, projectId, onUpdate }: Ch
     if (!factOk) { for (const id of ['reachable', 'any', 'facts', 'pk']) skip(`connections.${id}`, 'project.fact'); return; }
     const nodes: MartNode[] = [];
     await runPool(inputs.marts.map((m) => async () => {
-      const [d, blendable] = await Promise.all([detail(m.id), fetchBlendable(owox, m.id)] as [Promise<MartDetail>, Promise<Blendable>]);
+      const d = await detail(m.id);
+      const blendable = await fetchBlendable(owox, m.id);
       nodes.push({ id: m.id, title: m.title, contexts: m.contexts, detail: d, blendable });
     }), 6);
     const edges = buildEdges(nodes, visible, goalId);
