@@ -38,6 +38,28 @@ test('a candidate currency without a code never proposes wiping a typed one', ()
 
 test('no differences, no changes', () => expect(diffModels(base(), copy(base()))).toEqual([]));
 
+test('a stored model with reordered keys or a missing fn proposes nothing', () => {
+  const cur = base();
+  cur.metrics[0] = { ...cur.metrics[0]!, plan: { martId: 'p', measure: { field: 'g', fn: 'SUM' }, dateField: 'day', shape: 'level' } };
+  const cand = copy(cur);
+  const stored = JSON.parse(JSON.stringify(cur)) as Model;
+  stored.metrics[0] = { ...stored.metrics[0]!, measure: { fn: 'SUM', field: 'rev' }, plan: { shape: 'level', dateField: 'day', measure: { fn: 'SUM', field: 'g' }, martId: 'p' } };
+  stored.metrics[1] = { ...stored.metrics[1]!, measure: { field: 'qty', fn: null } };
+  cand.metrics[1] = { ...cand.metrics[1]!, measure: { field: 'qty' } as MetricDef['measure'] };
+  expect(diffModels(stored, cand)).toEqual([]);
+});
+
+test('a plan that differs only in shape, aggregation or Data Mart is still a change', () => {
+  const plan = { martId: 'p', measure: { field: 'g', fn: 'SUM' as const }, dateField: 'day', shape: 'daily' as const };
+  const cur = base();
+  cur.metrics[0] = { ...cur.metrics[0]!, plan };
+  for (const next of [{ ...plan, shape: 'level' as const }, { ...plan, measure: { field: 'g', fn: 'MAX' as const } }, { ...plan, martId: 'q' }]) {
+    const cand = copy(cur);
+    cand.metrics[0] = { ...cand.metrics[0]!, plan: next };
+    expect(diffModels(cur, cand).map((c) => c.kind === 'metric_changed' && c.field)).toEqual(['plan']);
+  }
+});
+
 test('every change kind is found', () => {
   const cand = copy(base());
   cand.classes = [cls('a', 'Orders', 0, ['a:rev:SUM', 'a:new:SUM']), cls('d', 'Deals', 1, ['d:v:SUM'])];

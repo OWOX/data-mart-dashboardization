@@ -1,4 +1,4 @@
-import type { ClassNode, Edge, MetricDef, Model } from '../types';
+import type { ClassNode, Edge, Measure, MetricDef, Model, PlanDef } from '../types';
 
 export type MetricField = 'measure' | 'dateField' | 'plan' | 'kind' | 'format';
 
@@ -21,8 +21,20 @@ const FIELDS: { field: MetricField; text: (m: MetricDef) => string }[] = [
   { field: 'kind', text: (m) => m.kind },
   { field: 'format', text: formatText },
 ];
+// field by field, not by JSON: a stored model may come back with its keys in another order or without a null fn
+const sameMeasure = (a: Measure, b: Measure): boolean => a.field === b.field && (a.fn ?? null) === (b.fn ?? null);
+const samePlan = (a: PlanDef | null, b: PlanDef | null): boolean =>
+  a === null || b === null ? a === b : a.martId === b.martId && a.dateField === b.dateField && a.shape === b.shape && sameMeasure(a.measure, b.measure);
 // text can hide a difference (a plan's Data Mart), so what counts as changed is the structure
-const same = (f: MetricField, a: MetricDef, b: MetricDef): boolean => (f === 'measure' || f === 'plan' ? JSON.stringify(a[f]) === JSON.stringify(b[f]) : f === 'format' ? (a.format === 'currency' && b.format === 'currency' && b.currency === null) || formatText(a) === formatText(b) : a[f] === b[f]);
+const same = (f: MetricField, a: MetricDef, b: MetricDef): boolean => {
+  switch (f) {
+    case 'measure': return sameMeasure(a.measure, b.measure);
+    case 'plan': return samePlan(a.plan ?? null, b.plan ?? null);
+    case 'format': return (a.format === 'currency' && b.format === 'currency' && b.currency === null) || formatText(a) === formatText(b);
+    case 'dateField': return (a.dateField ?? null) === (b.dateField ?? null);
+    case 'kind': return a.kind === b.kind;
+  }
+};
 
 const classOf = (m: Model, metricId: string, martId: string): string => m.classes.find((c) => c.metricIds.includes(metricId))?.id ?? martId;
 

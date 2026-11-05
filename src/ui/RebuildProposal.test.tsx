@@ -38,3 +38,12 @@ test('the old goal class row needs the new goal class row: unchecking one unchec
   fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
   expect(p.onApply).toHaveBeenCalledWith([added, removed]);
 });
+
+test('changes are grouped under their Data Mart, the class row first', () => {
+  const fact: Change = { kind: 'metric_changed', classId: 'a', metricId: 'm', field: 'kind', before: 'flow', after: 'level' };
+  const other: Change = { kind: 'metric_added', classId: 'c', metricId: 'n', alias: 'New' };
+  render(<RebuildProposal {...props([fact, other, removed], { titleOf: (id: string) => ({ a: 'Orders', c: 'Customers' })[id] })} />);
+  expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual(['Orders', 'Customers']);
+  const [orders] = screen.getAllByRole('list');
+  expect([...orders!.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['Remove class Orders', 'm: kindflow → level']);
+});

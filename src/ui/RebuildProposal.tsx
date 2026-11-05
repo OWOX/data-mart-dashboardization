@@ -15,7 +15,15 @@ function describe(c: Change, nameOf: (id: string) => string): { what: string; de
   }
 }
 
-/** What a rebuild would change, one row per change, all picked. Nothing is saved until Apply selected. */
+/** Indexes of the changes per Data Mart, in order of first mention; a class row leads its group. */
+function groups(changes: Change[]): [string, number[]][] {
+  const by = new Map<string, number[]>();
+  changes.forEach((c, i) => { const g = by.get(c.classId) ?? []; g.push(i); by.set(c.classId, g); });
+  const isClass = (i: number) => changes[i]!.kind === 'class_added' || changes[i]!.kind === 'class_removed';
+  return [...by].map(([id, rows]) => [id, [...rows.filter(isClass), ...rows.filter((i) => !isClass(i))]]);
+}
+
+/** What a rebuild would change, grouped by Data Mart, one row per change, all picked. Nothing is saved until Apply selected. */
 export function RebuildProposal({ changes, titleOf, nameOf, busy, error, needs, onApply, onDiscard, onClose }: {
   changes: Change[];
   titleOf: (classId: string) => string;
@@ -52,22 +60,26 @@ export function RebuildProposal({ changes, titleOf, nameOf, busy, error, needs, 
   return (
     <section className="dm-card gy-onto-class" aria-label="Rebuild proposal">
       <p className="gy-onto-note">The descriptions suggest these changes. Nothing is saved until you apply them.</p>
-      <ul className="gy-proposal">
-        {changes.map((c, i) => {
-          const { what, detail } = describe(c, nameOf);
-          return (
-            <li key={i} className="gy-proposal-row">
-              <label className="gy-check">
-                <input type="checkbox" checked={!off.has(i) && !blocked(i)} disabled={blocked(i)} onChange={(e) => toggle(i, e.target.checked)} />
-                <span>{what}</span>
-              </label>
-              <span className="dm-muted gy-onto-contexts">{titleOf(c.classId)}</span>
-              {detail && <span>{detail}</span>}
-              {blocked(i) && <span className="dm-muted gy-onto-contexts">Needs the new goal class</span>}
-            </li>
-          );
-        })}
-      </ul>
+      {groups(changes).map(([classId, rows]) => (
+        <div key={classId} className="gy-proposal-group">
+          <h4 className="gy-proposal-title">{titleOf(classId)}</h4>
+          <ul className="gy-proposal">
+            {rows.map((i) => {
+              const { what, detail } = describe(changes[i]!, nameOf);
+              return (
+                <li key={i} className="gy-proposal-row">
+                  <label className="gy-check">
+                    <input type="checkbox" checked={!off.has(i) && !blocked(i)} disabled={blocked(i)} onChange={(e) => toggle(i, e.target.checked)} />
+                    <span>{what}</span>
+                  </label>
+                  {detail && <span>{detail}</span>}
+                  {blocked(i) && <span className="dm-muted gy-onto-contexts">Needs the new goal class</span>}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
       {error && <p role="alert" className="gy-form-error">{error}</p>}
       <div className="gy-form-actions">
         <button type="button" className="gy-btn gy-btn-primary" onClick={() => onApply(picked)} disabled={busy || picked.length === 0}>Apply selected</button>
