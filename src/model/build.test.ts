@@ -88,7 +88,7 @@ test('a failed AI request is AI_REQUEST_FAILED with the provider message, and th
   const steps: BuildStep[] = [];
   const generate = async () => { throw new Error('AI provider request could not be completed'); };
   const r = await buildModel({ owox: fakeOwox(data()), generate, userId: 'u1', now, onStep: (s) => steps.push(s) });
-  expect(r).toMatchObject({ ok: false, blocked: { code: 'AI_REQUEST_FAILED', detail: "The AI model didn't answer.", mismatches: ['AI provider request could not be completed'] } });
+  expect(r).toMatchObject({ ok: false, blocked: { code: 'AI_REQUEST_FAILED', detail: "The request to the AI provider failed or timed out.", mismatches: ['AI provider request could not be completed'] } });
   expect(lastChecks(steps).get('ai')).toMatchObject({ state: 'failed' });
 });
 

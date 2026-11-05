@@ -30,7 +30,7 @@ test('AI_NOT_CONFIGURED links to Plugins', () => {
 
 test('AI_REQUEST_FAILED says the model did not answer, links to Plugins, no snippet', () => {
   const onOpen = vi.fn();
-  render(<Blocked blocked={{ code: 'AI_REQUEST_FAILED', detail: "The AI model didn't answer.", mismatches: ['AI provider request could not be completed'] }} projectId="p42" onRetry={() => {}} onOpen={onOpen} />);
+  render(<Blocked blocked={{ code: 'AI_REQUEST_FAILED', detail: "The request to the AI provider failed or timed out.", mismatches: ['AI provider request could not be completed'] }} projectId="p42" onRetry={() => {}} onOpen={onOpen} />);
   expect(screen.getByRole('heading', { name: "The AI model didn't answer" })).toBeInTheDocument();
   expect(screen.getByText('AI provider request could not be completed')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Plugins' }));

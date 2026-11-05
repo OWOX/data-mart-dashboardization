@@ -149,7 +149,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     ai = await interpret(generate, { projectDescription: inputs.projectDescription, contexts: inputs.contexts, links, dateFields });
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') throw e;
-    if (!isReadingError(e)) return block(fail('AI_REQUEST_FAILED', "The AI model didn't answer.", [describeError(e)]));
+    if (!isReadingError(e)) return block(fail('AI_REQUEST_FAILED', "The request to the AI provider failed or timed out.", [describeError(e)]));
     return block(fail('AI_INVALID', "The AI's reading of the descriptions doesn't match the Data Mart schemas.", [e instanceof Error ? e.message : String(e)]));
   }
   check('ai', 'done');
