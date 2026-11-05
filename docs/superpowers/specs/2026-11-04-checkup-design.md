@@ -16,6 +16,7 @@ Date: 2026-11-04. Status: approved in chat (2026-11-04); the user chose to parse
 2. Opening the tab starts a run. Each check shows as running and changes to its result when that result is known. A refresh icon in the tab's header starts a new run, spins while one runs, and the header shows "Checked HH:MM" after a run ends. A refresh drops the results of the run it replaces.
 3. Nothing is saved, nothing calls the AI, and `plugin.json` doesn't change.
 4. A run never throws. A failed request turns the checks that need it into failed checks, with the error as their detail.
+5. The blocked screen has a "Run checkup" button, and `/settings/checkup` opens without a model. Leaving Settings with no model starts the build.
 
 ## Statuses
 
@@ -79,7 +80,6 @@ A passed check can carry a detail, for example "Retail net revenue (Orders)" for
 
 1. Reading descriptions that don't use the Metrics table.
 2. Fixing anything from the tab itself.
-3. Opening the Checkup from the blocked screen (it has its own fix steps).
 
 ## Risks
 

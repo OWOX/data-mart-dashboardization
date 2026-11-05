@@ -64,8 +64,8 @@ function stepContent(step: string, projectId: string, onOpen?: (path: string) =>
   });
 }
 
-export function Blocked({ blocked, projectId, onRetry, onBack, backLabel = 'Back to canvas', embedded = false, onOpen }: {
-  blocked: BlockedInfo; projectId: string; onRetry: () => void; onBack?: () => void; backLabel?: string;
+export function Blocked({ blocked, projectId, onRetry, onBack, backLabel = 'Back to canvas', embedded = false, onOpen, onCheckup }: {
+  blocked: BlockedInfo; projectId: string; onRetry: () => void; onCheckup?: () => void; onBack?: () => void; backLabel?: string;
   /** Inside a page that has its own h1: the heading drops to h2. */
   embedded?: boolean;
   /** Goes to an OWOX page; without it the page names show as plain text. */
@@ -89,6 +89,7 @@ export function Blocked({ blocked, projectId, onRetry, onBack, backLabel = 'Back
         </div>
       )}
       <p><button type="button" className="gy-btn gy-btn-primary" onClick={onRetry}>Retry</button>
+        {onCheckup && <>{' '}<button type="button" className="gy-btn" onClick={onCheckup}>Run checkup</button></>}
         {onBack && <>{' '}<button type="button" className="gy-btn" onClick={onBack}>{backLabel}</button></>}
       </p>
     </div>

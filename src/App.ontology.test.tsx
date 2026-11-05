@@ -148,3 +148,28 @@ test('/settings/checkup opens the Checkup tab and runs the checks; clicking the 
   fireEvent.click(await screen.findByRole('tab', { name: 'Checkup' }));
   expect(setRoute).toHaveBeenLastCalledWith('/settings/checkup');
 });
+
+test('with no model, /settings/checkup opens Checkup without a build; Metrics says no model; Back builds', async () => {
+  const generate = vi.fn(async () => goalAi);
+  const owox = fakeOwox(data());
+  const deps: AppDeps = { owox, store: memoryCollections(), generate, userId: 'u1', now: () => NOW };
+  const { ctx, setRoute } = ctxWith('/settings/checkup');
+  render(<App ctx={ctx} deps={deps} />);
+  expect(await screen.findByRole('tab', { name: 'Checkup', selected: true })).toBeInTheDocument();
+  expect(generate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  expect(screen.getByText("No model yet. It's built when you go back to the canvas.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+  expect(setRoute).toHaveBeenLastCalledWith('/');
+  await waitFor(() => expect(generate).toHaveBeenCalled());
+});
+
+test('the blocked view offers Run checkup, which opens the tab and sets the route', async () => {
+  const noGoal = { ...data(), projectDescription: 'nothing here' };
+  const deps: AppDeps = { owox: fakeOwox(noGoal), store: memoryCollections(), generate: async () => goalAi, userId: 'u1', now: () => NOW };
+  const { ctx, setRoute } = ctxWith('/');
+  render(<App ctx={ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Run checkup' }));
+  expect(await screen.findByRole('tab', { name: 'Checkup', selected: true })).toBeInTheDocument();
+  expect(setRoute).toHaveBeenLastCalledWith('/settings/checkup');
+});

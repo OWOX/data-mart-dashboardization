@@ -154,6 +154,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const tab = startTab.current;
       startTab.current = null;
       if (m) setView(tab ? { name: 'settings', tab } : { name: 'ready' });
+      else if (tab === 'checkup') setView({ name: 'settings', tab });
       else void buildRef.current();
     } catch (e) {
       setView({ name: 'error', message: describeError(e), retry: 'load' });
@@ -292,7 +293,11 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   }, [inputsReady, inputs, model, owox, refresh]);
 
   const openSettings = (tab: SettingsTab = 'general') => { ctx.ui?.setRoute?.(ROUTES[tab]); setSettingsError(null); setView({ name: 'settings', tab }); };
-  const leaveSettings = () => { ctx.ui?.setRoute?.('/'); setView({ name: 'ready' }); };
+  const leaveSettings = () => {
+    ctx.ui?.setRoute?.('/');
+    // without a model there is no canvas to go back to
+    if (modelNow.current) setView({ name: 'ready' }); else void build();
+  };
   const backToCanvas = model ? () => setView({ name: 'ready' }) : undefined;
   // Fire and forget: losing the remembered choice must not disturb the canvas.
   const remember = (r: RangeChoice, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
@@ -335,7 +340,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     case 'building':
       return <BuildProgress steps={steps} />;
     case 'blocked':
-      return <Blocked blocked={view.blocked} projectId={ctx.projectId} onRetry={() => void build()} onBack={backToCanvas} onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined} />;
+      return <Blocked blocked={view.blocked} projectId={ctx.projectId} onRetry={() => void build()} onCheckup={() => openSettings('checkup')} onBack={backToCanvas} onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined} />;
     case 'error':
       return (
         <main className="gy-main">
@@ -352,6 +357,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           tab={view.tab}
           onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
           ontology={ontologyProps}
+          noModel={!model}
           checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
           onBack={leaveSettings}
           onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), onStep })}

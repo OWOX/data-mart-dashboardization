@@ -47,7 +47,7 @@ test('the tabs are a tablist that arrow keys move through', () => {
 test('the Checkup tab follows Metrics and mounts its panel only while selected', () => {
   const run = vi.fn(() => Promise.resolve([]));
   const checkup = { run, projectId: 'p', now: () => new Date() };
-  const { rerender } = render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} checkup={checkup} />);
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} checkup={checkup} />);
   expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['General', 'Metrics', 'Checkup']);
   expect(run).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('tab', { name: 'Checkup' }));
@@ -55,7 +55,13 @@ test('the Checkup tab follows Metrics and mounts its panel only while selected',
   expect(document.getElementById('gy-panel-checkup')).not.toHaveAttribute('hidden');
   fireEvent.click(screen.getByRole('tab', { name: 'General' }));
   expect(document.getElementById('gy-panel-checkup')!.childElementCount).toBe(0);
-  rerender(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} checkup={checkup} tab="checkup" />);
+});
+
+test('tab="checkup" opens with the panel visible and a run started', () => {
+  const run = vi.fn(() => Promise.resolve([]));
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} checkup={{ run, projectId: 'p', now: () => new Date() }} tab="checkup" />);
+  expect(document.getElementById('gy-panel-checkup')).not.toHaveAttribute('hidden');
+  expect(run).toHaveBeenCalledTimes(1);
 });
 
 test('General no longer holds the model rebuild; the Ontology tab does', () => {

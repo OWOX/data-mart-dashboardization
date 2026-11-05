@@ -33,3 +33,12 @@ test('without navigation the page name is plain text', () => {
   expect(screen.queryByRole('button', { name: 'Project settings' })).toBeNull();
   expect(screen.getByText(/Open Project settings in OWOX Data Marts/)).toBeInTheDocument();
 });
+
+test('Run checkup shows only when given and calls it', () => {
+  const onCheckup = vi.fn();
+  const { rerender } = render(<Blocked blocked={{ code: 'NO_GOAL', detail: 'x', mismatches: [] }} projectId="p" onRetry={() => {}} />);
+  expect(screen.queryByRole('button', { name: 'Run checkup' })).toBeNull();
+  rerender(<Blocked blocked={{ code: 'NO_GOAL', detail: 'x', mismatches: [] }} projectId="p" onRetry={() => {}} onCheckup={onCheckup} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Run checkup' }));
+  expect(onCheckup).toHaveBeenCalled();
+});

@@ -21,7 +21,7 @@ export interface OntologyProps {
   hashOf?: (m: Model) => Promise<string | null>;
 }
 
-export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup }: {
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, noModel = false }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
   /** Reads the descriptions and schemas again into a candidate model; the Ontology tab shows it as a proposal. */
   onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void;
@@ -30,6 +30,8 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
   /** What the Checkup tab runs; the tab is mounted only while selected, so each visit starts a run. */
   checkup?: CheckupProps | null;
+  /** No model yet: the Metrics tab says so instead of waiting for Data Marts. */
+  noModel?: boolean;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -70,6 +72,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
         <div className="dm-page-content" role="tabpanel" id="gy-panel-ontology" aria-labelledby="gy-tab-ontology" hidden={tab !== 'ontology'}>
           {ontology
             ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} />
+            : noModel ? <p className="dm-muted gy-form-note">No model yet. It's built when you go back to the canvas.</p>
             : <><LoadingLine /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
         </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-checkup" aria-labelledby="gy-tab-checkup" hidden={tab !== 'checkup'}>
