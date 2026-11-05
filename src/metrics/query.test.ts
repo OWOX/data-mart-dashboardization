@@ -50,3 +50,14 @@ test('unique count values are read from the Unique Count key', async () => {
 test.each([[12, 12], ['1234.50', 1234.5], [null, null], [undefined, null], ['abc', null], [NaN, null], [true, null]] as const)(
   'toNumber(%s)', (v, n) => expect(toNumber(v)).toBe(n),
 );
+
+test('a unique count answer without the Unique Count key is an error; no rows is just empty', async () => {
+  const ignored = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: (_i, o) => (o.dateTrunc ? [{ date: '2026-10-01', id: 'x' }] : [{ id: 'x' }]) });
+  const none = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [] });
+  const m = { field: 'id', fn: 'COUNT_DISTINCT' as const };
+  const w = { from: '2026-10-01', to: '2026-10-02' };
+  await expect(queryTotal(ignored, 'a', m, 'date', w, true)).rejects.toThrow("didn't return a Unique Count");
+  await expect(queryDaily(ignored, 'a', m, 'date', w, true)).rejects.toThrow("didn't return a Unique Count");
+  expect(await queryTotal(none, 'a', m, 'date', w, true)).toBeNull();
+  expect((await queryDaily(none, 'a', m, 'date', w, true)).size).toBe(0);
+});

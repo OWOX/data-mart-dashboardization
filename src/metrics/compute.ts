@@ -76,7 +76,8 @@ export async function computeMetric(args: {
         }
       }
       if (!sourced) {
-        // summing daily averages or ratios means nothing, so only counts and sums accumulate
+        // summing daily averages or ratios means nothing, so only counts and sums accumulate; a unique count adds up
+        // only because uniqueCount: [''] counts the mart's own primary key and each row has one date value (a joined alias's per-day counts wouldn't)
         const additive = kind === 'flow' && (measure.fn === 'SUM' || measure.fn === 'COUNT' || metric.isUniqueCount);
         const f = forecastFor({ daily, anchor, rangeTo: range.to, additive, fact });
         if (f) { forecast = f.value; future = f.future.map((p) => p.v); } else note = 'short_history';

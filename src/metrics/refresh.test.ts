@@ -237,3 +237,18 @@ test('a unique count on an INTEGER key shows on the canvas and asks uniqueCount'
   expect(doc.cards.a!.metrics['a:id']!.fact).toBe(3);
   expect(model.metrics[0]!.shown).toBe(true);
 });
+
+test('a server that ignores uniqueCount gives that metric an error while the others carry on', async () => {
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: (_id, o) => (o.uniqueCount ? [{ id: 'x' }] : [{ 'qty | SUM': 5, date: '2026-10-20' }]) });
+  const mt = (id: string, field: string, fn: 'SUM' | 'COUNT_DISTINCT') => ({ id, martId: 'a', alias: id, measure: { field, fn }, kind: 'flow' as const, dateField: 'date', role: 'unique' as const, source: 'schema', isUniqueCount: fn === 'COUNT_DISTINCT', format: 'number' as const, currency: null, plan: null, shown: true, forecast: null });
+  const model: Model = {
+    version: 2, inputHash: 'h1', builtAt: '', builtBy: 'u', editedAt: null,
+    goal: { classId: 'a', metricId: null, goalMartId: 'a', viaFallback: false },
+    classes: [{ id: 'a', martId: 'a', title: 'A', contexts: [], depth: 0, keyMetricId: 'a:id', metricIds: ['a:id', 'a:qty'], shown: true }],
+    edges: [], metrics: [mt('a:id', 'id', 'COUNT_DISTINCT'), mt('a:qty', 'qty', 'SUM')],
+  };
+  const doc = await refreshCanvas({ owox, model, spec: rangeFor('last_7d', new Date('2026-10-24T10:00:00Z')), key: 'k', thresholdPct: 20 });
+  expect(doc.cards.a!.metrics['a:id']!.error).toContain("didn't return a Unique Count");
+  expect(doc.cards.a!.metrics['a:qty']!.error).toBeNull();
+  expect(doc.cards.a!.metrics['a:qty']!.fact).toBe(5);
+});

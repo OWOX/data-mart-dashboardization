@@ -46,6 +46,12 @@ export const uniqueDailyOptions = (dateField: string, w: DateWindow): Record<str
   limit: 1000,
 });
 
+// rows without the key mean the server ignored uniqueCount; zero rows is a plain empty answer
+function uniqueValues(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  if (rows.length && !rows.some((r) => UNIQUE_KEY in r)) throw new Error("The server didn't return a Unique Count; it may not support uniqueCount yet");
+  return rows;
+}
+
 export function toNumber(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
   return Number.isFinite(n) ? n : null;
@@ -60,12 +66,14 @@ export async function readRows(owox: OwoxLike, martId: string, options: Record<s
 
 export async function queryTotal(owox: OwoxLike, martId: string, m: Measure, dateField: string | null, w: DateWindow | null, unique = false): Promise<number | null> {
   const rows = await readRows(owox, martId, unique ? uniqueTotalOptions(dateField, w) : totalOptions(m, dateField, w));
+  if (unique) uniqueValues(rows);
   return toNumber(rows[0]?.[unique ? UNIQUE_KEY : valueKey(m)]);
 }
 
 export async function queryDaily(owox: OwoxLike, martId: string, m: Measure, dateField: string, w: DateWindow, unique = false): Promise<Map<Day, number>> {
   const out = new Map<Day, number>();
   const rows = await readRows(owox, martId, unique ? uniqueDailyOptions(dateField, w) : dailyOptions(m, dateField, w));
+  if (unique) uniqueValues(rows);
   for (const row of rows) {
     const v = toNumber(row[unique ? UNIQUE_KEY : valueKey(m)]);
     const d = row[dateField];
