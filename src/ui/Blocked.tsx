@@ -41,13 +41,19 @@ const STEPS: Record<BlockCode, string[]> = {
     'Make sure each linked Data Mart has a date field.',
     'Retry.',
   ],
+  AI_REQUEST_FAILED: [
+    'Ask a project admin to open [plugins], select Gyroscope and check the AI Credential: its key, and the model mapped to Reasoning.',
+    'A large project can take the model past the time limit. Mapping a faster model to Reasoning helps.',
+    'Retry.',
+  ],
 };
 STEPS.GOAL_PLACEHOLDER = STEPS.NO_GOAL;
 
 const heading = (code: BlockCode): string =>
   code === 'AI_NOT_CONFIGURED' ? 'AI model not configured'
-    : code === 'AI_INVALID' ? "The model doesn't match your Data Marts"
-      : "Goal can't be tracked";
+    : code === 'AI_REQUEST_FAILED' ? "The AI model didn't answer"
+      : code === 'AI_INVALID' ? "The model doesn't match your Data Marts"
+        : "Goal can't be tracked";
 
 export const metricsSnippet = (projectId: string): string => `## Metrics
 | Role | Metric | Owner | Plan | Fact |

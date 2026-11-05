@@ -63,7 +63,12 @@ export async function currentInputHash(owox: OwoxLike, inputs: Inputs, martIds: 
 }
 
 const POOL = 6;
-const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'GOAL_NOT_CONNECTED', detail: string, mismatches: string[] = []): BuildResult =>
+// the ai SDK's schema failures, matched by name: the model answered, but not in the shape asked for
+const READING_ERRORS = new Set(['AI_NoObjectGeneratedError', 'AI_TypeValidationError', 'AI_JSONParseError']);
+/** A model that answered unreadably, as against a call that never got an answer (timeout, bad key, wrong model). */
+export const isReadingError = (e: unknown): boolean =>
+  e instanceof Error && (READING_ERRORS.has(e.name) || e.message.startsWith('AI_INVALID:'));
+const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'AI_REQUEST_FAILED' | 'GOAL_NOT_CONNECTED', detail: string, mismatches: string[] = []): BuildResult =>
   ({ ok: false, blocked: { code, detail, mismatches } });
 
 /** What the build is doing, for the progress page. Mart counts run over both detail-loading phases against all visible marts. */
@@ -89,7 +94,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   const block = (r: BuildResult): BuildResult => {
     if (!r.ok) {
       const { code, detail } = r.blocked;
-      check(code === 'AI_NOT_CONFIGURED' || code === 'AI_INVALID' ? 'ai' : 'project.fact', 'failed', detail);
+      check(code === 'AI_NOT_CONFIGURED' || code === 'AI_INVALID' || code === 'AI_REQUEST_FAILED' ? 'ai' : 'project.fact', 'failed', detail);
     }
     return r;
   };
@@ -144,6 +149,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     ai = await interpret(generate, { projectDescription: inputs.projectDescription, contexts: inputs.contexts, links, dateFields });
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') throw e;
+    if (!isReadingError(e)) return block(fail('AI_REQUEST_FAILED', "The AI model didn't answer.", [describeError(e)]));
     return block(fail('AI_INVALID', "The AI's reading of the descriptions doesn't match the Data Mart schemas.", [e instanceof Error ? e.message : String(e)]));
   }
   check('ai', 'done');

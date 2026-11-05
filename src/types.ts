@@ -88,7 +88,7 @@ export interface Model {
 
 export type BlockCode =
   | 'NO_GOAL' | 'GOAL_PLACEHOLDER' | 'GOAL_FIELD_NOT_FOUND' | 'GOAL_NO_PRIMARY_KEY'
-  | 'GOAL_NOT_CONNECTED' | 'AI_NOT_CONFIGURED' | 'AI_INVALID';
+  | 'GOAL_NOT_CONNECTED' | 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'AI_REQUEST_FAILED';
 
 export interface Blocked { code: BlockCode; detail: string; mismatches: string[] }
 

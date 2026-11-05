@@ -84,9 +84,26 @@ test('duplicate metrics dedupe keeping the higher rank', async () => {
   expect(rev[0]).toMatchObject({ role: 'critical', source: 'project' });
 });
 
-test('generate throwing is AI_INVALID, abort is rethrown', async () => {
-  const r = await buildModel({ owox: fakeOwox(data()), generate: async () => { throw new Error('boom'); }, userId: 'u1', now });
-  expect(r).toMatchObject({ ok: false, blocked: { code: 'AI_INVALID', mismatches: ['boom'] } });
+test('a failed AI request is AI_REQUEST_FAILED with the provider message, and the ai point fails', async () => {
+  const steps: BuildStep[] = [];
+  const generate = async () => { throw new Error('AI provider request could not be completed'); };
+  const r = await buildModel({ owox: fakeOwox(data()), generate, userId: 'u1', now, onStep: (s) => steps.push(s) });
+  expect(r).toMatchObject({ ok: false, blocked: { code: 'AI_REQUEST_FAILED', detail: "The AI model didn't answer.", mismatches: ['AI provider request could not be completed'] } });
+  expect(lastChecks(steps).get('ai')).toMatchObject({ state: 'failed' });
+});
+
+test('output failing the schema is still AI_INVALID', async () => {
+  const r = await buildModel({ owox: fakeOwox(data()), generate: async () => ({ nope: 1 }) as never, userId: 'u1', now });
+  expect(r).toMatchObject({ ok: false, blocked: { code: 'AI_INVALID' } });
+});
+
+test.each(['AI_NoObjectGeneratedError', 'AI_TypeValidationError', 'AI_JSONParseError'])('SDK %s is AI_INVALID', async (name) => {
+  const generate = async () => { throw Object.assign(new Error('bad output'), { name }); };
+  const r = await buildModel({ owox: fakeOwox(data()), generate, userId: 'u1', now });
+  expect(r).toMatchObject({ ok: false, blocked: { code: 'AI_INVALID', mismatches: ['bad output'] } });
+});
+
+test('abort is rethrown', async () => {
   const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
   await expect(buildModel({ owox: fakeOwox(data()), generate: async () => { throw abort; }, userId: 'u1', now })).rejects.toThrow('aborted');
 });
