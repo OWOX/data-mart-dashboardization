@@ -146,9 +146,9 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
           <div className="gy-drp-presets gy-drp-cmplist">
             <div className="gy-drp-list">
               {options.map((o) => (
-                <button key={o.preset} type="button" className="gy-drp-preset" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
+                <button key={o.preset} type="button" className="gy-drp-preset gy-drp-cmpopt" aria-pressed={dCompare.kind === 'preset' && dCompare.preset === o.preset}
                   onClick={() => { setDCompare({ kind: 'preset', preset: o.preset }); setPendingCompare(false); setCompareMonth(openMonth(o.window, anchor)); }}>
-                  {compareChipLabel(o.preset, diffDays(o.window.from, o.window.to) + 1)}
+                  <span className="gy-drp-cmpname">{compareChipLabel(o.preset, diffDays(o.window.from, o.window.to) + 1)}</span>
                   <span className="gy-drp-win" aria-hidden>{windowText(o.window, anchor)}</span>
                 </button>
               ))}
