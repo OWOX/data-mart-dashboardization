@@ -113,15 +113,16 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       <div className="gy-drp-head">
         <span className="gy-drp-windows">
-          {summary.head}{forecast && <sup>*</sup>}{summary.tail}
-          {forecast && (
-            <span className="gy-hint gy-drp-note" tabIndex={0}>
-              * {windowText(forecast, anchor)} forecast
+          {/* the range and its asterisk carry the forecast note on hover and focus */}
+          {forecast ? (
+            <span className="gy-hint gy-drp-note" tabIndex={0} aria-label={`${summary.head}, ${windowText(forecast, anchor)} forecast`}>
+              {summary.head}<sup>*</sup>
               <span className="gy-hint-body gy-hint-left" role="tooltip">
-                {`${windowText(forecast, anchor)} hasn't happened yet. Each card fills these days with its metric's forecast: from the forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last ${HISTORY_DAYS} days.`}
+                {`* ${windowText(forecast, anchor)} is forecast: these days haven't happened yet. Each card fills them with its metric's forecast: from the forecast Data Mart set in the Ontology, or else from the trend and weekday pattern of the last ${HISTORY_DAYS} days.`}
               </span>
             </span>
-          )}
+          ) : summary.head}
+          {summary.tail}
         </span>
         <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
         <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>
