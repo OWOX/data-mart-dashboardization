@@ -112,7 +112,7 @@ test('a schema that cannot be read while seeding keeps the class and the project
   await store.collections<unknown>('model').put('current', { ...model, inputHash: 'project-hash' });
   const base = deps.owox;
   let failed = false;
-  const owox = { ...base, getJson: (async (path: string) => { if (path.includes(GID) && !failed) { failed = true; throw new Error('503'); } return base.getJson(path); }) as typeof base.getJson };
+  const owox = { ...base, getJson: (async (path: string) => { if (path === `/api/data-marts/${GID}` && !failed) { failed = true; throw new Error('503'); } return base.getJson(path); }) as typeof base.getJson };
   render(<App ctx={ctx} deps={{ ...deps, owox }} />);
   expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
   const saved = (await loadOntology(store))!;

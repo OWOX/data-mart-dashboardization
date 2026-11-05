@@ -6,7 +6,7 @@ import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields } from '../owox/sources';
 import type { Blendable, Inputs, MartDetail, OwoxLike } from '../owox/sources';
-import { buildEdges, canBeClass, chooseMain, classDepths } from './graph';
+import { buildEdges, canBeClass, chooseMain, classDepths, primaryKeyPaths } from './graph';
 import type { MartNode } from './graph';
 import { interpret } from './interpret';
 import type { AiMetric, Generate } from './interpret';
@@ -32,6 +32,8 @@ export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'
       m.blendable.availableSources
         .map((s) => [s.aliasPath, s.dataMartId] as const)
         .sort((a, b) => byText(a[0], b[0]) || byText(a[1], b[1])),
+      // the flattened fields above skip hidden ones, and a hidden primary key still decides whether the mart is a class
+      primaryKeyPaths(m.detail.fields).sort(byText),
     ]),
   ]));
 }

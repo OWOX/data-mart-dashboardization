@@ -101,6 +101,9 @@ test('a goal without a primary key or a date fails both', async () => {
   const c = byId(await run(data({ details: { ...data().details, [G]: { id: G, title: 'Orders', fields: [{ name: 'revenue', type: 'FLOAT', isPrimaryKey: false }] } } })));
   expect(c['goal.pk']!.status).toBe('fail');
   expect(c['goal.date']!.status).toBe('fail');
+  // reported by the goal checks only: the main class stays on the canvas
+  expect(c['connections.pk']!.status).toBe('ok');
+  expect(c['connections.date']!.status).toBe('ok');
 });
 
 test('a fact Data Mart without a date field warns once, under the date check', async () => {

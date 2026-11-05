@@ -10,10 +10,15 @@ export interface MartNode {
 }
 export interface RefEdge extends Edge { refFields: string[]; fields: string[] }
 
-export function hasPrimaryKey(detail: MartDetail): boolean {
-  const walk = (fs: SchemaField[]): boolean => fs.some((f) => f.isPrimaryKey || walk(f.fields ?? []));
-  return walk(detail.fields);
+/** Every primary key path, hidden ones too: a unique-count key is often hidden for reporting. */
+export function primaryKeyPaths(fields: SchemaField[], prefix = ''): string[] {
+  return fields.flatMap((f) => {
+    const path = prefix ? `${prefix}.${f.name}` : f.name;
+    return [...(f.isPrimaryKey ? [path] : []), ...primaryKeyPaths(f.fields ?? [], path)];
+  });
 }
+
+export const hasPrimaryKey = (detail: MartDetail): boolean => primaryKeyPaths(detail.fields).length > 0;
 
 /** A reportable date field, as the metrics see one: hidden and disconnected fields don't count. */
 export const hasDateField = (detail: MartDetail): boolean => flattenFields(detail.fields).some((x) => DATE_TYPES.has(x.field.type.toUpperCase()));

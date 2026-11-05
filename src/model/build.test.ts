@@ -188,6 +188,14 @@ test('onStep reports reading, marts counting up to the total, and what was found
   expect(steps.at(-1)).toEqual({ kind: 'found', goal: 'Revenue (Orders)', classes: ['Orders', 'Customers'], metrics: 3 });
 });
 
+test('the hash changes when a hidden field gains or loses the primary key flag', async () => {
+  const d = data();
+  const inputs = await fetchInputs(fakeOwox(d));
+  const hidden = (pk: boolean) => ({ ...d, details: { ...d.details, c: { ...d.details.c, fields: [{ name: 'id', type: 'STRING', isPrimaryKey: pk, isHiddenForReporting: true }, { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false }] } } });
+  const withKey = await currentInputHash(fakeOwox(hidden(true)), inputs, [GID, 'c']);
+  expect(await currentInputHash(fakeOwox(hidden(false)), inputs, [GID, 'c'])).not.toBe(withKey);
+});
+
 test('currentInputHash leaves a Data Mart that fails to fetch out, so the hash changes instead of throwing', async () => {
   const owox = fakeOwox(data());
   const inputs = await fetchInputs(owox);
