@@ -656,3 +656,10 @@ describe('projection footnote', () => {
     expect(container.querySelector('.gy-projnote')).toBeNull();
   });
 });
+
+test('a forecast mart that is not on the canvas is named from the project mart list', () => {
+  const projection = { actual: null, factWindow: { from: '2026-01-01', to: '2026-11-04' }, forecastWindow: { from: '2026-11-05', to: '2026-12-31' }, source: { kind: 'mart' as const, martId: 'other', field: 'arr_f' } };
+  const marts = new Map([['other', { title: 'Plan 2026', description: null, icon: null }]]);
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ projection })} marts={marts} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-projnote [role="tooltip"]')!.textContent).toContain('From Plan 2026, arr_f');
+});

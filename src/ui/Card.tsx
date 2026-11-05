@@ -22,6 +22,8 @@ export interface MartInfo { title?: string; description: string | null; icon: st
 interface Props {
   cls: ClassNode;
   mart?: MartInfo;
+  /** Every project mart by id: a forecast's source mart need not be a class on the canvas. */
+  marts?: ReadonlyMap<string, MartInfo>;
   metrics: MetricDef[];
   cache: CardCache | undefined;
   comparisonOn: boolean;
@@ -306,7 +308,7 @@ function CardSkeleton({ badges, spark }: { badges: number; spark: boolean }) {
   );
 }
 
-export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', quality, details, markdown, onOpen, weekStart, onRetry }: Props) {
+export function Card({ cls, mart, marts, metrics, cache, comparisonOn, refreshing, noAccess, missing, compareLabel, absolute = false, onToggleDiff, projectId = '', quality, details, markdown, onOpen, weekStart, onRetry }: Props) {
   const nameOf = (m: MetricDef) => metricName(m, details?.get(m.martId));
   // The metric the reader swapped in for this session, with the secondary order it leaves behind.
   const [swap, setSwap] = useState<{ main: string; rest: string[] } | null>(null);
@@ -387,7 +389,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   const projectionSource = (src: NonNullable<MetricResult['projection']>['source']) => {
     if (src.kind !== 'mart') return { martTitle: '', fieldName: '' };
     const detail = details?.get(src.martId);
-    return { martTitle: detail?.title || (src.martId === cls.martId ? mart?.title : undefined) || src.martId, fieldName: (detail ? fieldAt(detail, src.field)?.alias : undefined) || src.field };
+    return { martTitle: marts?.get(src.martId)?.title || detail?.title || (src.martId === cls.martId ? mart?.title : undefined) || src.martId, fieldName: (detail ? fieldAt(detail, src.field)?.alias : undefined) || src.field };
   };
   const big = failed ? formatValue(null, key) : fact !== null ? `${res.projection && res.forecastApprox ? '≈' : ''}${formatValue(fact, key)}` : res.forecast !== null ? `${res.forecastApprox ? '≈' : ''}${formatValue(res.forecast, key)}` : formatValue(null, key);
   // Plan and forecast stay off the face of the card; the number names them on hover.
