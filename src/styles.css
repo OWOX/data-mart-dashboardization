@@ -173,12 +173,12 @@ h2 { margin: 0; }
 /* The number on the left, the secondary metrics stacked on its right. */
 /* Arrow under the icon, the number under the names, the secondary metrics on the right; the first
    of them starts level with the top of the number's digits. */
-.gy-card-body { display: grid; grid-template-columns: 2.5rem minmax(0, auto) minmax(10rem, 1fr); column-gap: 0.5rem; align-items: start; margin-top: 0.625rem; }
+.gy-card-body { display: grid; grid-template-columns: 2.5rem auto minmax(0, 1fr); column-gap: 0.625rem; align-items: start; margin-top: 0.625rem; }
 /* Direction only, in the number's own colour: the chip below already says good or bad. */
 .gy-trend { display: flex; align-items: center; justify-content: center; height: 3.2rem; color: var(--foreground); }
 /* The full width of the icon column above it; the glyph is twice as wide as it is tall. */
 .gy-trend-arrow { width: 2.5rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.gy-big { display: block; font-size: 3rem; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; }
+.gy-big { display: block; white-space: nowrap; font-size: 3rem; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; }
 .gy-badges { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; padding-top: 0.3rem; padding-right: 2px; }
 .gy-badges { position: relative; }
 /* The rest of the secondary metrics, over what is under the card; the card itself keeps its height. */
