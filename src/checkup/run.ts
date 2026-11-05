@@ -27,7 +27,7 @@ export const LABELS: Record<string, string> = {
   'goal.field': 'The goal field exists in it',
   'goal.pk': 'It has a primary key',
   'goal.date': 'It has a date field',
-  'contexts.exist': 'At least one context exists',
+  'contexts.exist': 'At least two contexts exist',
   'context.description': "The description isn't empty",
   'context.marts': 'At least one Data Mart is in it',
   'context.fact': 'A metric row links a fact',
@@ -41,9 +41,10 @@ export const LABELS: Record<string, string> = {
   'model.health': 'No broken references',
   'model.fresh': 'It matches the descriptions',
 };
-const FIXED: [GroupId, string][] = [['plugin', 'plugin.ai'], ['project', 'project.description'], ['project', 'project.table'], ['project', 'project.critical'], ['project', 'project.fact'], ['project', 'project.plan'], ['project', 'project.links'],
-  ['goal', 'goal.access'], ['goal', 'goal.field'], ['goal', 'goal.pk'], ['goal', 'goal.date'], ['contexts', 'contexts.exist'],
-  ['connections', 'connections.reachable'], ['connections', 'connections.any'], ['connections', 'connections.facts'], ['connections', 'connections.pk'], ['connections', 'connections.date'], ['model', 'model.health'], ['model', 'model.fresh']];
+const FIXED: [GroupId, string][] = [['heading', 'project.description'], ['heading', 'project.table'], ['heading', 'project.critical'], ['heading', 'project.fact'], ['heading', 'project.plan'], ['heading', 'project.links'],
+  ['heading', 'goal.access'], ['heading', 'goal.field'], ['heading', 'goal.pk'], ['heading', 'goal.date'], ['drivers', 'contexts.exist'],
+  ['connections', 'connections.reachable'], ['connections', 'connections.any'], ['connections', 'connections.facts'], ['connections', 'connections.pk'], ['connections', 'connections.date'],
+  ['housekeeping', 'plugin.ai'], ['housekeeping', 'model.health'], ['housekeeping', 'model.fresh']];
 const label = (id: string) => LABELS[id.startsWith('context:') ? `context.${id.slice(id.indexOf('.') + 1)}` : id] ?? id;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -72,8 +73,9 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
   const failRunning = (match: (c: Check) => boolean, detail: string) => {
     for (const c of [...map.values()]) if (c.status === 'running' && match(c)) put(c.id, 'fail', detail);
   };
-  const guard = async (group: GroupId, fn: () => Promise<void> | void) => {
-    try { await fn(); } catch (e) { failRunning((c) => c.group === group, describeError(e)); }
+  /** A throw fails the still-running checks whose id starts with `prefix`. */
+  const guard = async (prefix: string, fn: () => Promise<void> | void) => {
+    try { await fn(); } catch (e) { failRunning((c) => c.id.startsWith(prefix), describeError(e)); }
   };
   const owoxFix = (fixLabel: string, path: string): Fix => ({ kind: 'owox', label: fixLabel, path: `/ui/${projectId}${path}` });
   const martFix = (id: string, title?: string): Fix => owoxFix(`Open ${title ?? 'the Data Mart'}`, `/data-marts/${id}/data-setup`);
@@ -100,7 +102,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
 
   const projectRows = findMetricRows(inputs.projectDescription, 'project');
   const contextRows = new Map(inputs.contexts.map((c) => [c.id, findMetricRows(c.description, c.id)]));
-  for (const c of inputs.contexts) for (const k of ['description', 'marts', 'fact', 'plan', 'links']) add(`context:${c.id}.${k}`, 'contexts', { id: c.id, name: c.name });
+  for (const c of inputs.contexts) for (const k of ['description', 'marts', 'fact', 'plan', 'links']) add(`context:${c.id}.${k}`, 'drivers', { id: c.id, name: c.name });
   publish();
 
   /** Plan and Fact links that name a field must name a Data Mart you can see, with that field. */
@@ -128,7 +130,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
   const goalId = factOk ? factLink.martId! : '';
   const goalField = factOk ? factLink.field! : '';
 
-  const projectGroup = () => guard('project', async () => {
+  const projectGroup = () => guard('project.', async () => {
     const desc = !!inputs.projectDescription?.trim();
     if (desc) put('project.description', 'ok'); else put('project.description', 'fail', 'The project description is empty', projectFix);
     if (!desc) skip('project.table', 'project.description');
@@ -147,7 +149,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     await putLinks('project.links', projectRows, projectFix);
   });
 
-  const goalGroup = () => guard('goal', async () => {
+  const goalGroup = () => guard('goal.', async () => {
     if (!factOk) { for (const id of ['access', 'field', 'pk', 'date']) skip(`goal.${id}`, 'project.fact'); return; }
     const title = titles.get(goalId);
     const fix = martFix(goalId, title);
@@ -159,18 +161,18 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     put('goal.access', 'ok', title);
     let d: MartDetail;
     try { d = await detail(goalId); }
-    catch (e) { failRunning((c) => c.group === 'goal', describeError(e)); return; }
+    catch (e) { failRunning((c) => c.id.startsWith('goal.'), describeError(e)); return; }
     if (allFieldPaths(d.fields).has(goalField)) put('goal.field', 'ok'); else put('goal.field', 'fail', `Field ${goalField} isn't in ${d.title}`, fix);
     if (hasPrimaryKey(d)) put('goal.pk', 'ok'); else put('goal.pk', 'fail', "No primary key: it can't be a class", fix);
     if (flattenFields(d.fields).some((f) => DATE_TYPES.has(f.field.type.toUpperCase()))) put('goal.date', 'ok'); else put('goal.date', 'fail', 'No date field', fix);
   });
 
-  const contextsGroup = () => guard('contexts', async () => {
+  const contextsGroup = () => guard('context', async () => {
     const fix = owoxFix('Contexts', '/contexts');
     if (!inputs.contextsOk) put('contexts.exist', 'fail', "Contexts couldn't be read", fix);
-    else if (!inputs.contexts.length) put('contexts.exist', 'warn', 'No contexts', fix);
+    else if (inputs.contexts.length < 2) put('contexts.exist', 'warn', inputs.contexts.length ? 'Only 1 context' : 'No contexts', fix);
     else put('contexts.exist', 'ok', `${inputs.contexts.length} contexts`);
-    await Promise.all(inputs.contexts.map((c) => guard('contexts', async () => {
+    await Promise.all(inputs.contexts.map((c) => guard(`context:${c.id}.`, async () => {
       const p = `context:${c.id}`;
       const rows = contextRows.get(c.id)!;
       if (c.description?.trim()) put(`${p}.description`, 'ok'); else put(`${p}.description`, 'warn', 'Empty description', fix);
@@ -182,7 +184,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     })));
   });
 
-  const connectionsGroup = () => guard('connections', async () => {
+  const connectionsGroup = () => guard('connections.', async () => {
     if (!factOk) { for (const id of ['reachable', 'any', 'facts', 'pk', 'date']) skip(`connections.${id}`, 'project.fact'); return; }
     const nodes: MartNode[] = [];
     await runPool(inputs.marts.map((m) => async () => {
@@ -218,7 +220,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     else put('connections.date', 'ok');
   });
 
-  const modelGroup = () => guard('model', async () => {
+  const modelGroup = () => guard('model.', async () => {
     if (!model) { for (const id of ['health', 'fresh']) put(`model.${id}`, 'skip', 'No model built yet'); return; }
     const fix: Fix = { kind: 'tab', label: 'Open Metrics', tab: 'ontology' };
     const { issues } = await checkHealth(owox, model, visible);

@@ -40,28 +40,28 @@ OWOX paths are relative to `/ui/{projectId}`.
 
 | Group | Check | Not passing | Fix |
 |---|---|---|---|
-| Plugin | An AI credential is mapped | Failed | `/plugins` |
-| Project description | The description isn't empty | Failed | `/project-settings` |
+| Where the business is heading | The description isn't empty | Failed | `/project-settings` |
 | | It has a Metrics table | Failed | `/project-settings`, plus the snippet |
 | | It has a Critical number row | Failed | `/project-settings` |
 | | The Critical number's fact links a Data Mart field | Failed | `/project-settings` |
 | | The Critical number's plan links a Data Mart field | Warning | `/project-settings` |
 | | Every Data Mart and field linked in the description exists | Failed, listing what's missing | `/project-settings` |
-| Goal Data Mart | It is published and you can access it | Failed | `/data-marts/{id}/data-setup` |
-| | The goal field exists in it | Failed | same |
-| | It has a primary key | Failed | same |
-| | It has a date field | Failed | same |
-| Contexts | At least one context exists | Warning | `/contexts` |
+| | Goal Data Mart: it is published and you can access it | Failed | `/data-marts/{id}/data-setup` |
+| | Goal Data Mart: the goal field exists in it | Failed | same |
+| | Goal Data Mart: it has a primary key | Failed | same |
+| | Goal Data Mart: it has a date field | Failed | same |
+| What drives it | At least two contexts exist | Warning | `/contexts` |
 | | Per context: the description isn't empty | Warning | `/contexts` |
 | | Per context: at least one Data Mart is in it | Warning | `/contexts` |
 | | Per context: a metric row links a fact | Warning | `/contexts` |
 | | Per context: a metric row links a plan | Warning | `/contexts` |
 | | Per context: every linked Data Mart and field exists | Failed, listing what's missing | `/contexts` |
-| Connections | The goal is reachable: you can access its Data Mart, or a calculated field references it | Failed | goal Data Mart |
+| How it connects | The goal is reachable: you can access its Data Mart, or a calculated field references it | Failed | goal Data Mart |
 | | Calculated fields reference other Data Marts | Warning: "No calculated field references another Data Mart" | `/data-marts` |
 | | Each Data Mart with a fact link connects to the goal | Warning, listing the Data Marts that won't show on the canvas | that Data Mart |
 | | Each Data Mart with a fact link has a primary key | Warning, listing them | that Data Mart |
-| Saved model | No broken references | Warning, with the count | Metrics tab |
+| Housekeeping | An AI credential is mapped | Failed | `/plugins` |
+| | No broken references | Warning, with the count | Metrics tab |
 | | It matches the descriptions | Warning: "The descriptions changed since the model was built" | Metrics tab |
 
 With no saved model, both Saved model checks are skipped with the detail "No model built yet".

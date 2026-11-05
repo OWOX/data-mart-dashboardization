@@ -19,8 +19,11 @@ const calc = (name: string, formula: string) => ({ name, type: 'FLOAT', isPrimar
 function data(over: Partial<FakeOwoxData> = {}): FakeOwoxData {
   return {
     projectDescription: table(`| Critical number | Revenue | [Plan](${url(P, 'revenue')}) | [Revenue](${url(G, 'revenue')}) |`),
-    contexts: [{ id: 'k1', name: 'Sales', description: table(`| Leading | Customers | [Plan](${url(P, 'revenue')}) | [Customers](${url(C, 'revenue')}) |`) }],
-    marts: [mart(G, 'Orders', [{ id: 'k1', name: 'Sales' }]), mart(C, 'Customers', [{ id: 'k1', name: 'Sales' }]), mart(P, 'Plan')],
+    contexts: [
+      { id: 'k1', name: 'Sales', description: table(`| Leading | Customers | [Plan](${url(P, 'revenue')}) | [Customers](${url(C, 'revenue')}) |`) },
+      { id: 'k3', name: 'Orders', description: table(`| Leading | Orders | [Plan](${url(P, 'revenue')}) | [Orders](${url(G, 'revenue')}) |`) },
+    ],
+    marts: [mart(G, 'Orders', [{ id: 'k1', name: 'Sales' }, { id: 'k3', name: 'Orders' }]), mart(C, 'Customers', [{ id: 'k1', name: 'Sales' }]), mart(P, 'Plan')],
     details: {
       [G]: detail(G, 'Orders', [calc('customers_n', 'SUM({{ref path="customers" field="revenue"}})')]),
       [C]: detail(C, 'Customers', [calc('orders_total', 'SUM({{ref path="orders" field="revenue"}})')]),
@@ -131,6 +134,12 @@ test('contexts that cannot be read fail and skip the model freshness check', asy
   const c = byId(await runCheckup({ owox: wrapped, hasAi: true, model: savedModel, projectId: 'p', onUpdate: () => {} }));
   expect(c['contexts.exist']).toMatchObject({ status: 'fail', detail: "Contexts couldn't be read" });
   expect(c['model.fresh']).toMatchObject({ status: 'skip', detail: "Contexts couldn't be read" });
+});
+
+test('fewer than two contexts warn', async () => {
+  const sales = data().contexts![0]!;
+  expect(byId(await run(data({ contexts: [sales] })))['contexts.exist']).toMatchObject({ status: 'warn', detail: 'Only 1 context' });
+  expect(byId(await run(data({ contexts: [] })))['contexts.exist']).toMatchObject({ status: 'warn', detail: 'No contexts' });
 });
 
 test('per-context checks warn on an empty context and carry the context', async () => {

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { CheckupTab } from './CheckupTab';
 import type { Check } from '../checkup/types';
 
-const ck = (id: string, status: Check['status'], over: Partial<Check> = {}): Check => ({ id, group: 'project', label: id, status, ...over });
+const ck = (id: string, status: Check['status'], over: Partial<Check> = {}): Check => ({ id, group: 'heading', label: id, status, ...over });
 const now = () => new Date(2026, 10, 4, 14, 2);
 
 function deferred() {
@@ -28,17 +28,17 @@ test('runs on mount, draws running checks, then the final list with summary and 
 });
 
 test('groups render in order with labels; empty groups are skipped; heading shows the worst mark', async () => {
-  const list = [ck('m', 'ok', { group: 'model' }), ck('p', 'fail', { group: 'plugin' }), ck('p2', 'ok', { group: 'plugin' }), ck('g', 'ok', { group: 'goal' })];
+  const list = [ck('m', 'ok', { group: 'housekeeping' }), ck('p', 'fail', { group: 'heading' }), ck('p2', 'ok', { group: 'heading' }), ck('g', 'ok', { group: 'connections' })];
   render(<CheckupTab run={instant(list)} projectId="p1" now={now} />);
   const heads = await screen.findAllByRole('heading', { level: 3 });
   expect(heads).toHaveLength(3);
-  ['Plugin', 'Goal Data Mart', 'Saved model'].forEach((label, i) => expect(heads[i]).toHaveTextContent(label));
+  ['Where the business is heading', 'How it connects', 'Housekeeping'].forEach((label, i) => expect(heads[i]).toHaveTextContent(label));
   expect(heads[0]).toHaveTextContent('✗');
-  expect(screen.queryByRole('heading', { name: /Contexts/ })).toBeNull();
+  expect(screen.queryByRole('heading', { name: /What drives it/ })).toBeNull();
 });
 
 test('context checks render inside a group named after the context', async () => {
-  const list = [ck('x', 'ok', { group: 'contexts', context: { id: 'c1', name: 'Sales' } }), ck('y', 'ok', { group: 'contexts' })];
+  const list = [ck('x', 'ok', { group: 'drivers', context: { id: 'c1', name: 'Sales' } }), ck('y', 'ok', { group: 'drivers' })];
   render(<CheckupTab run={instant(list)} projectId="p1" now={now} />);
   const group = await screen.findByRole('group', { name: 'Sales' });
   expect(within(group).getByText('x')).toBeInTheDocument();

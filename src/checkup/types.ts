@@ -1,5 +1,5 @@
 export type CheckStatus = 'running' | 'ok' | 'warn' | 'fail' | 'skip';
-export type GroupId = 'plugin' | 'project' | 'goal' | 'contexts' | 'connections' | 'model';
+export type GroupId = 'heading' | 'drivers' | 'connections' | 'housekeeping';
 /** Where a check is fixed: an OWOX page (path from /ui/...) or a tab of this plugin. */
 export type Fix = { kind: 'owox'; label: string; path: string } | { kind: 'tab'; label: string; tab: 'ontology' } | { kind: 'snippet'; label: string };
 export interface Check {
@@ -13,6 +13,6 @@ export interface Check {
   fix?: Fix;             // shown only when status is 'fail' or 'warn'
 }
 export const GROUPS: { id: GroupId; label: string }[] = [
-  { id: 'plugin', label: 'Plugin' }, { id: 'project', label: 'Project description' }, { id: 'goal', label: 'Goal Data Mart' },
-  { id: 'contexts', label: 'Contexts' }, { id: 'connections', label: 'Connections' }, { id: 'model', label: 'Saved model' },
+  { id: 'heading', label: 'Where the business is heading' }, { id: 'drivers', label: 'What drives it' },
+  { id: 'connections', label: 'How it connects' }, { id: 'housekeeping', label: 'Housekeeping' },
 ];
