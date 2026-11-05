@@ -69,6 +69,15 @@ test('spark values and forecast are rounded to 4 significant digits', async () =
   expect(spark.values[0]).toBe(1235);
 });
 
+test('an oversized cache doc drops the secondary sparks first', () => {
+  const spark = { start: '2026-10-01', values: [1, 2, 3], forecastStart: null, forecast: [] };
+  const big = { start: '2026-10-01', values: Array.from({ length: 200 }, (_, i) => i), forecastStart: null, forecast: [] };
+  const doc = { cards: { a: { metrics: {}, spark, sparks: { x: big } } } } as unknown as CacheDoc;
+  const trimmed = trimToSize(doc, 300);
+  expect(trimmed.cards.a!.spark).toEqual(spark);
+  expect(trimmed.cards.a!.sparks).toBeUndefined();
+});
+
 test('an oversized cache doc drops every spark', () => {
   const spark = { start: '2026-10-01', values: [1, 2, 3], forecastStart: null, forecast: [] };
   const doc = { cards: { a: { metrics: {}, spark }, b: { metrics: {}, spark } } } as unknown as CacheDoc;
@@ -133,6 +142,11 @@ test('onPartial reports growing card sets; the spark arrives with the key metric
   expect(withoutKey!.a!.spark).toBeNull();
   const withKey = seen.find((c) => c.a?.metrics.k)!;
   expect(withKey.a!.spark).not.toBeNull();
+  // a secondary metric keeps its own series, for when the reader swaps it in
+  expect(withoutKey!.a!.sparks?.x).toBeDefined();
+  expect(withoutKey!.a!.sparks?.k).toBeUndefined();
+  // a class without a key metric still keeps its metrics' series
+  expect(seen[2]!.b!.sparks?.y).toBeDefined();
 });
 
 test('a hidden class and a hidden metric are not queried', async () => {

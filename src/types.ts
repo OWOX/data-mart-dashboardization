@@ -122,7 +122,13 @@ export interface MetricResult {
   warning?: string | null;
 }
 
-export interface CardCache { metrics: Record<string, MetricResult>; spark: SeriesPack | null }
+export interface CardCache {
+  metrics: Record<string, MetricResult>;
+  /** The key metric's series. */
+  spark: SeriesPack | null;
+  /** The secondary metrics' series by metric id, shown when one is swapped in; absent in docs cached before they were kept. */
+  sparks?: Record<string, SeriesPack>;
+}
 
 export interface CacheDoc {
   modelHash: string;

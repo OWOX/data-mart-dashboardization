@@ -17,10 +17,12 @@ const EMPTY: MetricResult = {
 
 const MAX_DOC_CHARS = 900_000;
 
-/** Sparks are the bulk of a doc; drop them all when it would not fit in the collection. */
+/** Sparks are the bulk of a doc; when it would not fit in the collection the secondary ones go first, then the key ones. */
 export function trimToSize(doc: CacheDoc, limit = MAX_DOC_CHARS): CacheDoc {
   if (JSON.stringify(doc).length <= limit) return doc;
-  return { ...doc, cards: Object.fromEntries(Object.entries(doc.cards).map(([id, c]) => [id, { ...c, spark: null }])) };
+  const keyOnly = { ...doc, cards: Object.fromEntries(Object.entries(doc.cards).map(([id, { sparks: _, ...c }]) => [id, c])) };
+  if (JSON.stringify(keyOnly).length <= limit) return keyOnly;
+  return { ...keyOnly, cards: Object.fromEntries(Object.entries(keyOnly.cards).map(([id, c]) => [id, { ...c, spark: null }])) };
 }
 
 /** Week presets resolve to other days under a Sunday start, so only they carry it (Monday keeps the old keys). */
@@ -45,7 +47,6 @@ export async function refreshCanvas(args: {
   const model = shownModel(full, details);
   const classes = model.classes.filter((c) => !visibleIds || visibleIds.has(c.id));
   const byId = new Map(model.metrics.map((m) => [m.id, m]));
-  const keyIds = new Set(classes.map((c) => c.keyMetricId).filter((id): id is string => !!id));
 
   const ids = new Set<string>();
   for (const c of classes) for (const id of c.metricIds) if (byId.has(id)) ids.add(id);
@@ -53,7 +54,7 @@ export async function refreshCanvas(args: {
   const sparks = new Map<string, SeriesPack | null>();
   let done = 0;
 
-  // A partial card appears once any of its metrics is done; its spark once the key metric is.
+  // A partial card appears once any of its metrics is done; its spark once the key metric is, a secondary one's once that metric is.
   const build = (partial: boolean): Record<string, CardCache> => {
     const cards: Record<string, CardCache> = {};
     for (const c of classes) {
@@ -61,7 +62,9 @@ export async function refreshCanvas(args: {
       for (const id of c.metricIds) { const r = results.get(id); if (r) metrics[id] = r; }
       if (partial && Object.keys(metrics).length === 0) continue;
       const spark = (c.keyMetricId && sparks.get(c.keyMetricId)) || null;
-      cards[c.id] = { metrics, spark: spark && round(spark) };
+      const rest: Record<string, SeriesPack> = {};
+      for (const id of c.metricIds) { const s = id !== c.keyMetricId && sparks.get(id); if (s) rest[id] = round(s); }
+      cards[c.id] = { metrics, spark: spark && round(spark), ...(Object.keys(rest).length ? { sparks: rest } : {}) };
     }
     return cards;
   };
@@ -87,7 +90,7 @@ export async function refreshCanvas(args: {
           plan: soft.some((i) => i.kind.startsWith('plan_')) ? null : metric.plan,
           forecast: soft.some((i) => i.kind.startsWith('forecast_')) ? null : metric.forecast,
         };
-        const out = await computeMetric({ owox, metric: usable, spec, thresholdPct, withSpark: keyIds.has(id) });
+        const out = await computeMetric({ owox, metric: usable, spec, thresholdPct, withSpark: true });
         const warning = [...soft.map((i) => i.text), ...(out.result.warning ? [out.result.warning] : []), ...(out.result.error ? [out.result.error] : [])].join('; ') || null;
         results.set(id, warning ? { ...out.result, warning } : out.result);
         sparks.set(id, out.spark);

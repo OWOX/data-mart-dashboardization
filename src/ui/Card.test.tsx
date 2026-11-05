@@ -299,6 +299,23 @@ test('the sparkline slot keeps its place after a swap, as an empty aria-hidden p
   expect(slot.textContent).toBe('');
 });
 
+test('a swapped-in metric shows its own sparkline', () => {
+  const own = { start: '2026-10-01', values: [9, 8, 7, 6, 5], forecastStart: null, forecast: [] };
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={{ ...cache(), sparks: { uc: own } }} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  const before = container.querySelector('.gy-spark-line')!.getAttribute('d');
+  fireEvent.click(screen.getByRole('button', { name: 'Show Customers, 7.15K' }));
+  expect(container.querySelector('.gy-spark-slot')).toBeNull();
+  expect(container.querySelector('.gy-spark-line')!.getAttribute('d')).not.toBe(before);
+});
+
+test('the difference sits under the number, and the period under the difference', () => {
+  const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  const main = container.querySelector('.gy-figure')!;
+  expect(main.querySelector('.gy-big')).not.toBeNull();
+  const row = main.querySelector('.gy-compare')!;
+  expect([...row.children].map((e) => e.className)).toEqual(['num gy-delta', 'gy-compare-label']);
+});
+
 test('a badge names its whole value and label in a title', () => {
   const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   expect(container.querySelector('.gy-badge')!.getAttribute('title')).toBe('7.15K Customers');

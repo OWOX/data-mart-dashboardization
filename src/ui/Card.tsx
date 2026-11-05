@@ -184,7 +184,7 @@ function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath,
   );
 }
 
-/** A chip with the difference (pressing it swaps relative and absolute), then "vs" and the comparison's name. */
+/** A chip with the difference (pressing it swaps relative and absolute), and "vs" with the comparison's name under it. */
 function Compare({ delta, pct, metric, sign, label, absolute, onToggle }: {
   delta: number | null; pct: number | null; metric: MetricDef; sign: Sign; label: string; absolute: boolean; onToggle?: () => void;
 }) {
@@ -291,6 +291,7 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
   }
 
   const failed = res.error != null;
+  const spark = key.id === home?.id ? cache?.spark : cache?.sparks?.[key.id];
   // A comparison shorter than the range recounts the value over the same number of days.
   const fact = res.compareFact ?? res.fact;
   const comparison = res.comparison;
@@ -313,26 +314,31 @@ export function Card({ cls, mart, metrics, cache, comparisonOn, refreshing, noAc
       {/* The arrow sits under the icon, so the number lines up with the names above it. */}
       <div className="gy-card-body">
         <span className="gy-trend" data-sign={sign}><TrendArrow sign={sign} /></span>
-        <span className="num gy-big" title={detail || undefined}>{big}</span>
-        {warning && <WarningHint text={warning} />}
+        {/* The difference sits right under the number, the period's name under the difference. */}
+        <div className="gy-figure">
+          <span className="gy-figure-row">
+            <span className="num gy-big" title={detail || undefined}>{big}</span>
+            {warning && <WarningHint text={warning} />}
+          </span>
+          {/* An all-time metric has no period to compare against. */}
+          {canCompare && (
+            <Compare
+              delta={delta} metric={key} pct={fact !== null ? diffPct(fact, comparison) : null} sign={sign}
+              label={compareLabel} absolute={absolute} onToggle={onToggleDiff}
+            />
+          )}
+        </div>
         {secondary.length > 0 && <Badges items={secondary} cache={cache} nameOf={nameOf} comparing={comparingNow} onPick={pick} />}
       </div>
       {failed && <button type="button" className="gy-link" onClick={onRetry}>Retry</button>}
-      {/* An all-time metric has no period to compare against. */}
-      {canCompare && (
-        <Compare
-          delta={delta} metric={key} pct={fact !== null ? diffPct(fact, comparison) : null} sign={sign}
-          label={compareLabel} absolute={absolute} onToggle={onToggleDiff}
-        />
-      )}
       {res.note && (
         <footer className="gy-card-foot">
           {res.note === 'short_history' ? 'Not enough history to forecast' : 'All time'}
         </footer>
       )}
-      {/* Only the class's own key metric has a series; a swapped-in metric keeps the slot's height so the card doesn't shrink. */}
-      {cache?.spark && (key.id === home?.id
-        ? <Sparkline spark={cache.spark} trend={res.trend} />
+      {/* A swapped-in metric shows its own series; one without a series keeps the slot's height so the card doesn't shrink. */}
+      {cache?.spark && (spark
+        ? <Sparkline spark={spark} trend={res.trend} />
         : <div className="gy-spark-slot" aria-hidden="true" />)}
     </article>
   );

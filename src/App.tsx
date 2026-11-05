@@ -73,10 +73,11 @@ function mergePartial(base: CacheDoc | null, cards: Record<string, CardCache>, m
   const merged: Record<string, CardCache> = { ...base?.cards };
   for (const [id, c] of Object.entries(cards)) {
     const old = base?.cards[id];
-    // the old spark stays until the key metric's new result lands
+    // the old spark stays until the key metric's new result lands; a secondary one until that metric's does
     const key = model.classes.find((x) => x.id === id)?.keyMetricId;
     const keyDone = !!key && key in c.metrics;
-    merged[id] = { metrics: { ...old?.metrics, ...c.metrics }, spark: keyDone ? c.spark : old?.spark ?? null };
+    const sparks = Object.fromEntries(Object.entries({ ...old?.sparks, ...c.sparks }).filter(([m]) => !(m in c.metrics) || !!c.sparks?.[m]));
+    merged[id] = { metrics: { ...old?.metrics, ...c.metrics }, spark: keyDone ? c.spark : old?.spark ?? null, ...(Object.keys(sparks).length ? { sparks } : {}) };
   }
   return {
     modelHash: model.inputHash, builtAt: model.builtAt, editedAt: model.editedAt, thresholdPct, anchor,
