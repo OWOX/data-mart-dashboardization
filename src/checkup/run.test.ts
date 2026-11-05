@@ -136,7 +136,8 @@ test('contexts that cannot be read fail and skip the model freshness check', asy
   expect(c['model.fresh']).toMatchObject({ status: 'skip', detail: "Contexts couldn't be read" });
 });
 
-test('fewer than two contexts warn', async () => {
+test('two contexts pass; fewer warn', async () => {
+  expect(byId(await run(data()))['contexts.exist']).toMatchObject({ status: 'ok', detail: '2 contexts' });
   const sales = data().contexts![0]!;
   expect(byId(await run(data({ contexts: [sales] })))['contexts.exist']).toMatchObject({ status: 'warn', detail: 'Only 1 context' });
   expect(byId(await run(data({ contexts: [] })))['contexts.exist']).toMatchObject({ status: 'warn', detail: 'No contexts' });

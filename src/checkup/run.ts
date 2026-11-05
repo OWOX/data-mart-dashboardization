@@ -73,9 +73,10 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
   const failRunning = (match: (c: Check) => boolean, detail: string) => {
     for (const c of [...map.values()]) if (c.status === 'running' && match(c)) put(c.id, 'fail', detail);
   };
-  /** A throw fails the still-running checks whose id starts with `prefix`. */
-  const guard = async (prefix: string, fn: () => Promise<void> | void) => {
-    try { await fn(); } catch (e) { failRunning((c) => c.id.startsWith(prefix), describeError(e)); }
+  /** A throw fails the still-running checks whose id starts with `prefix`, or that `prefix` matches. */
+  const guard = async (prefix: string | ((id: string) => boolean), fn: () => Promise<void> | void) => {
+    const match = typeof prefix === 'string' ? (id: string) => id.startsWith(prefix) : prefix;
+    try { await fn(); } catch (e) { failRunning((c) => match(c.id), describeError(e)); }
   };
   const owoxFix = (fixLabel: string, path: string): Fix => ({ kind: 'owox', label: fixLabel, path: `/ui/${projectId}${path}` });
   const martFix = (id: string, title?: string): Fix => owoxFix(`Open ${title ?? 'the Data Mart'}`, `/data-marts/${id}/data-setup`);
@@ -167,7 +168,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     if (flattenFields(d.fields).some((f) => DATE_TYPES.has(f.field.type.toUpperCase()))) put('goal.date', 'ok'); else put('goal.date', 'fail', 'No date field', fix);
   });
 
-  const contextsGroup = () => guard('context', async () => {
+  const contextsGroup = () => guard((id) => id === 'contexts.exist' || id.startsWith('context:'), async () => {
     const fix = owoxFix('Contexts', '/contexts');
     if (!inputs.contextsOk) put('contexts.exist', 'fail', "Contexts couldn't be read", fix);
     else if (inputs.contexts.length < 2) put('contexts.exist', 'warn', inputs.contexts.length ? 'Only 1 context' : 'No contexts', fix);

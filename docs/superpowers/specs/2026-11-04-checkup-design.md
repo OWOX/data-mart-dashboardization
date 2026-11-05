@@ -64,7 +64,7 @@ OWOX paths are relative to `/ui/{projectId}`.
 | | No broken references | Warning, with the count | Metrics tab |
 | | It matches the descriptions | Warning: "The descriptions changed since the model was built" | Metrics tab |
 
-With no saved model, both Saved model checks are skipped with the detail "No model built yet".
+With no saved model, both Housekeeping model checks are skipped with the detail "No model built yet".
 
 A passed check can carry a detail, for example "Retail net revenue (Orders)" for the Critical number or "6 connections" for the calculated fields.
 
