@@ -421,7 +421,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
               <button type="button" className="gy-onto-fold" aria-expanded={open} aria-controls={bodyId} onClick={() => toggleOpen(c.id)}>
                 {open ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
                 <strong>{c.title}</strong>
-                {c.contexts.length > 0 && <span className="dm-muted gy-onto-contexts">{c.contexts.map((x) => x.name).join(', ')}</span>}
+                {c.contexts.length > 0 && <span className="gy-onto-pills" aria-label="Contexts">{c.contexts.map((x) => <span key={x.id} className="dm-badge">{x.name}</span>)}</span>}
                 <span className="dm-muted gy-onto-contexts">{shownCount} of {metrics.length} metrics shown</span>
                 {broken > 0 && <span className="gy-bad-text">{broken} broken</span>}
                 {cannotCompute > 0 && <span className="gy-bad-text">{cannotCompute} can&apos;t compute</span>}

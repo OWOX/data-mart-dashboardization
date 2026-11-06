@@ -1,6 +1,6 @@
-import { RefreshCw } from 'lucide-react';
+import { Compass, Network, RefreshCw, Spline, Wrench, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GROUPS, type Check, type CheckStatus } from '../checkup/types';
+import { GROUPS, type Check, type CheckStatus, type GroupId } from '../checkup/types';
 import { metricsSnippet } from './Blocked';
 import { CollapsibleCard } from './CollapsibleCard';
 
@@ -14,6 +14,7 @@ export interface CheckupProps {
   onOpenTab?: (tab: 'ontology') => void;
 }
 
+const GROUP_ICON: Record<GroupId, LucideIcon> = { heading: Compass, drivers: Network, connections: Spline, housekeeping: Wrench };
 const MARK: Record<CheckStatus, string> = { ok: '✓', fail: '✗', warn: '!', skip: '–', running: '' };
 const WORD: Record<CheckStatus, string> = { ok: 'passed', fail: 'failed', warn: 'warning', skip: 'skipped', running: 'checking' };
 // worst first
@@ -118,12 +119,10 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
         const w = worst(inGroup);
         return (
           <section key={g.id} aria-labelledby={`gy-ck-${g.id}`} className="gy-ck-group">
-            <h3 id={`gy-ck-${g.id}`} className="gy-build-h">
-              {g.label}{' '}
-              <span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span>
-              <span className="gy-sr">, {WORD[w]}</span>
-            </h3>
-            {plain.length > 0 && <ul className="gy-build-list">{plain.map(renderCheck)}</ul>}
+            <CollapsibleCard variant="section" icon={GROUP_ICON[g.id]} label={g.label}
+              title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label} <span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span><span className="gy-sr">, {WORD[w]}</span></h3>}>
+            {plain.length > 0 && <div className="dm-card-block"><ul className="gy-build-list">{plain.map(renderCheck)}</ul></div>}
+            {contexts.length > 0 && <div className="gy-ck-contexts">
             {contexts.map((ctx) => {
               const mine = inGroup.filter((c) => c.context?.id === ctx.id);
               const cw = worst(mine);
@@ -135,6 +134,8 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
                 </CollapsibleCard>
               );
             })}
+            </div>}
+            </CollapsibleCard>
           </section>
         );
       })}

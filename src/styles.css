@@ -108,18 +108,30 @@ h2 { margin: 0; }
 .gy-chk-tag, .gy-chk-note { font-size: 0.6875rem; color: var(--muted-foreground); }
 .gy-chk-tag { border: 1px solid var(--border); border-radius: 0.25rem; padding: 0 0.25rem; }
 .gy-chk-detail { flex-basis: 100%; margin-left: 1.5rem; font-size: 0.75rem; color: var(--red); }
-.dm-collapsible { margin-top: 0.5rem; border: 1px solid var(--border); border-radius: 0.375rem; background: color-mix(in srgb, var(--muted) 50%, transparent); }
-.dm-collapsible-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.5rem 1rem; }
-.dm-collapsible-title { font-size: 0.8125rem; font-weight: 500; }
+.dm-collapsible { border-radius: 0.375rem; }
+/* OWOX's default CollapsibleCard: muted, a line under it */
+.dm-collapsible[data-variant='section'] { border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--muted) 50%, transparent); }
+/* OWOX's dm-card-block, bordered, for a card inside a section */
+.dm-collapsible[data-variant='block'], .dm-card-block { border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card); }
+.dm-card-block { display: flex; flex-direction: column; gap: 1rem; padding: 1rem; }
+.dm-collapsible-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; cursor: pointer; }
+.dm-collapsible[data-variant='block'] .dm-collapsible-header { padding: 0.625rem 1rem; }
+.dm-collapsible-title { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; font-weight: 500; }
+.dm-collapsible-icon { display: inline-grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: 0.25rem; background: color-mix(in srgb, var(--border) 50%, transparent); color: var(--foreground); }
 .dm-collapsible-actions { display: flex; align-items: center; gap: 0.5rem; }
 .dm-collapsible-toggle { display: inline-grid; place-items: center; width: 1.75rem; height: 1.75rem; border: 0; border-radius: 50%; background: transparent; color: var(--muted-foreground); cursor: pointer; transition: background-color 0.2s; }
 .dm-collapsible-toggle:hover { background: color-mix(in srgb, var(--border) 50%, transparent); }
+.dm-collapsible-toggle:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .dm-collapsible-toggle svg { transition: transform 0.2s; transform: rotate(180deg); }
 .dm-collapsible-toggle svg[data-folded='true'] { transform: none; }
 .dm-collapsible-grid { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.2s; }
 .dm-collapsible-grid[data-folded='true'] { grid-template-rows: 0fr; }
 .dm-collapsible-clip { overflow: hidden; }
-.dm-collapsible-content { padding: 0.25rem 1rem 0.75rem; }
+.dm-collapsible-content { display: grid; gap: 0.75rem; padding: 0.25rem 1rem 1rem; }
+.dm-collapsible[data-variant='block'] .dm-collapsible-content { padding: 0 1rem 0.75rem; }
+/* A section's contexts side by side, as many columns as fit */
+.gy-ck-contexts { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 0.75rem; align-items: start; }
+.gy-ck-title { margin: 0; font-size: 1rem; font-weight: 500; }
 @media (prefers-reduced-motion: reduce) { .dm-collapsible-grid, .dm-collapsible-toggle svg { transition: none; } }
 .gy-ck { display: grid; gap: 1.5rem; }
 .gy-ck-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
@@ -428,6 +440,9 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-tip-btn:hover { color: var(--foreground); }
 .gy-tip-pop { position: absolute; z-index: 20; top: 100%; left: 0; width: max-content; max-width: 18rem; margin-top: 0.25rem; padding: 0.5rem 0.625rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card); color: var(--foreground); font-size: 0.8125rem; line-height: 1.4; box-shadow: 0 4px 12px rgb(0 0 0 / 0.12); }
 .gy-onto-contexts { font-size: 0.8125rem; }
+/* A class's contexts as pills: the OWOX secondary badge. */
+.gy-onto-pills { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.dm-badge { display: inline-flex; align-items: center; white-space: nowrap; padding: 0.125rem 0.375rem; border-radius: 9999px; border: 0; background: var(--muted); color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 400; line-height: 1.2; }
 .gy-onto-check { width: 1rem; height: 1rem; margin: 0; accent-color: var(--primary); }
 /* the forecast list and the (i) popovers are placed fixed, so this scroll box doesn't clip them */
 .gy-onto-scroll { overflow-x: auto; }
@@ -519,9 +534,6 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-line-tip { display: inline-flex; flex-shrink: 0; position: relative; top: 1px; opacity: 0; pointer-events: none; transition: opacity 120ms; }
 .gy-card:hover .gy-line-tip, .gy-card:focus-within .gy-line-tip { opacity: 1; pointer-events: auto; }
 @media (hover: none), (any-hover: none) { .gy-line-tip { opacity: 1; pointer-events: auto; } }
-/* Context pills beside the name: the OWOX secondary badge. The name ellipsizes first; pills keep their text. */
-.dm-badge { display: inline-flex; flex-shrink: 0; align-items: center; white-space: nowrap; padding: 0.125rem 0.375rem; border-radius: 9999px; border: 0; background: var(--muted); color: var(--muted-foreground); font-size: 0.6875rem; line-height: 1; }
-.gy-ctx-pill { align-self: center; }
 .gy-hint-left { right: auto; left: -0.25rem; }
 /* The Data Mart description: Markdown rendered by OWOX, so it needs room and readable type. */
 .gy-hint-md { display: block; width: 22rem; max-width: min(22rem, 80vw); max-height: 16rem; overflow: auto; white-space: normal; }
