@@ -37,7 +37,7 @@ test('a run writes one cache doc per Data Mart and range', async () => {
   expect(r.ranges).toBe(2);
   expect(r.skipped).toBe(0);
   expect(r.queries).toBeGreaterThan(0);
-  const doc = await store.collections<MartCacheDoc>(MART_CACHE).get(`${martIds[0]}:qtd:off`);
+  const doc = await store.collections<MartCacheDoc>(MART_CACHE).get(martIds[0]!);
   expect(doc?.document.anchor).toBe('2026-11-05'); // the anchor is the last complete day
 });
 
@@ -102,7 +102,7 @@ test('the page answers from what the Worker cached, plan Data Mart included', as
   const pageModel = (await readSnapshot(store, 'u1', martIds))!;
   const spec = resolveRange(r.range as never, r.compare as never, NOW, 'monday');
   const key = cacheKey(r.range as never, r.compare as never, 'monday');
-  const src = cachedOwox({ owox: page as OwoxLike, store, key, anchor: spec.anchor, mode: 'read-write', now: () => NOW });
+  const src = cachedOwox({ owox: page as OwoxLike, store, anchor: spec.anchor, mode: 'read-write', now: () => NOW });
   await refreshCanvas({ owox: src.owox, model: pageModel, spec, key, thresholdPct: DEFAULT_SETTINGS.thresholdPct });
   expect(page.calls.filter((c) => c.path.startsWith('traverse:'))).toHaveLength(0);
   expect(src.stats().hits).toBeGreaterThan(0);

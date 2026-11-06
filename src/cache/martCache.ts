@@ -2,7 +2,7 @@ import type { OwoxLike } from '../owox/sources';
 import type { CollectionsLike } from '../store/collections';
 import type { Day } from '../types';
 
-/** Rows of Data Mart queries for one range, shared by the project; bound to the Data Mart, so a member reads only the ones they can see. */
+/** One doc per Data Mart holding its queries of the day, shared by the project; bound to the Data Mart, so a member reads only the ones they can see. */
 export const MART_CACHE = 'mart-cache';
 export const MAX_CACHE_CHARS = 900_000;
 
@@ -13,8 +13,6 @@ export interface MartCacheDoc {
   fetchedAt: string;
   queries: Record<string, { rows: Record<string, unknown>[]; at: string }>;
 }
-
-export const martCacheId = (martId: string, key: string): string => `${martId}:${key}`;
 
 /** JSON with object keys sorted, so equal options give equal cache keys. */
 export function stableJson(v: unknown): string {
@@ -31,8 +29,8 @@ export interface CachedOwox {
 
 const once = (rows: Record<string, unknown>[]) => ({ async *rowChunks() { yield rows; } });
 
-export function cachedOwox(args: { owox: OwoxLike; store: CollectionsLike; key: string; anchor: Day; mode: 'read-write' | 'write-only'; now: () => Date }): CachedOwox {
-  const { owox, store, key, anchor, mode, now } = args;
+export function cachedOwox(args: { owox: OwoxLike; store: CollectionsLike; anchor: Day; mode: 'read-write' | 'write-only'; now: () => Date }): CachedOwox {
+  const { owox, store, anchor, mode, now } = args;
   const col = store.collections<MartCacheDoc>(MART_CACHE);
   const loaded = new Map<string, Promise<MartCacheDoc | null>>();
   const recorded = new Map<string, MartCacheDoc['queries']>();
@@ -44,7 +42,7 @@ export function cachedOwox(args: { owox: OwoxLike; store: CollectionsLike; key: 
   const load = (martId: string) => {
     let p = loaded.get(martId);
     if (!p) {
-      p = col.get(martCacheId(martId, key)).then((d) => (d?.document?.v === 1 && d.document.anchor === anchor && typeof d.document.queries === 'object' && d.document.queries !== null ? d.document : null), () => null);
+      p = col.get(martId).then((d) => (d?.document?.v === 1 && d.document.anchor === anchor && typeof d.document.queries === 'object' && d.document.queries !== null ? d.document : null), () => null);
       loaded.set(martId, p);
     }
     return p;
@@ -82,16 +80,18 @@ export function cachedOwox(args: { owox: OwoxLike; store: CollectionsLike; key: 
       const failed: string[] = [];
       const tooLarge: string[] = [];
       for (const [martId, queries] of recorded) {
-        const id = martCacheId(martId, key);
-        // today's queries made by other models stay; a doc of another day is dropped by load()
+        // today's queries made by other runs stay; a doc of another day is dropped by load()
         const base = await load(martId);
         const doc: MartCacheDoc = { v: 1, anchor, fetchedAt: now().toISOString(), queries: { ...base?.queries, ...queries } };
-        if (stableJson(doc).length > MAX_CACHE_CHARS) { tooLarge.push(id); continue; }
+        // over the limit: the oldest entries this flush did not record go first
+        const stale = Object.keys(doc.queries).filter((q) => !(q in queries)).sort((a, b) => (doc.queries[a]!.at < doc.queries[b]!.at ? -1 : 1));
+        while (stableJson(doc).length > MAX_CACHE_CHARS && stale.length) delete doc.queries[stale.shift()!];
+        if (stableJson(doc).length > MAX_CACHE_CHARS) { tooLarge.push(martId); continue; }
         try {
-          await col.put(id, doc, { parentId: martId });
-          written.push(id);
+          await col.put(martId, doc, { parentId: martId });
+          written.push(martId);
         } catch {
-          failed.push(id);
+          failed.push(martId);
         }
       }
       recorded.clear();

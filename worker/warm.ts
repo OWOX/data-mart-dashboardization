@@ -34,7 +34,7 @@ export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date 
     const spec = resolveRange(r.range, r.compare, now(), r.weekStart);
     const key = cacheKey(r.range, r.compare, r.weekStart);
     // write-only: a scheduled run exists to replace what is cached
-    const src = cachedOwox({ owox, store, key, anchor: spec.anchor, mode: 'write-only', now });
+    const src = cachedOwox({ owox, store, anchor: spec.anchor, mode: 'write-only', now });
     await refreshCanvas({ owox: src.owox, model, spec, key, thresholdPct: DEFAULT_SETTINGS.thresholdPct });
     const f = await src.flush();
     out.ranges++;
