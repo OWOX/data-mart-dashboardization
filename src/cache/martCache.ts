@@ -21,7 +21,7 @@ export function stableJson(v: unknown): string {
   return JSON.stringify(v) ?? 'null';
 }
 
-export interface CachedOwox {
+interface CachedOwox {
   owox: OwoxLike;
   flush(): Promise<{ written: string[]; failed: string[]; tooLarge: string[] }>;
   stats(): { hits: number; misses: number; oldestHit: string | null };

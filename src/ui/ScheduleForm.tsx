@@ -23,7 +23,7 @@ function computeZones(): string[] {
 
 const toggle = <T,>(xs: T[], x: T): T[] => (xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x]);
 
-export interface ScheduleFormProps {
+interface ScheduleFormProps {
   schedules: PluginSchedules; schedule: PluginSchedule | null; model: Model | null; settings: Settings;
   onSaved: () => void | Promise<void>; onCancel: () => void;
 }

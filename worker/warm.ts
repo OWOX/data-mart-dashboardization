@@ -12,8 +12,8 @@ export class ActionError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
 }
 
-export interface WarmContext { owox: unknown; collections: CollectionsLike['collections']; execution: { deadlineAt: string } }
-export interface WarmResult { ranges: number; marts: number; queries: number; skipped: number; failed: string[]; tooLarge: string[]; written: string[] }
+interface WarmContext { owox: unknown; collections: CollectionsLike['collections']; execution: { deadlineAt: string } }
+interface WarmResult { ranges: number; marts: number; queries: number; skipped: number; failed: string[]; tooLarge: string[]; written: string[] }
 
 // a range is a full canvas refresh; one that starts this close to the deadline would be cut off mid-way
 const RESERVE_MS = 30_000;

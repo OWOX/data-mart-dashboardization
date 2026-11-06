@@ -3,13 +3,13 @@ import { PRESET_LABELS, type ComparePreset, type Preset, type Settings, type Wee
 export const WARM_ACTION = 'warm-cache';
 export const MAX_RANGES = 5;
 
-export interface WarmRange {
+interface WarmRange {
   range: { kind: 'preset'; preset: Preset };
   compare: { kind: 'off' } | { kind: 'preset'; preset: ComparePreset };
   weekStart: WeekStart;
 }
 /** What a schedule passes to the warm-cache action. The run acts as the member who created the schedule. */
-export interface WarmInput { ranges: WarmRange[] }
+interface WarmInput { ranges: WarmRange[] }
 
 const PRESETS = Object.keys(PRESET_LABELS) as Preset[];
 const COMPARES: ComparePreset[] = ['previous_period', 'preceding_days', 'year_before'];

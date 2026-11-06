@@ -22,6 +22,11 @@ function fakeSource(rows: (martId: string, options: Record<string, unknown>) => 
   return { owox, calls };
 }
 
+const cacheCol = (store: ReturnType<typeof memoryCollections>) => store.collections<MartCacheDoc>(MART_CACHE);
+const cachedDoc = async (store: ReturnType<typeof memoryCollections>) => (await cacheCol(store).get('m1'))!.document;
+const cachedOf = (store: ReturnType<typeof memoryCollections>, src: ReturnType<typeof fakeSource>, mode: 'read-write' | 'write-only' = 'read-write') =>
+  cachedOwox({ owox: src.owox, store, anchor: ANCHOR, mode, now: () => NOW });
+
 async function read(o: OwoxLike, martId: string, options: Record<string, unknown>) {
   const out: Record<string, unknown>[] = [];
   for await (const c of (await o.dataMarts.traverseData(martId, options)).rowChunks()) out.push(...c);
@@ -37,11 +42,11 @@ test('stableJson ignores key order', () => {
 test('a miss queries live, and the flush writes the rows under the Data Mart with its parentId', async () => {
   const store = memoryCollections();
   const src = fakeSource(() => [{ v: 1 }, { v: 2 }]);
-  const c = cachedOwox({ owox: src.owox, store, anchor: ANCHOR, mode: 'read-write', now: () => NOW });
+  const c = cachedOf(store, src);
   expect(await read(c.owox, 'm1', opts)).toEqual([{ v: 1 }, { v: 2 }]);
   const r = await c.flush();
   expect(r).toEqual({ written: ['m1'], failed: [], tooLarge: [] });
-  const doc = (await store.collections<MartCacheDoc>(MART_CACHE).get('m1'))!.document;
+  const doc = await cachedDoc(store);
   expect(doc.anchor).toBe(ANCHOR);
   expect(doc.queries[stableJson(opts)]!.rows).toEqual([{ v: 1 }, { v: 2 }]);
   expect(store.parentOf(MART_CACHE, 'm1')).toBe('m1');
@@ -51,9 +56,9 @@ test('a miss queries live, and the flush writes the rows under the Data Mart wit
 test('a hit answers from the cache without a live query', async () => {
   const store = memoryCollections();
   const at = '2026-11-06T06:00:00.000Z';
-  await store.collections<MartCacheDoc>(MART_CACHE).put('m1', { v: 1, anchor: ANCHOR, fetchedAt: at, queries: { [stableJson(opts)]: { rows: [{ v: 9 }], at } } }, { parentId: 'm1' });
+  await cacheCol(store).put('m1', { v: 1, anchor: ANCHOR, fetchedAt: at, queries: { [stableJson(opts)]: { rows: [{ v: 9 }], at } } }, { parentId: 'm1' });
   const src = fakeSource(() => [{ v: 1 }]);
-  const c = cachedOwox({ owox: src.owox, store, anchor: ANCHOR, mode: 'read-write', now: () => NOW });
+  const c = cachedOf(store, src);
   expect(await read(c.owox, 'm1', { limit: 1, aggregation: opts.aggregation, column: opts.column })).toEqual([{ v: 9 }]);
   expect(src.calls).toHaveLength(0);
   expect(c.stats()).toEqual({ hits: 1, misses: 0, oldestHit: at });
@@ -63,24 +68,24 @@ test('a hit answers from the cache without a live query', async () => {
 test('a doc of another day serves nothing, and its queries are dropped on flush', async () => {
   const store = memoryCollections();
   const old = { other: { rows: [{ v: 0 }], at: '2026-11-05T06:00:00.000Z' }, [stableJson(opts)]: { rows: [{ v: 0 }], at: '2026-11-05T06:00:00.000Z' } };
-  await store.collections<MartCacheDoc>(MART_CACHE).put('m1', { v: 1, anchor: '2026-11-05', fetchedAt: '2026-11-05T06:00:00.000Z', queries: old });
+  await cacheCol(store).put('m1', { v: 1, anchor: '2026-11-05', fetchedAt: '2026-11-05T06:00:00.000Z', queries: old });
   const src = fakeSource(() => [{ v: 5 }]);
-  const c = cachedOwox({ owox: src.owox, store, anchor: ANCHOR, mode: 'read-write', now: () => NOW });
+  const c = cachedOf(store, src);
   expect(await read(c.owox, 'm1', opts)).toEqual([{ v: 5 }]);
   await c.flush();
-  const doc = (await store.collections<MartCacheDoc>(MART_CACHE).get('m1'))!.document;
+  const doc = await cachedDoc(store);
   expect(Object.keys(doc.queries)).toEqual([stableJson(opts)]);
 });
 
 test('write-only skips reads but keeps the queries already cached today', async () => {
   const store = memoryCollections();
   const at = '2026-11-06T06:00:00.000Z';
-  await store.collections<MartCacheDoc>(MART_CACHE).put('m1', { v: 1, anchor: ANCHOR, fetchedAt: at, queries: { other: { rows: [{ v: 3 }], at }, [stableJson(opts)]: { rows: [{ v: 9 }], at } } });
+  await cacheCol(store).put('m1', { v: 1, anchor: ANCHOR, fetchedAt: at, queries: { other: { rows: [{ v: 3 }], at }, [stableJson(opts)]: { rows: [{ v: 9 }], at } } });
   const src = fakeSource(() => [{ v: 4 }]);
-  const c = cachedOwox({ owox: src.owox, store, anchor: ANCHOR, mode: 'write-only', now: () => NOW });
+  const c = cachedOf(store, src, 'write-only');
   expect(await read(c.owox, 'm1', opts)).toEqual([{ v: 4 }]);
   await c.flush();
-  const doc = (await store.collections<MartCacheDoc>(MART_CACHE).get('m1'))!.document;
+  const doc = await cachedDoc(store);
   expect(doc.queries.other!.rows).toEqual([{ v: 3 }]);
   expect(doc.queries[stableJson(opts)]!.rows).toEqual([{ v: 4 }]);
   expect(doc.fetchedAt).toBe(NOW.toISOString());
@@ -95,7 +100,7 @@ test('parallel queries of one Data Mart load its doc once and all land in one wr
   await Promise.all([1, 2, 3].map((n) => read(c.owox, 'm1', { limit: n })));
   await c.flush();
   expect(gets).toBe(1);
-  const doc = (await store.collections<MartCacheDoc>(MART_CACHE).get('m1'))!.document;
+  const doc = await cachedDoc(store);
   expect(Object.keys(doc.queries)).toHaveLength(3);
 });
 
@@ -116,7 +121,7 @@ test('queries of two ranges land in one doc of the Data Mart', async () => {
   await read(c.owox, 'm1', mtd);
   await read(c.owox, 'm1', qtd);
   expect((await c.flush()).written).toEqual(['m1']);
-  const doc = (await store.collections<MartCacheDoc>(MART_CACHE).get('m1'))!.document;
+  const doc = await cachedDoc(store);
   expect(Object.keys(doc.queries).sort()).toEqual([stableJson(mtd), stableJson(qtd)].sort());
 });
 
@@ -124,11 +129,11 @@ test('over the size limit the oldest entries of earlier runs go first', async ()
   const store = memoryCollections();
   const chunk = 'x'.repeat(MAX_CACHE_CHARS / 3);
   const entry = (at: string) => ({ rows: [{ chunk }], at });
-  await store.collections<MartCacheDoc>(MART_CACHE).put('m1', { v: 1, anchor: ANCHOR, fetchedAt: NOW.toISOString(), queries: { old: entry('2026-11-06T01:00:00.000Z'), newer: entry('2026-11-06T02:00:00.000Z') } }, { parentId: 'm1' });
+  await cacheCol(store).put('m1', { v: 1, anchor: ANCHOR, fetchedAt: NOW.toISOString(), queries: { old: entry('2026-11-06T01:00:00.000Z'), newer: entry('2026-11-06T02:00:00.000Z') } }, { parentId: 'm1' });
   const c = cachedOwox({ owox: fakeSource(() => [{ chunk }]).owox, store, anchor: ANCHOR, mode: 'write-only', now: () => NOW });
   await read(c.owox, 'm1', opts);
   expect((await c.flush()).written).toEqual(['m1']);
-  const doc = (await store.collections<MartCacheDoc>(MART_CACHE).get('m1'))!.document;
+  const doc = await cachedDoc(store);
   expect(Object.keys(doc.queries).sort()).toEqual(['newer', stableJson(opts)].sort());
 });
 
@@ -161,7 +166,7 @@ test('a doc of today without queries is no doc, and does not throw', async () =>
   const store = memoryCollections();
   await store.collections<unknown>(MART_CACHE).put('m1', { v: 1, anchor: ANCHOR, fetchedAt: NOW.toISOString() });
   const src = fakeSource(() => [{ v: 1 }]);
-  const c = cachedOwox({ owox: src.owox, store, anchor: ANCHOR, mode: 'read-write', now: () => NOW });
+  const c = cachedOf(store, src);
   expect(await read(c.owox, 'm1', opts)).toEqual([{ v: 1 }]);
   expect(src.calls).toHaveLength(1);
   expect(c.stats().hits).toBe(0);
