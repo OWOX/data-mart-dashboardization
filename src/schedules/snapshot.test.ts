@@ -25,3 +25,17 @@ test('missing slices are skipped; none at all is null', async () => {
   const one = await readSnapshot(store, 'u1', [ids[0]!, 'gone']);
   expect(one!.classes.map((c) => c.martId)).toEqual([ids[0]]);
 });
+
+test('a hidden goal class that is not the first class stays the goal', async () => {
+  const store = memoryCollections();
+  const base = fixtureModel.classes[0]!;
+  const first = { ...base, id: 'c1', martId: 'a' };
+  const goal = { ...base, id: 'c2', martId: 'b', shown: false };
+  const m = { ...fixtureModel, goal: { ...fixtureModel.goal, classId: 'c2', goalMartId: 'b' }, classes: [first, goal] };
+  const ids = await writeSnapshot(store, m, 'u1');
+  const back = (await readSnapshot(store, 'u1', ids))!;
+  expect(back.goal.classId).toBe('c2');
+  expect(back.goal.goalMartId).toBe('b');
+  const only = (await readSnapshot(store, 'u1', ['a']))!;
+  expect(only.goal.classId).toBe('c1');
+});
