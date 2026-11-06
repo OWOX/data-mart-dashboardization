@@ -98,7 +98,7 @@ const inCtx = (id: string, status: Check['status']) => ck(id, status, { group: '
 test('an all-ok context starts folded with a passed mark; its checks are hidden', async () => {
   render(<CheckupTab run={instant([inCtx('a', 'ok'), inCtx('b', 'ok')])} projectId="p1" now={now} />);
   const group = await screen.findByRole('group', { name: 'Finance' });
-  expect(within(group).getByRole('button', { name: /Expand Finance/ })).toHaveAttribute('aria-expanded', 'false');
+  expect(within(group).getByRole('button', { name: 'Finance', expanded: false })).toHaveAttribute('aria-expanded', 'false');
   const head = group.querySelector<HTMLElement>('.dm-collapsible-header')!;
   expect(within(head).getByText('✓')).toBeInTheDocument();
   expect(head).toHaveTextContent('passed');
@@ -110,8 +110,25 @@ test('a context with a failure starts open with the failed mark; the chevron tog
   const group = await screen.findByRole('group', { name: 'Finance' });
   expect(within(group.querySelector<HTMLElement>('.dm-collapsible-header')!).getByText('✗')).toBeInTheDocument();
   expect(within(group).getAllByRole('listitem')).toHaveLength(2);
-  fireEvent.click(within(group).getByRole('button', { name: /Collapse Finance/ }));
+  fireEvent.click(within(group).getByRole('button', { name: 'Finance', expanded: true }));
   expect(within(group).queryByRole('listitem')).toBeNull();
-  fireEvent.click(within(group).getByRole('button', { name: /Expand Finance/ }));
+  fireEvent.click(within(group).getByRole('button', { name: 'Finance', expanded: false }));
   expect(within(group).getAllByRole('listitem')).toHaveLength(2);
+});
+
+test('the fold follows the results as a run streams', async () => {
+  let push!: (c: Check[]) => void;
+  const d = deferred();
+  render(<CheckupTab run={(onUpdate) => { push = onUpdate; return d.promise; }} projectId="p1" now={now} />);
+  const other = (id: string, status: Check['status']) => ck(id, status, { group: 'drivers', context: { id: 'c2', name: 'Ads' } });
+  act(() => push([inCtx('a', 'running'), other('x', 'running')]));
+  const fin = screen.getByRole('group', { name: 'Finance' }), ads = screen.getByRole('group', { name: 'Ads' });
+  expect(within(fin).getAllByRole('listitem')).toHaveLength(1);
+  expect(within(ads).getAllByRole('listitem')).toHaveLength(1);
+  // the member folds Ads mid-run; a failure then opens it again
+  fireEvent.click(within(ads).getByRole('button', { name: 'Ads' }));
+  expect(within(ads).queryByRole('listitem')).toBeNull();
+  act(() => push([inCtx('a', 'ok'), other('x', 'fail')]));
+  expect(within(fin).queryByRole('listitem')).toBeNull();
+  expect(within(ads).getAllByRole('listitem')).toHaveLength(1);
 });

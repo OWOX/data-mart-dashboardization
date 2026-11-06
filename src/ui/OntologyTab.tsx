@@ -74,10 +74,11 @@ function InfoTip({ name, text }: { name: string; text: string }) {
   const anchor = useRef<HTMLSpanElement>(null);
   const style = useBelow(anchor, open);
   return (
-    <span ref={anchor} className="gy-tip" onMouseEnter={() => { clearTimeout(timer.current); setHover(true); }} onMouseLeave={() => { clearTimeout(timer.current); timer.current = setTimeout(() => setHover(false), LINGER_MS); }}>
+    <span ref={anchor} className="gy-tip" onMouseEnter={() => { clearTimeout(timer.current); setHover(true); }} onMouseLeave={() => { clearTimeout(timer.current); timer.current = setTimeout(() => setHover(false), LINGER_MS); }}
+      onFocus={() => setFocus(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setFocus(false); setPinned(false); } }}>
       <button
         type="button" className="gy-tip-btn" aria-label={`About ${name}`} aria-describedby={id}
-        onClick={() => setPinned((v) => !v)} onFocus={() => setFocus(true)} onBlur={(e) => { if (e.relatedTarget && e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) return; setFocus(false); setPinned(false); }}
+        onClick={() => setPinned((v) => !v)}
         onKeyDown={(e) => { if (e.key === 'Escape') { setHover(false); setFocus(false); setPinned(false); } }}
       >
         <Info size={14} aria-hidden="true" />
@@ -87,7 +88,7 @@ function InfoTip({ name, text }: { name: string; text: string }) {
         onClick={(e) => {
           const a = (e.target as Element).closest('a');
           const path = a && onOpen ? owoxPath(a.getAttribute('href') ?? '', HOSTS) : null;
-          if (path) { e.preventDefault(); setHover(false); setPinned(false); onOpen!(path); }
+          if (path) { e.preventDefault(); setHover(false); setFocus(false); setPinned(false); onOpen!(path); }
         }}
       >
         <div className="gy-md"><MarkdownText text={text} /></div>

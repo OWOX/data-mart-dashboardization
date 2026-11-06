@@ -663,3 +663,33 @@ it('renders a tip description as Markdown, opening an OWOX link in place', () =>
   fireEvent.click(a);
   expect(onOpen).toHaveBeenCalledWith('/ui/p1/data-marts/m1/data-setup');
 });
+
+describe('an info tip with an OWOX link', () => {
+  const setup = () => {
+    const onOpen = vi.fn();
+    const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
+    render(<><OntologyTab model={model()} details={DETAILS} marts={MARTS.map((x) => (x.id === 'a' ? { ...x, description: 'See [Traffic Sources](https://app.owox.com/ui/p1/data-marts/m1/data-setup)' } : x))} owox={owox} now={() => new Date()} onSave={async () => undefined} onCancel={() => {}} onOpen={onOpen} /><button>outside</button></>);
+    const btn = screen.getByRole('button', { name: 'About Orders' });
+    const tip = () => screen.getByRole('tooltip', { hidden: true });
+    return { btn, tip, link: () => within(tip()).getByRole('link', { hidden: true, name: 'Traffic Sources' }) };
+  };
+
+  it('closes when focus moves from its link to outside', () => {
+    const { btn, tip, link } = setup();
+    fireEvent.focus(btn);
+    expect(tip()).toBeVisible();
+    fireEvent.blur(btn, { relatedTarget: link() });
+    fireEvent.focus(link());
+    expect(tip()).toBeVisible();
+    fireEvent.blur(link(), { relatedTarget: screen.getByRole('button', { name: 'outside' }) });
+    expect(tip()).not.toBeVisible();
+  });
+
+  it('closes after an OWOX link is clicked', () => {
+    const { btn, tip, link } = setup();
+    fireEvent.focus(btn);
+    fireEvent.focus(link());
+    fireEvent.click(link());
+    expect(tip()).not.toBeVisible();
+  });
+});

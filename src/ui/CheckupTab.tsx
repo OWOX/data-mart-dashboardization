@@ -129,7 +129,7 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
               const cw = worst(mine);
               const allOk = mine.every((c) => c.status === 'ok');
               return (
-                <CollapsibleCard key={ctx.id} title={ctx.name} label={ctx.name} collapsed={allOk}
+                <CollapsibleCard key={ctx.id} title={ctx.name} label={ctx.name} collapsed={allOk} attention={cw === 'fail' || cw === 'warn'}
                   status={<span className="gy-ck-gmark" data-state={allOk ? 'ok' : cw}><span aria-hidden="true">{MARK[allOk ? 'ok' : cw]}</span><span className="gy-sr">, {WORD[allOk ? 'ok' : cw]}</span></span>}>
                   <ul className="gy-build-list">{mine.map(renderCheck)}</ul>
                 </CollapsibleCard>
