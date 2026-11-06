@@ -1,0 +1,44 @@
+import { cachedOwox } from '../src/cache/martCache';
+import { resolveRange } from '../src/lib/dates';
+import { cacheKey, refreshCanvas } from '../src/metrics/refresh';
+import type { OwoxLike } from '../src/owox/sources';
+import { parseWarmInput } from '../src/schedules/input';
+import { readSnapshot } from '../src/schedules/snapshot';
+import type { CollectionsLike } from '../src/store/collections';
+import { DEFAULT_SETTINGS } from '../src/types';
+
+/** OWOX shows `code` as the run's error code; it must match ^[A-Z][A-Z0-9_]{0,63}$. */
+export class ActionError extends Error {
+  constructor(readonly code: string, message: string) { super(message); }
+}
+
+export interface WarmContext { owox: unknown; collections: CollectionsLike['collections']; execution: { deadlineAt: string } }
+export interface WarmResult { ranges: number; marts: number; queries: number; skipped: number; failed: string[]; tooLarge: string[] }
+
+// a range is a full canvas refresh; one that starts this close to the deadline would be cut off mid-way
+const RESERVE_MS = 30_000;
+
+export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date = () => new Date()): Promise<WarmResult> {
+  const input = parseWarmInput(raw);
+  if (!input) throw new ActionError('INVALID_RANGES', 'The schedule parameters are not valid; save the schedule again.');
+  const store: CollectionsLike = { collections: ctx.collections };
+  const model = await readSnapshot(store, input.memberId, input.martIds);
+  if (!model) throw new ActionError('MODEL_MISSING', "The schedule's model snapshot is missing; save the schedule again.");
+  const owox = ctx.owox as OwoxLike;
+  const deadline = Date.parse(ctx.execution.deadlineAt);
+  const out: WarmResult = { ranges: 0, marts: input.martIds.length, queries: 0, skipped: 0, failed: [], tooLarge: [] };
+  for (const r of input.ranges) {
+    if (deadline - now().getTime() < RESERVE_MS) { out.skipped++; continue; }
+    const spec = resolveRange(r.range, r.compare, now(), r.weekStart);
+    const key = cacheKey(r.range, r.compare, r.weekStart);
+    // write-only: a scheduled run exists to replace what is cached
+    const src = cachedOwox({ owox, store, key, anchor: spec.anchor, mode: 'write-only', now });
+    await refreshCanvas({ owox: src.owox, model, spec, key, thresholdPct: DEFAULT_SETTINGS.thresholdPct });
+    const f = await src.flush();
+    out.ranges++;
+    out.queries += src.stats().misses;
+    out.failed.push(...f.failed);
+    out.tooLarge.push(...f.tooLarge);
+  }
+  return out;
+}

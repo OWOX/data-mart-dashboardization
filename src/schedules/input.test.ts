@@ -30,7 +30,7 @@ test('no presets means the default range; comparison follows the project default
   ]);
 });
 
-test.skip('plugin.json declares the same input schema', () => {
+test('plugin.json declares the same input schema', () => {
   const manifest = JSON.parse(readFileSync(join(__dirname, '..', '..', 'plugin.json'), 'utf8'));
   expect(manifest.backend.actions['warm-cache'].input).toEqual(WARM_INPUT_SCHEMA);
 });

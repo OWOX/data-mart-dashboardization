@@ -1,13 +1,182 @@
 {
   "name": "Gyroscope",
   "description": "Shows the CEO whether the company is on track for its goal, class by class, against plan.",
-  "delivery": { "type": "remote", "url": "https://owox.github.io/gyroscope/v3/" },
-  "credentials": ["ai"],
+  "delivery": {
+    "type": "remote",
+    "url": "https://owox.github.io/gyroscope/v4/"
+  },
+  "credentials": [
+    "ai"
+  ],
   "collections": [
-    { "name": "model", "scope": "project" },
-    { "name": "ontology", "scope": "member" },
-    { "name": "cache", "scope": "member" },
-    { "name": "settings", "scope": "project" },
-    { "name": "preferences", "scope": "member" }
-  ]
+    {
+      "name": "model",
+      "scope": "project"
+    },
+    {
+      "name": "ontology",
+      "scope": "member"
+    },
+    {
+      "name": "cache",
+      "scope": "member"
+    },
+    {
+      "name": "settings",
+      "scope": "project"
+    },
+    {
+      "name": "preferences",
+      "scope": "member"
+    },
+    {
+      "name": "mart-cache",
+      "scope": "project",
+      "entityBinding": {
+        "type": "data-mart",
+        "actions": {
+          "read": "SEE",
+          "create": "SEE",
+          "update": "SEE",
+          "delete": "SEE"
+        }
+      }
+    },
+    {
+      "name": "schedule-models",
+      "scope": "project",
+      "entityBinding": {
+        "type": "data-mart",
+        "actions": {
+          "read": "SEE",
+          "create": "SEE",
+          "update": "SEE",
+          "delete": "SEE"
+        }
+      }
+    }
+  ],
+  "backend": {
+    "url": "https://gyroscope.owox.workers.dev",
+    "actions": {
+      "warm-cache": {
+        "timeoutSeconds": 300,
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "memberId",
+            "martIds",
+            "ranges"
+          ],
+          "properties": {
+            "memberId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "martIds": {
+              "type": "array",
+              "maxItems": 200,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "ranges": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "range",
+                  "compare",
+                  "weekStart"
+                ],
+                "properties": {
+                  "range": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "kind",
+                      "preset"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "const": "preset"
+                      },
+                      "preset": {
+                        "enum": [
+                          "last_year",
+                          "last_quarter",
+                          "last_month",
+                          "last_week",
+                          "last_28d",
+                          "last_7d",
+                          "yesterday",
+                          "ytd",
+                          "qtd",
+                          "mtd",
+                          "wtd",
+                          "cur_year",
+                          "cur_quarter",
+                          "cur_month",
+                          "cur_week"
+                        ]
+                      }
+                    }
+                  },
+                  "compare": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "off"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "kind",
+                          "preset"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "preset"
+                          },
+                          "preset": {
+                            "enum": [
+                              "previous_period",
+                              "preceding_days",
+                              "year_before"
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "weekStart": {
+                    "enum": [
+                      "monday",
+                      "sunday"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
