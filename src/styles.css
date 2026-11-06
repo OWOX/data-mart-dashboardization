@@ -140,7 +140,9 @@ h2 { margin: 0; }
 .gy-ck-summary:empty { display: none; }
 .gy-ck-when { color: var(--muted-foreground); font-size: 0.75rem; }
 .gy-ck-head .gy-icon-btn { margin-left: auto; }
-.gy-ck-fix { display: inline-flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; font-size: 0.75rem; }
+/* Fix links and the snippet start where the label does: past the mark (1rem) and the gap (0.5rem), as the detail does */
+.gy-ck-fix { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 0.25rem 0.75rem; margin-left: 1.5rem; font-size: 0.75rem; }
+.gy-chk .gy-snippet { flex-basis: 100%; margin: 0 0 0 1.5rem; }
 /* A section's or context's mark: the check marks' circle, a size up */
 .gy-ck-gmark { display: inline-grid; place-items: center; width: 1.125rem; height: 1.125rem; border: 1px solid currentColor; border-radius: 50%; font-size: 0.6875rem; font-weight: 400; line-height: 1; vertical-align: 0.15em; color: var(--muted-foreground); }
 .gy-ck-title .gy-ck-gmark { margin-left: 0.25rem; }
