@@ -38,7 +38,7 @@ From `@owox/plugin-sdk` 0.42.0 and the OWOX manifest schema:
 
 Project scope, bound to `data-mart` with `SEE` for read, create, update and delete.
 
-1. Document id: the `martId`. `parentId` is `martId`.
+1. Document id: `{martId}:{cacheKey}`, where `cacheKey` is the existing `cacheKey(range, compare, weekStart)` from `src/metrics/refresh.ts`. `parentId` is `martId`. There is one document per Data Mart and range.
 2. Body:
 
    ```ts
@@ -50,8 +50,8 @@ Project scope, bound to `data-mart` with `SEE` for read, create, update and dele
    }
    ```
 
-3. Ranges live as entries. The options of a query carry its date filters, so queries of different ranges have different keys and share one document. Every run of any schedule, and every page refresh, merges its queries into today's document of that Data Mart. A document of another day is replaced.
-4. The number of documents is bounded by the number of Data Marts.
+3. Entries are keyed by the stable JSON of the query options. Every run of any schedule, and every page refresh, merges its queries into today's document of that Data Mart and range. A document of another day is replaced.
+4. The number of documents is bounded by Data Marts × persistable range keys.
 5. A document over 900,000 characters loses its oldest entries first: those with the smallest `at` that this flush did not record, until it fits. Only when the entries of this flush alone exceed the limit is the document not written; queries are then live for that Data Mart.
 6. Custom ranges and custom comparisons are never cached, as today.
 
@@ -62,9 +62,9 @@ Project scope, bound to `data-mart` with `SEE` for read, create, update and dele
 
 ## 5. Cache in the page
 
-`src/cache/martCache.ts` wraps an `OwoxLike`:
+`src/cache/martCache.ts` wraps an `OwoxLike` for one range key:
 
-1. `traverseData(martId, options)` loads the document of the Data Mart once per refresh. When its `anchor` is today's anchor and `queries[stableJson(options)]` exists, it returns those rows. Otherwise it calls the real `traverseData`, reads the rows, and records them.
+1. `traverseData(martId, options)` loads `{martId}:{key}` once per refresh. When its `anchor` is today's anchor and `queries[stableJson(options)]` exists, it returns those rows. Otherwise it calls the real `traverseData`, reads the rows, and records them.
 2. `flush()` writes every touched document with `parentId: martId`, merging new queries over the loaded ones and evicting by age when the document is too large (section 4.1). A failed write is reported, not thrown.
 3. `mode: 'read-write'` for a normal open; `mode: 'write-only'` for the Refresh button, which skips reads.
 4. `stats()` returns the oldest `at` among the hits, which the header shows as "refreshed at".
@@ -113,7 +113,7 @@ Project scope, bound to `data-mart` with `SEE` for read, create, update and dele
 ## 9. Testing
 
 1. `cron.ts`: build and parse round-trip for each type, presets, invalid input.
-2. `martCache.ts`: hit, miss, anchor mismatch, write-only mode, flush merge, two ranges in one document, eviction by age, size limit, `parentId` on put.
+2. `martCache.ts`: hit, miss, anchor mismatch, write-only mode, flush merge, two range keys in two documents, eviction by age, size limit, `parentId` on put.
 3. `warmCache`: fake OWOX and in-memory collections; missing model; deadline cut-off; invalid input.
 4. `SchedulesTab`: lists every warm-cache schedule, create, edit, pause, delete, error display, no `ctx.schedules`.
 5. `App`: a canvas open with a cached day makes no `traverseData` call; Refresh queries live and rewrites.

@@ -35,7 +35,7 @@ export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date 
     const spec = resolveRange(r.range, r.compare, now(), r.weekStart);
     const key = cacheKey(r.range, r.compare, r.weekStart);
     // write-only: a scheduled run exists to replace what is cached
-    const src = cachedOwox({ owox, store, anchor: spec.anchor, mode: 'write-only', now });
+    const src = cachedOwox({ owox, store, key, anchor: spec.anchor, mode: 'write-only', now });
     await refreshCanvas({ owox: src.owox, model, spec, key, thresholdPct: DEFAULT_SETTINGS.thresholdPct });
     const f = await src.flush();
     out.ranges++;
@@ -53,6 +53,6 @@ export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date 
   if (out.ranges > 0 && out.queries === 0 && shownModel(model).classes.some((c) => c.metricIds.some((id) => known.has(id)))) {
     throw new ActionError('NO_DATA', 'No Data Mart returned any data. The member who created the schedule may not be able to read these Data Marts; check their access and run the schedule again.');
   }
-  out.marts = new Set(out.written).size;
+  out.marts = new Set(out.written.map((id) => id.slice(0, id.indexOf(':')))).size;
   return out;
 }
