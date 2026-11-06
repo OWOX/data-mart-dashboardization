@@ -6,9 +6,10 @@ import type { BuildStep } from '../model/build';
 import { LoadingBar } from './LoadingBar';
 import { OntologyTab } from './OntologyTab';
 import { CheckupTab, type CheckupProps } from './CheckupTab';
+import { SchedulesTab, type SchedulesProps } from './SchedulesTab';
 
-export type SettingsTab = 'general' | 'ontology' | 'checkup';
-const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'ontology', label: 'Metrics' }, { id: 'checkup', label: 'Checkup' }];
+export type SettingsTab = 'general' | 'ontology' | 'checkup' | 'schedules';
+const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'ontology', label: 'Metrics' }, { id: 'checkup', label: 'Checkup' }, { id: 'schedules', label: 'Schedules' }];
 
 /** What the Metrics tab edits; null while the Data Marts are still being read. */
 export interface OntologyProps {
@@ -21,7 +22,7 @@ export interface OntologyProps {
   hashOf?: (m: Model) => Promise<string | null>;
 }
 
-export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, noModel = false }: {
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, schedules, noModel = false }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
   /** Reads the descriptions and schemas again into a candidate model; the Ontology tab shows it as a proposal. */
   onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void;
@@ -30,6 +31,8 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
   /** What the Checkup tab runs; the tab is mounted only while selected, so each visit starts a run. */
   checkup?: CheckupProps | null;
+  /** What the Schedules tab manages; the tab is mounted only while selected. */
+  schedules?: SchedulesProps | null;
   /** No model yet: the Metrics tab says so instead of waiting for Data Marts. */
   noModel?: boolean;
 }) {
@@ -77,6 +80,9 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
         </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-checkup" aria-labelledby="gy-tab-checkup" hidden={tab !== 'checkup'}>
           {tab === 'checkup' && checkup && <CheckupTab {...checkup} onOpen={onOpen} onOpenTab={(t) => go(t)} />}
+        </div>
+        <div className="dm-page-content" role="tabpanel" id="gy-panel-schedules" aria-labelledby="gy-tab-schedules" hidden={tab !== 'schedules'}>
+          {tab === 'schedules' && schedules && <SchedulesTab {...schedules} />}
         </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>
           <form className="dm-card gy-form" onSubmit={(e) => { e.preventDefault(); save(); }}>

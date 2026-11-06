@@ -25,6 +25,7 @@ import { metricName } from './model/metricName';
 import { LoadingBar } from './ui/LoadingBar';
 import { Header, RangeControls } from './ui/Header';
 import { runCheckup } from './checkup/run';
+import { syncSchedules } from './schedules/sync';
 import { SettingsPage, type SettingsTab } from './ui/SettingsPage';
 
 export interface AppDeps {
@@ -59,11 +60,11 @@ export function depsFrom(ctx: PluginContext): AppDeps {
 
 const SEED_NOTE = "Couldn't save your model; it will be saved next time.";
 
-const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology', checkup: '/settings/checkup' };
+const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology', checkup: '/settings/checkup', schedules: '/settings/schedules' };
 /** The settings tab a route opens; anything else opens the canvas. */
 const tabOf = (route: string | undefined): SettingsTab | null => {
   const path = route?.replace(/\/+$/, '');
-  return path === ROUTES.ontology ? 'ontology' : path === ROUTES.checkup ? 'checkup' : path === ROUTES.general ? 'general' : null;
+  return path === ROUTES.ontology ? 'ontology' : path === ROUTES.checkup ? 'checkup' : path === ROUTES.schedules ? 'schedules' : path === ROUTES.general ? 'general' : null;
 };
 
 const rangeOf = (s: Settings): RangeChoice => ({ kind: 'preset', preset: s.defaultPreset });
@@ -304,6 +305,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const remember = (r: RangeChoice, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
   const saveOntologyAndLeave = async (m: Model) => {
     await saveOntology(store, m);
+    if (ctx.schedules) void syncSchedules({ schedules: ctx.schedules, store, model: m, memberId: userId }).catch(() => setSaveNote("Couldn't update your schedules for the new model; open Settings, Schedules and save them again."));
     setSeedNote(null);
     // a new model object re-runs the refresh; the cache is judged by editedAt
     setModel(m);
@@ -359,6 +361,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
           ontology={ontologyProps}
           noModel={!model}
+          schedules={{ schedules: ctx.schedules, memberId: userId, model, settings, store }}
           checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
           onBack={leaveSettings}
           onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), onStep })}

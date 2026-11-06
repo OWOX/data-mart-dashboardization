@@ -558,3 +558,9 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-md :is(th, td) { padding: 0.125rem 0.375rem; border: 1px solid color-mix(in oklab, var(--background) 30%, transparent); text-align: left; vertical-align: top; }
 .gy-md th { font-weight: 600; }
 .gy-md hr { border: 0; border-top: 1px solid color-mix(in oklab, var(--background) 30%, transparent); margin: 0.5rem 0; }
+
+/* --- schedules ---------------------------------------------------------- */
+.gy-schedules { display: grid; gap: 0.75rem; max-width: 40rem; }
+.gy-schedule { display: grid; gap: 0.25rem; }
+.gy-checks { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; border: 0; padding: 0; margin: 0; }
+.gy-field .gy-input-wide { width: 100%; }
