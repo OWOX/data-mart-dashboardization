@@ -227,14 +227,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     const key = cacheKey(range, compare, settings.weekStart);
     const keep = persistable(range, compare);
     try {
-      // Custom choices are not persisted: they compute live and stay in state only.
-      if (!current()) return false;
       setCache((c) => (c?.key === key ? c : null));
       // the doc on screen keeps its numbers until a new result replaces them
       const shown = cacheNow.current?.key === key ? cacheNow.current : null;
       setLoading(true);
       setProgress(null);
       setRefreshing(true);
+      // custom choices are not persisted: they compute live and stay in state only
       const src = keep ? cachedOwox({ owox, store, key, anchor: spec.anchor, mode: force ? 'write-only' : 'read-write', now }) : null;
       const doc = await refreshCanvas({
         owox: src ? src.owox : owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible, issues: issuesNow, details: detailsNow,
@@ -247,7 +246,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setSaveNote(null);
       if (src) {
         const f = await src.flush();
-        if (current() && f.failed.length) setSaveNote(`Couldn't save the refreshed data for ${f.failed.length} Data Mart(s).`);
+        const unsaved = f.failed.length + f.tooLarge.length;
+        if (current() && unsaved) setSaveNote(`Couldn't save the refreshed data for ${unsaved} Data Mart(s).`);
       }
     } catch {
       // cards keep their last cached values

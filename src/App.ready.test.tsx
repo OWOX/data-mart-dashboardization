@@ -23,7 +23,7 @@ const data = (): FakeOwoxData => ({
   blendables: { [GID]: { availableSources: [], mainUniqueCountKeyFields: ['id'] } },
 });
 
-async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | 'stale' | 'none'; store?: CollectionsLike; inputHash?: string; withCustomers?: boolean } = {}) {
+async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | 'stale' | 'none'; store?: CollectionsLike; inputHash?: string; withCustomers?: boolean; planned?: boolean } = {}) {
   const d = data();
   if (opts.withCustomers) {
     d.marts.push(mart(CID, 'Customers'));
@@ -36,7 +36,13 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
   const store = opts.store ?? memoryCollections();
   const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW });
   if (!built.ok) throw new Error('fixture');
-  const model: Model = { ...built.model, inputHash: opts.inputHash ?? built.model.inputHash };
+  let model: Model = { ...built.model, inputHash: opts.inputHash ?? built.model.inputHash };
+  if (opts.planned) {
+    // Revenue is dated and has a daily plan; every query answers one day with a fact 18% below the plan
+    d.details[GID]!.fields.push({ name: 'date', type: 'DATE', isPrimaryKey: false }, { name: 'plan', type: 'FLOAT', isPrimaryKey: false });
+    d.rows = () => [{ date: '2026-10-10', 'revenue | SUM': 82, 'plan | SUM': 100 }];
+    model = { ...model, metrics: model.metrics.map((m) => (m.alias === 'Revenue' ? { ...m, dateField: 'date', plan: { martId: GID, measure: { field: 'plan', fn: 'SUM' }, dateField: 'date', shape: 'daily' } } : m)) };
+  }
   await saveOntology(store, model);
   const cache = opts.cache ?? 'fresh';
   // a fresh cache was filled an hour before NOW, a stale one the day before
@@ -58,7 +64,7 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
 }
 const ctxWith = (setRoute = vi.fn()) => ({ ctx: { projectId: 'p', ui: { setRoute } } as never, setRoute });
 
-test('a fresh cache renders at once without refreshing', async () => {
+test('a warm Data Mart cache makes no live queries and the header shows its age', async () => {
   const { deps, traversals } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   expect(await screen.findByText(/Updated 1 h ago/)).toBeInTheDocument();
@@ -238,17 +244,18 @@ test('a partial Apply that leaves a new class unchecked does not bring the notic
 });
 
 test('saving a changed threshold recolors from the Data Mart cache without new queries', async () => {
-  const { deps, traversals } = await setup();
+  const { deps, traversals } = await setup({ planned: true });
+  const status = () => document.querySelector('.gy-card[data-status]')?.getAttribute('data-status');
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await screen.findByText(/Updated 1 h ago/);
+  await waitFor(() => expect(status()).toBe('near'));
   expect(traversals()).toBe(0);
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   fireEvent.change(screen.getByLabelText(/Red when below plan/), { target: { value: '15' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await screen.findByRole('button', { name: 'Date range' });
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled());
+  await waitFor(() => expect(status()).toBe('below'));
   expect(traversals()).toBe(0);
 });
 
@@ -406,9 +413,12 @@ test('the week start setting changes the cache key of a week preset', async () =
     const key = cacheKey({ kind: 'preset', preset: 'wtd' }, { kind: 'off' }, weekStart);
     await waitFor(async () => expect(await store.collections('mart-cache').get(`${GID}:${key}`)).not.toBeNull());
     cleanup();
-    return key;
+    return { key, store };
   };
-  expect(await keyOf('monday')).not.toBe(await keyOf('sunday'));
+  const monday = await keyOf('monday');
+  const sunday = await keyOf('sunday');
+  expect(sunday.key).not.toBe(monday.key);
+  expect(await sunday.store.collections('mart-cache').get(`${GID}:${monday.key}`)).toBeNull();
 });
 
 test('with a comparison the header shows the days so far, not the whole range', async () => {
@@ -754,4 +764,11 @@ test('Refresh skips the Data Mart cache and queries live', async () => {
   expect(traversals()).toBe(0);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await waitFor(() => expect(traversals()).toBeGreaterThan(0));
+});
+
+test('a Data Mart answer too large to save counts in the save note', async () => {
+  const { deps, d } = await setup({ cache: 'none' });
+  d.rows = () => [{ 'revenue | SUM': 1, pad: 'x'.repeat(1_000_000) }];
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  expect(await screen.findByText("Couldn't save the refreshed data for 1 Data Mart(s).")).toBeInTheDocument();
 });
