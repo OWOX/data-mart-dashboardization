@@ -15,14 +15,13 @@ import { Blocked } from './Blocked';
 import { BuildProgress } from './BuildProgress';
 import { RebuildProposal } from './RebuildProposal';
 import { AGGS, FieldPicker, dateFields, fieldOptions, martFields, valueFields, type Option } from './FieldPicker';
-import { ForecastPicker, type FieldGroup } from './ForecastPicker';
+import { SourcePicker, type FieldGroup } from './SourcePicker';
 import { Select } from './Select';
 
 const FORMATS: { value: MetricFormat; label: string }[] = [{ value: 'number', label: 'Number' }, { value: 'percent', label: 'Percent' }, { value: 'currency', label: 'Currency' }];
 const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
 const CALCULATED = 'CALC';
 type DetailStatus = 'ok' | 'loading' | 'unreadable' | 'gone';
-const NO_MART: Option = { value: '', label: 'None' };
 
 /** The rebuild flow on the tab: nothing is saved until a proposal is applied. */
 type Rebuild =
@@ -332,8 +331,6 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     return [{ martId: o.value, title: o.label, status, options: fieldOptions(valueFields(martFields(detail?.fields ?? []))) }];
   });
 
-  const emptyMeasure = (): Measure => ({ field: '', fn: 'SUM' });
-
   return (
     <div className="gy-onto">
       <section className="dm-card gy-onto-intro">
@@ -431,9 +428,27 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                     const forecastNote = forecast && fieldNoteOf(forecastMart?.detail, forecast.measure.field);
                     const forecastMissing = !!forecast && !!forecastMart && (forecastMart.status === 'gone'
                       || (forecastMart.status === 'ok' && !martFields(forecastMart.detail?.fields ?? []).some((x) => x.path === forecast.measure.field)));
+                    const planMart = plan ? detailOf(plan.martId) : null;
+                    const planNote = plan && fieldNoteOf(planMart?.detail, plan.measure.field);
+                    const planMissing = !!plan && !!planMart && (planMart.status === 'gone'
+                      || (planMart.status === 'ok' && plan.measure.field !== '' && !martFields(planMart.detail?.fields ?? []).some((x) => x.path === plan.measure.field)));
+                    const planCombo = (
+                      <SourcePicker
+                        label="Plan source" noneLabel="No plan" martId={plan?.martId ?? null} field={plan?.measure.field ?? ''} groups={forecastGroups} missing={planMissing}
+                        onOpen={() => setBrowseAll(true)}
+                        onPick={(p) => patchMetric(m.id, (x) => {
+                          if (!p) return { ...x, plan: null };
+                          const f = martFields(detailOf(p.martId).detail?.fields ?? []).find((i) => i.path === p.field)?.field;
+                          const fn = f?.calculated?.level === 'metric' ? null : x.plan?.measure.fn ?? 'SUM';
+                          // the date field belongs to the Data Mart: a new one starts empty
+                          const dateField = x.plan?.martId === p.martId ? x.plan.dateField : '';
+                          return { ...x, plan: { martId: p.martId, measure: { field: p.field, fn }, dateField, shape: x.plan?.shape ?? 'daily' } satisfies PlanDef };
+                        })}
+                      />
+                    );
                     const combo = (
-                      <ForecastPicker
-                        martId={forecast?.martId ?? null} field={forecast?.measure.field ?? ''} groups={forecastGroups} missing={forecastMissing}
+                      <SourcePicker
+                        label="Forecast source" noneLabel="Extrapolated" martId={forecast?.martId ?? null} field={forecast?.measure.field ?? ''} groups={forecastGroups} missing={forecastMissing}
                         onOpen={() => setBrowseAll(true)}
                         onPick={(p) => patchMetric(m.id, (x) => {
                           if (!p) return { ...x, forecast: null };
@@ -492,17 +507,16 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                         </tr>
                         <tr>
                           <th scope="row" className="gy-onto-label">Plan</th>
-                          <td>
-                            <FieldPicker
-                              label="Plan data mart" value={plan?.martId ?? ''} options={martOptions} none={NO_MART} unverified={martsUnchecked}
-                              onChange={(id) => patchMetric(m.id, (x) => ({
-                                ...x, plan: id === '' ? null : { martId: id, measure: emptyMeasure(), dateField: '', shape: x.plan?.shape ?? 'daily' } satisfies PlanDef,
-                              }))}
-                            />
+                          {/* one cell either way, so the box keeps focus when a source is picked */}
+                          <td colSpan={2}>
+                            <span className="gy-onto-cell">
+                              {planCombo}
+                              {plan && planNote && <InfoTip name={plan.measure.field} text={planNote} />}
+                            </span>
                           </td>
                           {plan ? (
                             <Source
-                              label="Plan" {...detailOf(plan.martId)} measure={plan.measure} dateField={plan.dateField}
+                              label="Plan" {...detailOf(plan.martId)} measure={plan.measure} dateField={plan.dateField} noField
                               onMeasure={(measure) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, measure } } : x))}
                               onDate={(dateField) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, dateField } } : x))}
                             >

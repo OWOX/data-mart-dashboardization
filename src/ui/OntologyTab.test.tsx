@@ -47,6 +47,11 @@ const choose = (box: HTMLElement, value: string) => {
   fireEvent.click(box);
   fireEvent.click(document.getElementById(box.getAttribute('aria-controls')!)!.querySelector(`[data-value="${value}"]`)!);
 };
+// picks a field of a source combobox from its list
+const pickSource = (box: HTMLElement, group: string, name: string) => {
+  fireEvent.click(box);
+  fireEvent.click(within(within(document.getElementById(box.getAttribute('aria-controls')!)!).getByRole('group', { name })).getByRole('option', { name: group }));
+};
 const row = (name: string) => within(screen.getByRole('rowgroup', { name: `Metric ${name}` }));
 
 test('the Format select saves, and a currency code input appears for Currency', async () => {
@@ -84,8 +89,7 @@ test('editing fact, plan and forecast, then Save, writes the doc with editedAt',
   choose(r.getByLabelText('Fact field'), 'revenue');
   choose(r.getByLabelText('Fact aggregation'), 'AVG');
   choose(r.getByLabelText('Fact date field'), '');
-  choose(r.getByLabelText('Plan data mart'), 'p');
-  choose(r.getByLabelText('Plan field'), 'goal');
+  pickSource(r.getByRole('combobox', { name: 'Plan source' }), 'goal', 'Targets');
   choose(r.getByLabelText('Plan date field'), 'stat_day');
   choose(r.getByLabelText('Plan shape'), 'cumulative');
   fireEvent.click(r.getByRole('combobox', { name: 'Forecast source' }));
@@ -195,7 +199,7 @@ test('a drag that is cancelled changes nothing', () => {
 
 test('an empty name or a plan without a field stops the save', async () => {
   const { onSave } = setup();
-  choose(row('Revenue').getByLabelText('Plan data mart'), 'p');
+  pickSource(row('Revenue').getByRole('combobox', { name: 'Plan source' }), 'goal', 'Targets');
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('The plan of Revenue needs a field and a date field');
   expect(onSave).not.toHaveBeenCalled();
@@ -212,13 +216,13 @@ test('a missing field is flagged red and the old value kept', () => {
   expect(row('Units').getByLabelText('Fact field')).not.toHaveClass('gy-bad');
 });
 
-test('a Data Mart that is gone is flagged on the plan select and on the class', () => {
+test('a Data Mart that is gone is flagged on the plan source and on the class', () => {
   const m = model();
   m.metrics[0] = { ...m.metrics[0]!, plan: { martId: 'gone', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day', shape: 'daily' } };
   setup(m, DETAILS, MARTS);
-  const plan = row('Revenue').getByLabelText('Plan data mart');
+  const plan = row('Revenue').getByRole('combobox', { name: 'Plan source' });
   expect(plan).toHaveClass('gy-bad');
-  expect(optionsOf(plan).find((o) => o.textContent === 'gone (missing)')).toHaveAttribute('aria-disabled', 'true');
+  expect(plan).toHaveAttribute('title', 'gone › goal no longer exists');
 });
 
 test('a Data Mart picked from the list has its schema fetched', async () => {
@@ -227,8 +231,9 @@ test('a Data Mart picked from the list has its schema fetched', async () => {
   const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
   render(<OntologyTab model={model()} details={details} marts={MARTS} owox={owox} now={() => new Date()} onSave={async () => undefined} onCancel={() => {}} />);
   openAll();
-  choose(row('Revenue').getByLabelText('Plan data mart'), 'p');
-  await waitFor(() => expect(optionsOf(row('Revenue').getByLabelText('Plan field')).map((o) => o.textContent)).toContain('goal'));
+  const box = row('Revenue').getByRole('combobox', { name: 'Plan source' });
+  fireEvent.click(box);
+  await waitFor(() => expect(within(within(screen.getByRole('listbox', { name: 'Plan source' })).getByRole('group', { name: 'Targets' })).getByRole('option', { name: 'goal' })).toBeInTheDocument());
   expect(owox.calls.map((c) => c.path)).toContain('/api/data-marts/p');
 });
 
@@ -238,10 +243,12 @@ test('a failed access check flags nothing, keeps values, and says so once', () =
   setup(m, DETAILS, null);
   expect(screen.getAllByText("Couldn't check which Data Marts you can access; references aren't verified.")).toHaveLength(1);
   expect(document.querySelectorAll('.gy-bad')).toHaveLength(0);
-  const plan = row('Revenue').getByLabelText('Plan data mart');
-  expect(plan).toHaveAttribute('data-value', 'gone');
+  const plan = row('Revenue').getByRole('combobox', { name: 'Plan source' });
+  expect(plan).toHaveValue('gone › goal');
   // only the Data Marts the model already uses are offered
-  expect(optionsOf(plan).map((o) => o.getAttribute('data-value')).sort()).toEqual(['', 'a', 'c', 'gone']);
+  fireEvent.click(plan);
+  expect(within(screen.getByRole('listbox', { name: 'Plan source' })).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Customers', 'Orders', 'gone']);
+  fireEvent.keyDown(plan, { key: 'Escape' });
   expect(row('Revenue').getByLabelText('Fact field')).toHaveAttribute('data-value', 'revenue');
 });
 
@@ -568,4 +575,68 @@ test('the Name column is read-only text: the field alias, else the field name, e
   expect(row('bare').getByTitle('bare')).toBeInTheDocument();
   // no schema for the Data Mart: the stored alias stands in
   expect(row('Customers').getByTitle('Customers')).toBeInTheDocument();
+});
+
+describe('the plan source picker', () => {
+  const planBox = (name = 'Units') => row(name).getByRole('combobox', { name: 'Plan source' });
+  const list = () => screen.getByRole('listbox', { name: 'Plan source' });
+  const groupOf = (n: string) => within(within(list()).getByRole('group', { name: n })).getAllByRole('option').map((o) => o.textContent);
+  const planModel = () => {
+    const m = orderedMetric();
+    m.metrics[1] = { ...m.metrics[1]!, plan: { martId: 'p', measure: { field: 'goal', fn: 'MAX' }, dateField: 'stat_day', shape: 'cumulative' } };
+    return m;
+  };
+
+  test('lists No plan, then fields grouped by Data Mart', () => {
+    setup();
+    expect(planBox()).toHaveValue('No plan');
+    fireEvent.click(planBox());
+    expect(within(list()).getAllByRole('option')[0]).toHaveTextContent('No plan');
+    expect(within(list()).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Orders', 'Customers', 'Targets']);
+    expect(groupOf('Targets')).toEqual(['goal', 'note']);
+  });
+
+  test('picking a field sets the plan and its Data Mart, keeping the shape and the aggregation; No plan clears it', async () => {
+    const { onSave } = setup(planModel());
+    expect(planBox()).toHaveValue('Targets › goal');
+    pickSource(planBox(), 'note', 'Targets');
+    // the Data Mart is unchanged, so the date field stays
+    expect(planBox()).toHaveValue('Targets › note');
+    pickSource(planBox(), 'Revenue', 'Orders');
+    expect(planBox()).toHaveValue('Orders › Revenue');
+    // a new Data Mart starts without a date field
+    expect(row('Units').getByLabelText('Plan date field')).toHaveAttribute('data-value', '');
+    expect(row('Units').getByLabelText('Plan shape')).toHaveAttribute('data-value', 'cumulative');
+    choose(row('Units').getByLabelText('Plan date field'), 'day');
+    fireEvent.click(planBox());
+    fireEvent.click(within(list()).getByRole('option', { name: 'No plan' }));
+    expect(planBox()).toHaveValue('No plan');
+    expect(row('Units').queryByLabelText('Plan date field')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect((onSave.mock.calls[0] as unknown as [Model])[0].metrics.find((x) => x.id === 'a:qty:SUM')!.plan).toBeNull();
+  });
+
+  test('a term must start a word: "book" finds Booked Revenue, not Facebook', () => {
+    const details = new Map(DETAILS);
+    details.set('p', detail('p', 'Targets', [named('plan', 'Planned Booked Revenue'), field('stat_day', 'DATE')]));
+    details.set('f', detail('f', 'Facebook Ads Insights', [field('ad_id'), field('netRevenue'), field('spend')]));
+    setup(model(), details, [...MARTS, { id: 'f', title: 'Facebook Ads Insights' }]);
+    const box = planBox();
+    fireEvent.click(box);
+    fireEvent.change(box, { target: { value: 'book' } });
+    expect(within(list()).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Targets']);
+    expect(groupOf('Targets')).toEqual(['Planned Booked Revenue']);
+    fireEvent.change(box, { target: { value: 'face' } });
+    expect(within(list()).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Facebook Ads Insights']);
+    expect(groupOf('Facebook Ads Insights')).toEqual(['ad_id', 'netRevenue', 'spend']);
+    // the terms may start words of the title and of the field
+    fireEvent.change(box, { target: { value: 'face spe' } });
+    expect(groupOf('Facebook Ads Insights')).toEqual(['spend']);
+    // a camel-case boundary starts a word
+    fireEvent.change(box, { target: { value: 'rev' } });
+    expect(groupOf('Facebook Ads Insights')).toEqual(['netRevenue']);
+    fireEvent.change(box, { target: { value: 'FACE NET' } });
+    expect(groupOf('Facebook Ads Insights')).toEqual(['netRevenue']);
+  });
 });
