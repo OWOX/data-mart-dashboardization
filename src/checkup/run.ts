@@ -169,7 +169,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
   });
 
   const contextsGroup = () => guard((id) => id === 'contexts.exist' || id.startsWith('context:'), async () => {
-    const fix = owoxFix('Contexts', '/contexts');
+    const fix = owoxFix('Contexts', '/project-settings/contexts');
     if (!inputs.contextsOk) put('contexts.exist', 'fail', "Contexts couldn't be read", fix);
     else if (inputs.contexts.length < 2) put('contexts.exist', 'warn', inputs.contexts.length ? 'Only 1 context' : 'No contexts', fix);
     else put('contexts.exist', 'ok', `${inputs.contexts.length} contexts`);
