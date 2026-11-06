@@ -55,6 +55,15 @@ test('owox fix on a failed check opens the page; ok check shows no button', asyn
   expect(screen.getAllByRole('button', { name: 'Plugins' })).toHaveLength(1);
 });
 
+test('a warning naming several Data Marts links each of them', async () => {
+  const onOpen = vi.fn();
+  const fix = [{ kind: 'owox' as const, label: 'Open Orders', path: '/ui/p/data-marts/o/data-setup' }, { kind: 'owox' as const, label: 'Open Sessions', path: '/ui/p/data-marts/s/data-setup' }];
+  render(<CheckupTab run={instant([ck('a', 'warn', { fix })])} projectId="p1" now={now} onOpen={onOpen} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Open Sessions' }));
+  expect(onOpen).toHaveBeenCalledWith('/ui/p/data-marts/s/data-setup');
+  expect(screen.getByRole('button', { name: 'Open Orders' })).toBeInTheDocument();
+});
+
 test('tab fix opens the tab', async () => {
   const onOpenTab = vi.fn();
   render(<CheckupTab run={instant([ck('a', 'warn', { fix: { kind: 'tab', label: 'Ontology', tab: 'ontology' } })])} projectId="p1" now={now} onOpenTab={onOpenTab} />);

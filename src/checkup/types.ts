@@ -10,7 +10,7 @@ export interface Check {
   label: string;
   status: CheckStatus;
   detail?: string;
-  fix?: Fix;             // shown only when status is 'fail' or 'warn'
+  fix?: Fix | Fix[];     // shown only when status is 'fail' or 'warn'; one link per place to fix it
 }
 export const GROUPS: { id: GroupId; label: string }[] = [
   { id: 'heading', label: 'Where the business is heading' }, { id: 'drivers', label: 'What drives it' },

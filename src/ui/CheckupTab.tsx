@@ -1,6 +1,6 @@
 import { Compass, Network, RefreshCw, Spline, Wrench, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GROUPS, type Check, type CheckStatus, type GroupId } from '../checkup/types';
+import { GROUPS, type Check, type CheckStatus, type Fix, type GroupId } from '../checkup/types';
 import { metricsSnippet } from './Blocked';
 import { CollapsibleCard } from './CollapsibleCard';
 
@@ -73,28 +73,20 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
   const copy = (text: string) => { void Promise.resolve(navigator.clipboard?.writeText(text)).catch(() => {}); };
 
   const renderCheck = (c: Check) => {
-    const fixable = (c.status === 'fail' || c.status === 'warn') && c.fix;
-    const fix = c.fix;
+    const fixes = (c.status === 'fail' || c.status === 'warn') && c.fix ? [c.fix].flat() : [];
+    const link = (fix: Fix) => {
+      if (fix.kind === 'owox') return onOpen ? <button type="button" className="gy-link" onClick={() => onOpen(fix.path)}>{fix.label}</button> : fix.label;
+      if (fix.kind === 'tab') return <button type="button" className="gy-link" onClick={() => onOpenTab?.(fix.tab)}>{fix.label}</button>;
+      return <button type="button" className="gy-link" onClick={() => { copy(metricsSnippet(projectId)); setShown(c.id); }}>{fix.label}</button>;
+    };
     return (
       <li key={c.id} className="gy-chk" data-state={c.status} data-bad={c.status === 'fail'}>
         <span className="gy-chk-mark" aria-hidden="true">{MARK[c.status]}</span>
         <span className="gy-chk-label">{c.label}</span>
         <span className="gy-sr">, {WORD[c.status]}</span>
         {c.detail && <span className="gy-chk-detail">{c.detail}</span>}
-        {fixable && fix && (
-          <span className="gy-ck-fix">
-            {fix.kind === 'owox' && (onOpen
-              ? <button type="button" className="gy-link" onClick={() => onOpen(fix.path)}>{fix.label}</button>
-              : fix.label)}
-            {fix.kind === 'tab' && (
-              <button type="button" className="gy-link" onClick={() => onOpenTab?.(fix.tab)}>{fix.label}</button>
-            )}
-            {fix.kind === 'snippet' && (
-              <button type="button" className="gy-link" onClick={() => { copy(metricsSnippet(projectId)); setShown(c.id); }}>{fix.label}</button>
-            )}
-          </span>
-        )}
-        {fixable && fix?.kind === 'snippet' && shown === c.id && <pre className="gy-snippet">{metricsSnippet(projectId)}</pre>}
+        {fixes.length > 0 && <span className="gy-ck-fix">{fixes.map((f, i) => <span key={i}>{link(f)}</span>)}</span>}
+        {fixes.some((f) => f.kind === 'snippet') && shown === c.id && <pre className="gy-snippet">{metricsSnippet(projectId)}</pre>}
       </li>
     );
   };
