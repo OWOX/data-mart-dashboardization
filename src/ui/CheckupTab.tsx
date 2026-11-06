@@ -1,6 +1,6 @@
 import { Compass, Network, RefreshCw, Spline, Wrench, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GROUPS, type Check, type CheckStatus, type GroupId } from '../checkup/types';
+import { GROUPS, type Check, type CheckStatus, type Fix, type GroupId } from '../checkup/types';
 import { metricsSnippet } from './Blocked';
 import { CollapsibleCard } from './CollapsibleCard';
 
@@ -73,28 +73,20 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
   const copy = (text: string) => { void Promise.resolve(navigator.clipboard?.writeText(text)).catch(() => {}); };
 
   const renderCheck = (c: Check) => {
-    const fixable = (c.status === 'fail' || c.status === 'warn') && c.fix;
-    const fix = c.fix;
+    const fixes = (c.status === 'fail' || c.status === 'warn') && c.fix ? [c.fix].flat() : [];
+    const link = (fix: Fix) => {
+      if (fix.kind === 'owox') return onOpen ? <button type="button" className="gy-link" onClick={() => onOpen(fix.path)}>{fix.label}</button> : fix.label;
+      if (fix.kind === 'tab') return <button type="button" className="gy-link" onClick={() => onOpenTab?.(fix.tab)}>{fix.label}</button>;
+      return <button type="button" className="gy-link" onClick={() => { copy(metricsSnippet(projectId)); setShown(c.id); }}>{fix.label}</button>;
+    };
     return (
       <li key={c.id} className="gy-chk" data-state={c.status} data-bad={c.status === 'fail'}>
         <span className="gy-chk-mark" aria-hidden="true">{MARK[c.status]}</span>
         <span className="gy-chk-label">{c.label}</span>
         <span className="gy-sr">, {WORD[c.status]}</span>
         {c.detail && <span className="gy-chk-detail">{c.detail}</span>}
-        {fixable && fix && (
-          <span className="gy-ck-fix">
-            {fix.kind === 'owox' && (onOpen
-              ? <button type="button" className="gy-link" onClick={() => onOpen(fix.path)}>{fix.label}</button>
-              : fix.label)}
-            {fix.kind === 'tab' && (
-              <button type="button" className="gy-link" onClick={() => onOpenTab?.(fix.tab)}>{fix.label}</button>
-            )}
-            {fix.kind === 'snippet' && (
-              <button type="button" className="gy-link" onClick={() => { copy(metricsSnippet(projectId)); setShown(c.id); }}>{fix.label}</button>
-            )}
-          </span>
-        )}
-        {fixable && fix?.kind === 'snippet' && shown === c.id && <pre className="gy-snippet">{metricsSnippet(projectId)}</pre>}
+        {fixes.length > 0 && <span className="gy-ck-fix">{fixes.map((f, i) => <span key={i}>{link(f)}</span>)}</span>}
+        {fixes.some((f) => f.kind === 'snippet') && shown === c.id && <pre className="gy-snippet">{metricsSnippet(projectId)}</pre>}
       </li>
     );
   };
@@ -120,7 +112,7 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
         return (
           <section key={g.id} aria-labelledby={`gy-ck-${g.id}`} className="gy-ck-group">
             <CollapsibleCard variant="section" icon={GROUP_ICON[g.id]} label={g.label}
-              title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label} <span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span><span className="gy-sr">, {WORD[w]}</span></h3>}>
+              title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label}<span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span><span className="gy-sr">, {WORD[w]}</span></h3>}>
             {plain.length > 0 && <div className="dm-card-block"><ul className="gy-build-list">{plain.map(renderCheck)}</ul></div>}
             {contexts.length > 0 && <div className="gy-ck-contexts">
             {contexts.map((ctx) => {
@@ -128,8 +120,8 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
               const cw = worst(mine);
               const allOk = mine.every((c) => c.status === 'ok');
               return (
-                <CollapsibleCard key={ctx.id} title={ctx.name} label={ctx.name} collapsed={allOk} attention={cw === 'fail' || cw === 'warn'}
-                  status={<span className="gy-ck-gmark" data-state={allOk ? 'ok' : cw}><span aria-hidden="true">{MARK[allOk ? 'ok' : cw]}</span><span className="gy-sr">, {WORD[allOk ? 'ok' : cw]}</span></span>}>
+                <CollapsibleCard key={ctx.id} label={ctx.name} collapsed={allOk} attention={cw === 'fail' || cw === 'warn'}
+                  title={<><span className="gy-ck-gmark" data-state={allOk ? 'ok' : cw} aria-hidden="true">{MARK[allOk ? 'ok' : cw]}</span>{ctx.name}<span className="gy-sr">, {WORD[allOk ? 'ok' : cw]}</span></>}>
                   <ul className="gy-build-list">{mine.map(renderCheck)}</ul>
                 </CollapsibleCard>
               );

@@ -63,7 +63,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
   const publish = () => onUpdate([...map.values()]);
   const add = (id: string, group: GroupId, context?: Check['context']) => { map.set(id, { id, group, label: label(id), status: 'running', ...(context ? { context } : {}) }); };
   /** Settles a check; the fix shows only when it isn't passing. */
-  const put = (id: string, status: CheckStatus, detail?: string, fix?: Fix) => {
+  const put = (id: string, status: CheckStatus, detail?: string, fix?: Fix | Fix[]) => {
     const c = map.get(id)!;
     const { detail: _d, fix: _f, ...rest } = c;
     map.set(id, { ...rest, status, ...(detail !== undefined ? { detail } : {}), ...(fix ? { fix } : {}) });
@@ -135,7 +135,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     const desc = !!inputs.projectDescription?.trim();
     if (desc) put('project.description', 'ok'); else put('project.description', 'fail', 'The project description is empty', projectFix);
     if (!desc) skip('project.table', 'project.description');
-    else if (!projectRows.length) put('project.table', 'fail', 'No Metrics table with Role, Plan and Fact columns', { kind: 'snippet', label: 'Copy a Metrics table' });
+    else if (!projectRows.length) put('project.table', 'fail', 'No Metrics table with Role, Plan and Fact columns', [{ kind: 'snippet', label: 'Copy a Metrics table' }, projectFix]);
     else put('project.table', 'ok');
     if (map.get('project.table')!.status !== 'ok') skip('project.critical', 'project.table');
     else if (!critical) put('project.critical', 'fail', 'No Critical number row', projectFix);
@@ -155,7 +155,8 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     const title = titles.get(goalId);
     const fix = martFix(goalId, title);
     if (!title) {
-      put('goal.access', 'fail', "Not published, or you can't access it", fix);
+      // its own page may be closed to this member, so the Data Marts list comes too
+      put('goal.access', 'fail', "Not published, or you can't access it", [fix, owoxFix('Data Marts', '/data-marts')]);
       for (const id of ['field', 'pk', 'date']) skip(`goal.${id}`, 'goal.access');
       return;
     }
@@ -169,7 +170,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
   });
 
   const contextsGroup = () => guard((id) => id === 'contexts.exist' || id.startsWith('context:'), async () => {
-    const fix = owoxFix('Contexts', '/contexts');
+    const fix = owoxFix('Contexts', '/project-settings/contexts');
     if (!inputs.contextsOk) put('contexts.exist', 'fail', "Contexts couldn't be read", fix);
     else if (inputs.contexts.length < 2) put('contexts.exist', 'warn', inputs.contexts.length ? 'Only 1 context' : 'No contexts', fix);
     else put('contexts.exist', 'ok', `${inputs.contexts.length} contexts`);
@@ -203,6 +204,8 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
 
     const factIds = [...new Set([...projectRows, ...[...contextRows.values()].flat()].flatMap((r) => r.fact.filter(isFieldLink).map((l) => l.martId!)))].filter((id) => visible.has(id));
     const names = (ids: string[]) => ids.map((id) => titles.get(id) ?? id).join(', ');
+    // every Data Mart a warning names gets its own link, not only the first
+    const martFixes = (ids: string[]) => ids.map((id) => martFix(id, titles.get(id)));
     // a stand-in main is drawn whether or not a fact links it, and no goal check looks at it
     const checked = main?.viaFallback && !factIds.includes(main.id) ? [...factIds, main.id] : factIds;
     const lacking = (has: (d: MartDetail) => boolean) => checked.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !has(n.detail); });
@@ -215,15 +218,15 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
       const depths = classDepths(main.id, edges, new Set(nodes.filter((n) => canBeClass(n.detail)).map((n) => n.id)));
       // a Data Mart missing a primary key or a date field is reported by its own check, not as unconnected
       const off = factIds.filter((id) => !depths.has(id) && !noPk.includes(id) && !noDate.includes(id));
-      if (off.length) put('connections.facts', 'warn', `Not connected to the goal, so not on the canvas: ${names(off)}`, martFix(off[0]!, titles.get(off[0]!)));
+      if (off.length) put('connections.facts', 'warn', `Not connected to the goal, so not on the canvas: ${names(off)}`, martFixes(off));
       else put('connections.facts', 'ok');
     }
-    if (noPk.length) put('connections.pk', 'warn', `No primary key: ${names(noPk)}`, martFix(noPk[0]!, titles.get(noPk[0]!)));
+    if (noPk.length) put('connections.pk', 'warn', `No primary key: ${names(noPk)}`, martFixes(noPk));
     else put('connections.pk', 'ok');
     // main stays on the canvas without one; it just can't take the date range
     const offDate = noDate.filter((id) => id !== main?.id);
     const dateText = [offDate.length ? `No date field, so not on the canvas: ${names(offDate)}` : '', noDate.includes(main?.id ?? '') ? `No date field: ${names([main!.id])} (the main Data Mart)` : ''].filter(Boolean).join('. ');
-    if (noDate.length) put('connections.date', 'warn', dateText, martFix(noDate[0]!, titles.get(noDate[0]!)));
+    if (noDate.length) put('connections.date', 'warn', dateText, martFixes(noDate));
     else put('connections.date', 'ok');
   });
 

@@ -140,14 +140,16 @@ h2 { margin: 0; }
 .gy-ck-summary:empty { display: none; }
 .gy-ck-when { color: var(--muted-foreground); font-size: 0.75rem; }
 .gy-ck-head .gy-icon-btn { margin-left: auto; }
-.gy-ck-fix { font-size: 0.75rem; }
-.gy-ck-gmark { font-weight: 400; }
+.gy-ck-fix { display: inline-flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; font-size: 0.75rem; }
+/* A section's or context's mark: the check marks' circle, a size up */
+.gy-ck-gmark { display: inline-grid; place-items: center; width: 1.125rem; height: 1.125rem; border: 1px solid currentColor; border-radius: 50%; font-size: 0.6875rem; font-weight: 400; line-height: 1; vertical-align: 0.15em; color: var(--muted-foreground); }
+.gy-ck-title .gy-ck-gmark { margin-left: 0.25rem; }
 .gy-ck-gmark[data-state='fail'] { color: var(--red); }
 .gy-ck-gmark[data-state='warn'] { color: var(--orange); }
-.gy-ck-gmark[data-state='ok'] { color: var(--primary); }
-.gy-chk[data-state='ok'] .gy-chk-mark { border-color: var(--primary); color: var(--primary); }
+.gy-ck-gmark[data-state='ok'] { color: var(--green); }
+.gy-chk[data-state='ok'] .gy-chk-mark { border-color: var(--green); color: var(--green); }
 .gy-chk[data-state='warn'] .gy-chk-mark { border-color: var(--orange); color: var(--orange); }
-.gy-chk[data-state='skip'] .gy-chk-mark { border-color: transparent; color: var(--muted-foreground); }
+.gy-chk[data-state='skip'] .gy-chk-mark { border-color: var(--muted-foreground); color: var(--muted-foreground); }
 .gy-chk[data-state='warn'] .gy-chk-detail { color: var(--orange); }
 .gy-chk[data-state='ok'] .gy-chk-detail, .gy-chk[data-state='skip'] .gy-chk-detail { color: var(--muted-foreground); }
 

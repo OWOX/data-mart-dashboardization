@@ -68,7 +68,8 @@ test('an empty description fails and skips what needs it', async () => {
 test('text without a Metrics table fails with the snippet fix', async () => {
   const c = byId(await run(data({ projectDescription: 'We sell things.' })))['project.table']!;
   expect(c.status).toBe('fail');
-  expect(c.fix?.kind).toBe('snippet');
+  // the snippet to copy, and the page to paste it into
+  expect([c.fix].flat().map((f) => f?.kind === 'owox' ? f.path : f?.kind)).toEqual(['snippet', expect.stringMatching(/\/project-settings$/)]);
 });
 
 test('a placeholder fact link fails project.fact', async () => {
@@ -164,6 +165,8 @@ test('two contexts pass; fewer warn', async () => {
   expect(byId(await run(data()))['contexts.exist']).toMatchObject({ status: 'ok', detail: '2 contexts' });
   const sales = data().contexts![0]!;
   expect(byId(await run(data({ contexts: [sales] })))['contexts.exist']).toMatchObject({ status: 'warn', detail: 'Only 1 context' });
+  // OWOX moved contexts under Project settings; the old /contexts page is a 404
+  expect(byId(await run(data({ contexts: [sales] })))['contexts.exist']!.fix).toMatchObject({ kind: 'owox', path: expect.stringMatching(/\/project-settings\/contexts$/) });
   expect(byId(await run(data({ contexts: [] })))['contexts.exist']).toMatchObject({ status: 'warn', detail: 'No contexts' });
 });
 
