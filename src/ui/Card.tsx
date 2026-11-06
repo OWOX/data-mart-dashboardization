@@ -172,8 +172,11 @@ function MartAbout({ martId, title, text, size, markdown, onNavigate }: { martId
 }
 
 /** The mart's icon, then two lines: the class in grey and the metric under it, each with its (i) beside it. */
-function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath, onOpen, tools }: {
-  title: string; martId: string; metric?: string; metricNote?: string; mart?: MartInfo; markdown?: MarkdownHtml; openPath?: string; onOpen?: (path: string) => void; tools?: ReactNode;
+/** Contexts shown beside the name before the rest fold into a `+N` pill. */
+const CONTEXT_PILLS = 2;
+
+function CardHead({ title, martId, contexts, metric, metricNote, mart, markdown, openPath, onOpen, tools }: {
+  title: string; martId: string; contexts: { id: string; name: string }[]; metric?: string; metricNote?: string; mart?: MartInfo; markdown?: MarkdownHtml; openPath?: string; onOpen?: (path: string) => void; tools?: ReactNode;
 }) {
   const about = mart?.description?.trim() || null;
   const link = onOpen && openPath;
@@ -188,6 +191,8 @@ function CardHead({ title, martId, metric, metricNote, mart, markdown, openPath,
               <MartAbout martId={martId} title={title} text={about} size={metric ? 10 : 12} markdown={markdown} onNavigate={onOpen} />
             </span>
           )}
+          {contexts.slice(0, CONTEXT_PILLS).map((c) => <span key={c.id} className="dm-badge gy-ctx-pill">{c.name}</span>)}
+          {contexts.length > CONTEXT_PILLS && <span className="dm-badge gy-ctx-pill" title={contexts.slice(CONTEXT_PILLS).map((c) => c.name).join(', ')}>+{contexts.length - CONTEXT_PILLS}</span>}
         </span>
         {metric && (
           <span className="gy-card-line">
@@ -327,7 +332,7 @@ export function Card({ cls, mart, marts, metrics, cache, comparisonOn, refreshin
   const comparingNow = comparisonOn && !!compareLabel;
   const hidden = noAccess || missing || !key;
   const note = key && !key.isUniqueCount ? fieldNote(details?.get(key.martId), key.measure.field) : undefined;
-  const header = <CardHead title={cls.title} martId={cls.martId} metric={hidden ? undefined : key.isUniqueCount ? 'Count' : nameOf(key)} metricNote={hidden ? undefined : note} mart={mart} markdown={markdown} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} tools={onOpen && !noAccess && !missing ? <QualityTool quality={quality} path={`/ui/${projectId}/data-marts/${cls.martId}/quality`} onOpen={onOpen} /> : undefined} />;
+  const header = <CardHead title={cls.title} martId={cls.martId} contexts={cls.contexts} metric={hidden ? undefined : key.isUniqueCount ? 'Count' : nameOf(key)} metricNote={hidden ? undefined : note} mart={mart} markdown={markdown} openPath={noAccess || missing ? undefined : `/ui/${projectId}/data-marts/${cls.martId}/overview`} onOpen={onOpen} tools={onOpen && !noAccess && !missing ? <QualityTool quality={quality} path={`/ui/${projectId}/data-marts/${cls.martId}/quality`} onOpen={onOpen} /> : undefined} />;
 
   if (missing) {
     return (
