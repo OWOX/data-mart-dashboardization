@@ -108,10 +108,10 @@ function QualityTool({ quality, path, onOpen }: { quality?: QualitySummary; path
 }
 
 /** How long a bubble stays after the pointer leaves, so it can cross the gap to a link in it. */
-const LINGER_MS = 200;
+export const LINGER_MS = 200;
 
 /** The OWOX page this plugin is framed in; its links open in place like owox.com's. */
-const HOSTS = owoxHosts(typeof location !== 'undefined' && location.ancestorOrigins ? [...location.ancestorOrigins] : []);
+export const HOSTS = owoxHosts(typeof location !== 'undefined' && location.ancestorOrigins ? [...location.ancestorOrigins] : []);
 
 /**
  * An (i) whose bubble opens on hover or focus and closes on Escape, blur or leaving; `onOpen` fires each time it opens.

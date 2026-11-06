@@ -376,7 +376,7 @@ test('Plan, Forecast and nested fields show their live descriptions', () => {
   expect(row('Units').getByRole('button', { name: 'About meta.target' })).toHaveAccessibleDescription('Nested target');
 });
 
-test('the (i) opens on hover and focus, click does not close a focused one, Escape and blur close it', () => {
+test('the (i) opens on hover and focus, click does not close a focused one, Escape and blur close it', async () => {
   const details = new Map(DETAILS);
   details.set('a', detail('a', 'Orders', [{ ...field('revenue'), description: 'Live revenue' }, field('qty'), field('day', 'DATE')]));
   setup(model(), details);
@@ -386,7 +386,9 @@ test('the (i) opens on hover and focus, click does not close a focused one, Esca
   fireEvent.mouseEnter(btn.parentElement!);
   expect(tip()).not.toHaveAttribute('hidden');
   fireEvent.mouseLeave(btn.parentElement!);
-  expect(tip()).toHaveAttribute('hidden');
+  // it lingers a moment so a link in it can be reached
+  expect(tip()).not.toHaveAttribute('hidden');
+  await waitFor(() => expect(tip()).toHaveAttribute('hidden'));
   fireEvent.focus(btn);
   expect(tip()).not.toHaveAttribute('hidden');
   fireEvent.click(btn);
@@ -648,4 +650,16 @@ describe('the plan source picker', () => {
     fireEvent.change(box, { target: { value: 'FACE NET' } });
     expect(groupOf('Facebook Ads Insights')).toEqual(['netRevenue']);
   });
+});
+
+it('renders a tip description as Markdown, opening an OWOX link in place', () => {
+  const onOpen = vi.fn();
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
+  render(<OntologyTab model={model()} details={DETAILS} marts={MARTS.map((x) => (x.id === 'a' ? { ...x, description: 'Has **bold** and a [Traffic Sources](https://app.owox.com/ui/p1/data-marts/m1/data-setup) link' } : x))} owox={owox} now={() => new Date()} onSave={async () => undefined} onCancel={() => {}} onOpen={onOpen} />);
+  fireEvent.click(screen.getByRole('button', { name: 'About Orders' }));
+  const tip = screen.getByRole('tooltip');
+  expect(tip.querySelector('strong')).toHaveTextContent('bold');
+  const a = within(tip).getByRole('link', { name: 'Traffic Sources' });
+  fireEvent.click(a);
+  expect(onOpen).toHaveBeenCalledWith('/ui/p1/data-marts/m1/data-setup');
 });
