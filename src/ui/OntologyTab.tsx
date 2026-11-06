@@ -524,7 +524,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                                 <Select className="gy-onto-shape" label="Plan shape" value={plan.shape} options={SHAPES.map((s) => ({ value: s, label: s }))} onChange={(v) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, shape: v as PlanShape } } : x))} />
                               </td>
                             </Source>
-                          ) : <td colSpan={4} />}
+                          ) : <td colSpan={3} />}
                         </tr>
                         <tr>
                           <th scope="row" className="gy-onto-label">Forecast</th>

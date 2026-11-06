@@ -51,7 +51,8 @@ export function SourcePicker({ label, noneLabel, martId, field, groups, missing,
   })();
 
   const filtered = (text: string) => {
-    const terms = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    // split like the option words, so a path such as ad_id finds its field
+    const terms = wordsOf(text);
     return groups.map((g) => {
       const title = wordsOf(g.title);
       return {

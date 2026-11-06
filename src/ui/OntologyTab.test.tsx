@@ -617,6 +617,12 @@ describe('the plan source picker', () => {
     expect((onSave.mock.calls[0] as unknown as [Model])[0].metrics.find((x) => x.id === 'a:qty:SUM')!.plan).toBeNull();
   });
 
+  test('a plan-less metric\'s Plan row spans the same cells as its Forecast row', () => {
+    setup();
+    const span = (name: string) => [...within(row('Units').getByRole('rowheader', { name }).closest('tr')!).getAllByRole('cell')].reduce((n, c) => n + (c as HTMLTableCellElement).colSpan, 0);
+    expect(span('Plan')).toBe(span('Forecast'));
+  });
+
   test('a term must start a word: "book" finds Booked Revenue, not Facebook', () => {
     const details = new Map(DETAILS);
     details.set('p', detail('p', 'Targets', [named('plan', 'Planned Booked Revenue'), field('stat_day', 'DATE')]));
@@ -636,6 +642,9 @@ describe('the plan source picker', () => {
     // a camel-case boundary starts a word
     fireEvent.change(box, { target: { value: 'rev' } });
     expect(groupOf('Facebook Ads Insights')).toEqual(['netRevenue']);
+    // a path typed whole
+    fireEvent.change(box, { target: { value: 'ad_id' } });
+    expect(groupOf('Facebook Ads Insights')).toEqual(['ad_id']);
     fireEvent.change(box, { target: { value: 'FACE NET' } });
     expect(groupOf('Facebook Ads Insights')).toEqual(['netRevenue']);
   });
