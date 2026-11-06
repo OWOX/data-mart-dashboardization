@@ -2,6 +2,7 @@ import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GROUPS, type Check, type CheckStatus } from '../checkup/types';
 import { metricsSnippet } from './Blocked';
+import { CollapsibleCard } from './CollapsibleCard';
 
 export interface CheckupProps {
   /** Starts a run; the tab passes onUpdate. App binds runCheckup's other arguments. */
@@ -123,12 +124,17 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
               <span className="gy-sr">, {WORD[w]}</span>
             </h3>
             {plain.length > 0 && <ul className="gy-build-list">{plain.map(renderCheck)}</ul>}
-            {contexts.map((ctx) => (
-              <div key={ctx.id} className="gy-chk-group" role="group" aria-label={ctx.name}>
-                <h4 className="gy-build-sub">{ctx.name}</h4>
-                <ul className="gy-build-list">{inGroup.filter((c) => c.context?.id === ctx.id).map(renderCheck)}</ul>
-              </div>
-            ))}
+            {contexts.map((ctx) => {
+              const mine = inGroup.filter((c) => c.context?.id === ctx.id);
+              const cw = worst(mine);
+              const allOk = mine.every((c) => c.status === 'ok');
+              return (
+                <CollapsibleCard key={ctx.id} title={ctx.name} label={ctx.name} collapsed={allOk}
+                  status={<span className="gy-ck-gmark" data-state={allOk ? 'ok' : cw}><span aria-hidden="true">{MARK[allOk ? 'ok' : cw]}</span><span className="gy-sr">, {WORD[allOk ? 'ok' : cw]}</span></span>}>
+                  <ul className="gy-build-list">{mine.map(renderCheck)}</ul>
+                </CollapsibleCard>
+              );
+            })}
           </section>
         );
       })}

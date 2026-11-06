@@ -92,3 +92,26 @@ test('the refresh icon spins while running only', async () => {
   await act(async () => { d.resolve([ck('a', 'ok')]); });
   expect(icon()).not.toHaveClass('gy-spin');
 });
+
+const inCtx = (id: string, status: Check['status']) => ck(id, status, { group: 'drivers', context: { id: 'c1', name: 'Finance' } });
+
+test('an all-ok context starts folded with a passed mark; its checks are hidden', async () => {
+  render(<CheckupTab run={instant([inCtx('a', 'ok'), inCtx('b', 'ok')])} projectId="p1" now={now} />);
+  const group = await screen.findByRole('group', { name: 'Finance' });
+  expect(within(group).getByRole('button', { name: /Expand Finance/ })).toHaveAttribute('aria-expanded', 'false');
+  const head = group.querySelector<HTMLElement>('.dm-collapsible-header')!;
+  expect(within(head).getByText('✓')).toBeInTheDocument();
+  expect(head).toHaveTextContent('passed');
+  expect(within(group).queryByRole('listitem')).toBeNull();
+});
+
+test('a context with a failure starts open with the failed mark; the chevron toggles it', async () => {
+  render(<CheckupTab run={instant([inCtx('a', 'ok'), inCtx('b', 'fail')])} projectId="p1" now={now} />);
+  const group = await screen.findByRole('group', { name: 'Finance' });
+  expect(within(group.querySelector<HTMLElement>('.dm-collapsible-header')!).getByText('✗')).toBeInTheDocument();
+  expect(within(group).getAllByRole('listitem')).toHaveLength(2);
+  fireEvent.click(within(group).getByRole('button', { name: /Collapse Finance/ }));
+  expect(within(group).queryByRole('listitem')).toBeNull();
+  fireEvent.click(within(group).getByRole('button', { name: /Expand Finance/ }));
+  expect(within(group).getAllByRole('listitem')).toHaveLength(2);
+});
