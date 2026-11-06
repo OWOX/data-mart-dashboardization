@@ -25,7 +25,6 @@ import { metricName } from './model/metricName';
 import { LoadingBar } from './ui/LoadingBar';
 import { Header, RangeControls } from './ui/Header';
 import { runCheckup } from './checkup/run';
-import { syncSchedules } from './schedules/sync';
 import { SettingsPage, type SettingsTab } from './ui/SettingsPage';
 
 export interface AppDeps {
@@ -109,7 +108,6 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [dismissedHash, setDismissedHash] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
-  const [scheduleNote, setScheduleNote] = useState<string | null>(null);
   // the seeded model couldn't be saved on first open; shown until a save goes through
   const [seedNote, setSeedNote] = useState<string | null>(null);
   // what this member can see, fetched once per model; data is null when the fetch failed
@@ -306,8 +304,6 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const remember = (r: RangeChoice, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
   const saveOntologyAndLeave = async (m: Model) => {
     await saveOntology(store, m);
-    setScheduleNote(null);
-    if (ctx.schedules) void syncSchedules({ schedules: ctx.schedules, store, model: m, memberId: userId }).catch(() => setScheduleNote("Couldn't update your schedules for the new model; open Settings, Schedules and save them again."));
     setSeedNote(null);
     // a new model object re-runs the refresh; the cache is judged by editedAt
     setModel(m);
@@ -363,7 +359,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
           ontology={ontologyProps}
           noModel={!model}
-          schedules={{ schedules: ctx.schedules, memberId: userId, model, settings, store }}
+          schedules={{ schedules: ctx.schedules, model, settings }}
           checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
           onBack={leaveSettings}
           onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), onStep })}
@@ -393,7 +389,6 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           <Header cache={cache} now={now()} period={periodShown} status={status} notices={notices} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
           {seedNote && <p className="gy-muted">{seedNote}</p>}
-          {scheduleNote && <p className="gy-muted">{scheduleNote}</p>}
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
           <Canvas
             tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}

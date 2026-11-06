@@ -1,10 +1,10 @@
 import { cachedOwox } from '../src/cache/martCache';
 import { resolveRange } from '../src/lib/dates';
+import { shownModel } from '../src/model/shown';
 import { cacheKey, refreshCanvas } from '../src/metrics/refresh';
 import type { OwoxLike } from '../src/owox/sources';
 import { parseWarmInput } from '../src/schedules/input';
-import { readSnapshot } from '../src/schedules/snapshot';
-import type { CollectionsLike } from '../src/store/collections';
+import { loadOntology, loadProjectModel, type CollectionsLike } from '../src/store/collections';
 import { DEFAULT_SETTINGS } from '../src/types';
 
 /** OWOX shows `code` as the run's error code; it must match ^[A-Z][A-Z0-9_]{0,63}$. */
@@ -22,13 +22,14 @@ export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date 
   const input = parseWarmInput(raw);
   if (!input) throw new ActionError('INVALID_RANGES', 'The schedule parameters are not valid; save the schedule again.');
   const store: CollectionsLike = { collections: ctx.collections };
-  const model = await readSnapshot(store, input.memberId, input.martIds);
-  if (!model) throw new ActionError('MODEL_MISSING', "The schedule's model snapshot was not found. Save the schedule again; if that does not help, the member who installed Gyroscope may not have access to these Data Marts.");
+  // the run acts as the schedule's creator, so these are that member's own collections
+  const model = (await loadOntology(store)) ?? (await loadProjectModel(store));
+  if (!model) throw new ActionError('MODEL_MISSING', 'Open Gyroscope once so it builds your model.');
   const owox = ctx.owox as OwoxLike;
   // an unparseable deadline must not switch the reserve off; assume the 5 minute action limit
   const parsed = Date.parse(ctx.execution.deadlineAt);
   const deadline = Number.isFinite(parsed) ? parsed : now().getTime() + 300_000;
-  const out: WarmResult = { ranges: 0, marts: input.martIds.length, queries: 0, skipped: 0, failed: [], tooLarge: [], written: [] };
+  const out: WarmResult = { ranges: 0, marts: new Set(model.classes.map((c) => c.martId)).size, queries: 0, skipped: 0, failed: [], tooLarge: [], written: [] };
   for (const r of input.ranges) {
     if (deadline - now().getTime() < RESERVE_MS) { out.skipped++; continue; }
     const spec = resolveRange(r.range, r.compare, now(), r.weekStart);
@@ -47,8 +48,10 @@ export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date 
   if (out.ranges > 0 && out.written.length === 0 && (out.failed.length > 0 || out.tooLarge.length > 0)) {
     throw new ActionError('CACHE_NOT_WRITTEN', `Nothing was saved to the cache: ${out.failed.length} write(s) failed and ${out.tooLarge.length} were too large. Run the schedule again; if it keeps failing, reduce the number of metrics.`);
   }
-  if (out.ranges > 0 && out.queries === 0 && model.metrics.length > 0) {
-    throw new ActionError('NO_DATA', 'No Data Mart returned any data. The member who installed Gyroscope may not be able to read these Data Marts; check their access and run the schedule again.');
+  // only metrics a class lists (and the member shows) are queried
+  const known = new Set(model.metrics.map((m) => m.id));
+  if (out.ranges > 0 && out.queries === 0 && shownModel(model).classes.some((c) => c.metricIds.some((id) => known.has(id)))) {
+    throw new ActionError('NO_DATA', 'No Data Mart returned any data. The member who created the schedule may not be able to read these Data Marts; check their access and run the schedule again.');
   }
   return out;
 }

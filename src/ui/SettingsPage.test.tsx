@@ -84,7 +84,7 @@ test('the default date range says it applies only to the member', () => {
 });
 
 test('the Schedules tab follows Checkup and renders the schedules tab', () => {
-  const schedules = { schedules: undefined, memberId: 'u1', model: null, settings: DEFAULT_SETTINGS, store: { collections: () => { throw new Error('unused'); } } as never };
+  const schedules = { schedules: undefined, model: null, settings: DEFAULT_SETTINGS };
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} schedules={schedules} />);
   fireEvent.click(screen.getByRole('tab', { name: 'Schedules' }));
   expect(screen.getByText(/need a newer version/)).toBeInTheDocument();

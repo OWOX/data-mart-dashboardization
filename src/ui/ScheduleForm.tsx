@@ -3,8 +3,6 @@ import type { PluginSchedule, PluginSchedules } from '@owox/plugin-sdk';
 import { PRESET_GROUPS, PRESET_LABELS, type Model, type Preset, type Settings } from '../types';
 import { CADENCE_PRESETS, HOUR_INTERVALS, MINUTE_INTERVALS, WEEKDAYS, fromCron, toCron, type Cadence } from '../schedules/cron';
 import { MAX_RANGES, WARM_ACTION, parseWarmInput, rangesFor } from '../schedules/input';
-import { writeSnapshot } from '../schedules/snapshot';
-import type { CollectionsLike } from '../store/collections';
 import { describeActionError } from '../lib/errors';
 
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -26,11 +24,11 @@ function computeZones(): string[] {
 const toggle = <T,>(xs: T[], x: T): T[] => (xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x]);
 
 export interface ScheduleFormProps {
-  schedules: PluginSchedules; schedule: PluginSchedule | null; memberId: string; model: Model | null; settings: Settings; store: CollectionsLike;
+  schedules: PluginSchedules; schedule: PluginSchedule | null; model: Model | null; settings: Settings;
   onSaved: () => void | Promise<void>; onCancel: () => void;
 }
 
-export function ScheduleForm({ schedules, schedule, memberId, model, settings, store, onSaved, onCancel }: ScheduleFormProps) {
+export function ScheduleForm({ schedules, schedule, model, settings, onSaved, onCancel }: ScheduleFormProps) {
   const parsed = schedule ? fromCron(schedule.cron) : null;
   const raw = !!schedule && !parsed;
   const start: Cadence = parsed ?? { type: 'daily', time: '09:00' };
@@ -68,8 +66,7 @@ export function ScheduleForm({ schedules, schedule, memberId, model, settings, s
     try { cron = raw ? schedule!.cron : toCron(cadence()); } catch (e) { setError(e instanceof Error ? e.message : String(e)); return; }
     setBusy(true);
     try {
-      const martIds = await writeSnapshot(store, model, memberId);
-      const parameters = { memberId, martIds, ranges: rangesFor(picked, settings) };
+      const parameters = { ranges: rangesFor(picked, settings) };
       if (schedule) await schedules.update(schedule.id, { parameters, cron, timeZone: zone, name: name || null });
       else await schedules.create({ action: WARM_ACTION, parameters, cron, timeZone: zone, name, enabled });
       await onSaved();

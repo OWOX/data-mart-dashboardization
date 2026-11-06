@@ -2,15 +2,14 @@ import { PRESET_LABELS, type ComparePreset, type Preset, type Settings, type Wee
 
 export const WARM_ACTION = 'warm-cache';
 export const MAX_RANGES = 5;
-export const MAX_MARTS = 200;
 
 export interface WarmRange {
   range: { kind: 'preset'; preset: Preset };
   compare: { kind: 'off' } | { kind: 'preset'; preset: ComparePreset };
   weekStart: WeekStart;
 }
-/** What a schedule passes to the warm-cache action. `memberId` marks whose schedule it is; OWOX keeps no creator. */
-export interface WarmInput { memberId: string; martIds: string[]; ranges: WarmRange[] }
+/** What a schedule passes to the warm-cache action. The run acts as the member who created the schedule. */
+export interface WarmInput { ranges: WarmRange[] }
 
 const PRESETS = Object.keys(PRESET_LABELS) as Preset[];
 const COMPARES: ComparePreset[] = ['previous_period', 'preceding_days', 'year_before'];
@@ -19,10 +18,8 @@ const COMPARES: ComparePreset[] = ['previous_period', 'preceding_days', 'year_be
 export const WARM_INPUT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['memberId', 'martIds', 'ranges'],
+  required: ['ranges'],
   properties: {
-    memberId: { type: 'string', minLength: 1, maxLength: 200 },
-    martIds: { type: 'array', maxItems: MAX_MARTS, items: { type: 'string', minLength: 1, maxLength: 200 } },
     ranges: {
       type: 'array', minItems: 1, maxItems: MAX_RANGES,
       items: {
@@ -43,7 +40,6 @@ export const WARM_INPUT_SCHEMA = {
 } as const;
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
-const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 200;
 
 function rangeOf(v: unknown): WarmRange | null {
   if (!isObj(v) || !isObj(v.range) || !isObj(v.compare)) return null;
@@ -57,12 +53,9 @@ function rangeOf(v: unknown): WarmRange | null {
 
 /** The input checked again in code: a schedule's parameters may come from another version. */
 export function parseWarmInput(v: unknown): WarmInput | null {
-  if (!isObj(v) || !isId(v.memberId) || !Array.isArray(v.martIds) || !Array.isArray(v.ranges)) return null;
-  if (v.martIds.length > MAX_MARTS || !v.martIds.every(isId)) return null;
-  if (v.ranges.length < 1 || v.ranges.length > MAX_RANGES) return null;
+  if (!isObj(v) || !Array.isArray(v.ranges) || v.ranges.length < 1 || v.ranges.length > MAX_RANGES) return null;
   const ranges = v.ranges.map(rangeOf);
-  if (ranges.some((r) => r === null)) return null;
-  return { memberId: v.memberId, martIds: [...v.martIds] as string[], ranges: ranges as WarmRange[] };
+  return ranges.some((r) => r === null) ? null : { ranges: ranges as WarmRange[] };
 }
 
 /** The ranges a schedule warms; none chosen means the member's default range. Comparison and week start come from the settings at save time. */

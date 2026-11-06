@@ -2,19 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import type { PluginSchedule, PluginSchedules } from '@owox/plugin-sdk';
 import { PRESET_LABELS, type Model, type Settings } from '../types';
 import { describeCadence, fromCron } from '../schedules/cron';
-import { parseWarmInput } from '../schedules/input';
-import { ownSchedules } from '../schedules/sync';
-import type { CollectionsLike } from '../store/collections';
+import { WARM_ACTION, parseWarmInput } from '../schedules/input';
 import { describeActionError } from '../lib/errors';
 import { ScheduleForm } from './ScheduleForm';
 
 const LIMIT = 20;
 
-export interface SchedulesProps { schedules: PluginSchedules | undefined; memberId: string; model: Model | null; settings: Settings; store: CollectionsLike }
+export interface SchedulesProps { schedules: PluginSchedules | undefined; model: Model | null; settings: Settings }
 
 const cadenceOf = (s: PluginSchedule): string => { const c = fromCron(s.cron); return c ? describeCadence(c) : `Custom: ${s.cron}`; };
 
-export function SchedulesTab({ schedules, memberId, model, settings, store }: SchedulesProps) {
+export function SchedulesTab({ schedules, model, settings }: SchedulesProps) {
   const [all, setAll] = useState<PluginSchedule[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -35,29 +33,30 @@ export function SchedulesTab({ schedules, memberId, model, settings, store }: Sc
     setRowError(null);
     try { await fn(); await load(); } catch (e) { setRowError(describeActionError(e)); }
   };
+  // OWOX lists only this member's schedules, so the count and the limit are the member's own
   const full = all.length >= LIMIT;
 
   return (
     <div className="gy-schedules">
-      <p className="dm-muted">{all.length} of {LIMIT} schedules used in this project</p>
+      <p className="dm-muted">{all.length} of {LIMIT} schedules</p>
       {rowError && <p role="alert" className="gy-form-error">{rowError}</p>}
       {form ? (
-        <ScheduleForm schedules={schedules} schedule={form.schedule} memberId={memberId} model={model} settings={settings} store={store}
+        <ScheduleForm schedules={schedules} schedule={form.schedule} model={model} settings={settings}
           onSaved={async () => { await load(); setForm(null); }} onCancel={() => setForm(null)} />
       ) : (
         <div>
           <button type="button" className="gy-btn gy-btn-primary" disabled={full} onClick={() => setForm({ schedule: null })}>Add schedule</button>
-          {full && <span className="dm-muted gy-field-hint"> The project has {LIMIT} schedules, the most OWOX allows.</span>}
+          {full && <span className="dm-muted gy-field-hint"> You have {LIMIT} schedules, the most OWOX allows.</span>}
         </div>
       )}
-      {ownSchedules(all, memberId).map((s) => {
+      {all.filter((s) => s.action === WARM_ACTION).map((s) => {
         const ranges = parseWarmInput(s.parameters)?.ranges.map((r) => PRESET_LABELS[r.range.preset]).join(', ');
         return (
           <div key={s.id} className="dm-card gy-schedule">
             <strong>{s.name || cadenceOf(s)}</strong>
             {s.name && <div>{cadenceOf(s)}</div>}
             <div className="dm-muted">{s.timeZone}</div>
-            <div className="dm-muted">Ranges: {ranges}</div>
+            {ranges && <div className="dm-muted">Ranges: {ranges}</div>}
             <div className="dm-muted">Next run: {s.nextRunAt ? new Date(s.nextRunAt).toLocaleString() : 'Not scheduled'}</div>
             <div className="dm-muted">Last run: {s.lastRun ? [s.lastRun.status, s.lastRun.errorCode].filter(Boolean).join(' ') : 'Never run'}</div>
             {s.disabledReason === 'PAUSED_BY_ADMIN' && <div className="gy-form-error">Paused by a project admin</div>}

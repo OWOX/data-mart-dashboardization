@@ -3,20 +3,18 @@ import { DEFAULT_SETTINGS } from '../types';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ok = { memberId: 'u1', martIds: ['m1'], ranges: [{ range: { kind: 'preset', preset: 'qtd' }, compare: { kind: 'preset', preset: 'previous_period' }, weekStart: 'monday' }] };
+const ok = { ranges: [{ range: { kind: 'preset', preset: 'qtd' }, compare: { kind: 'preset', preset: 'previous_period' }, weekStart: 'monday' }] };
 
 test('a valid input parses as is', () => {
   expect(parseWarmInput(ok)).toEqual(ok);
 });
 
 test.each([
-  ['no member', { ...ok, memberId: '' }],
   ['no ranges', { ...ok, ranges: [] }],
   ['too many ranges', { ...ok, ranges: Array(MAX_RANGES + 1).fill(ok.ranges[0]) }],
   ['a custom range', { ...ok, ranges: [{ ...ok.ranges[0], range: { kind: 'custom', window: { from: '2026-01-01', to: '2026-01-31' } } }] }],
   ['an unknown preset', { ...ok, ranges: [{ ...ok.ranges[0], range: { kind: 'preset', preset: 'forever' } }] }],
   ['a bad week start', { ...ok, ranges: [{ ...ok.ranges[0], weekStart: 'friday' }] }],
-  ['mart ids not strings', { ...ok, martIds: [1] }],
   ['not an object', 'x'],
 ])('%s is refused', (_n, v) => {
   expect(parseWarmInput(v)).toBeNull();

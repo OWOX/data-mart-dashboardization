@@ -173,34 +173,3 @@ test('the blocked view offers Run checkup, which opens the tab and sets the rout
   expect(await screen.findByRole('tab', { name: 'Checkup', selected: true })).toBeInTheDocument();
   expect(setRoute).toHaveBeenLastCalledWith('/settings/checkup');
 });
-
-const range = { range: { kind: 'preset', preset: 'qtd' }, compare: { kind: 'off' }, weekStart: 'monday' };
-async function saveWithSchedules(schedules: unknown) {
-  const { deps } = await setup();
-  const { ctx } = ctxWith();
-  render(<App ctx={{ ...(ctx as object), schedules } as never} deps={deps} />);
-  await waitFor(() => expect(customersCard()).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
-  fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await screen.findByRole('button', { name: 'Date range' });
-}
-
-test('a failing schedule sync leaves a note that outlives the refresh', async () => {
-  await saveWithSchedules({ list: vi.fn(async () => { throw new Error('down'); }) });
-  expect(await screen.findByText(/Couldn't update your schedules for the new model/)).toBeInTheDocument();
-  await waitFor(() => expect(screen.queryByText(/Loading metrics/)).toBeNull());
-  expect(screen.getByText(/Couldn't update your schedules for the new model/)).toBeInTheDocument();
-});
-
-test('saving the ontology updates the member schedules with the new Data Marts', async () => {
-  const mine = { id: 's1', name: null, action: 'warm-cache', parameters: { memberId: 'u1', martIds: ['stale'], ranges: [range] }, cron: '0 9 * * *', timeZone: 'UTC', enabled: true, disabledReason: null, nextRunAt: null, lastRun: null, createdAt: '', modifiedAt: '' };
-  const update = vi.fn(async () => mine);
-  await saveWithSchedules({ list: vi.fn(async () => [mine]), update });
-  await waitFor(() => expect(update).toHaveBeenCalled());
-  const [id, patch] = update.mock.calls[0] as unknown as [string, { parameters: { martIds: string[] } }];
-  expect(id).toBe('s1');
-  expect(patch.parameters.martIds).not.toContain('stale');
-  expect(patch.parameters.martIds.length).toBeGreaterThan(0);
-});
