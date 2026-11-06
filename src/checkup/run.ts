@@ -155,7 +155,8 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     const title = titles.get(goalId);
     const fix = martFix(goalId, title);
     if (!title) {
-      put('goal.access', 'fail', "Not published, or you can't access it", fix);
+      // its own page may be closed to this member, so the Data Marts list comes too
+      put('goal.access', 'fail', "Not published, or you can't access it", [fix, owoxFix('Data Marts', '/data-marts')]);
       for (const id of ['field', 'pk', 'date']) skip(`goal.${id}`, 'goal.access');
       return;
     }

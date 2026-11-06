@@ -112,7 +112,7 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
         return (
           <section key={g.id} aria-labelledby={`gy-ck-${g.id}`} className="gy-ck-group">
             <CollapsibleCard variant="section" icon={GROUP_ICON[g.id]} label={g.label}
-              title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label} <span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span><span className="gy-sr">, {WORD[w]}</span></h3>}>
+              title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label}<span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span><span className="gy-sr">, {WORD[w]}</span></h3>}>
             {plain.length > 0 && <div className="dm-card-block"><ul className="gy-build-list">{plain.map(renderCheck)}</ul></div>}
             {contexts.length > 0 && <div className="gy-ck-contexts">
             {contexts.map((ctx) => {

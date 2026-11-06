@@ -149,7 +149,7 @@ h2 { margin: 0; }
 .gy-ck-gmark[data-state='ok'] { color: var(--green); }
 .gy-chk[data-state='ok'] .gy-chk-mark { border-color: var(--green); color: var(--green); }
 .gy-chk[data-state='warn'] .gy-chk-mark { border-color: var(--orange); color: var(--orange); }
-.gy-chk[data-state='skip'] .gy-chk-mark { border-color: transparent; color: var(--muted-foreground); }
+.gy-chk[data-state='skip'] .gy-chk-mark { border-color: var(--muted-foreground); color: var(--muted-foreground); }
 .gy-chk[data-state='warn'] .gy-chk-detail { color: var(--orange); }
 .gy-chk[data-state='ok'] .gy-chk-detail, .gy-chk[data-state='skip'] .gy-chk-detail { color: var(--muted-foreground); }
 
