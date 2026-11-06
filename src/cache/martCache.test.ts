@@ -117,7 +117,7 @@ test('queries of two ranges land in one doc of the Data Mart', async () => {
   const store = memoryCollections();
   const mtd = { ...opts, filter: { from: '2026-11-01' } };
   const qtd = { ...opts, filter: { from: '2026-10-01' } };
-  const c = cachedOwox({ owox: fakeSource((_m, o) => [{ v: JSON.stringify(o.filter) }]).owox, store, anchor: ANCHOR, mode: 'read-write', now: () => NOW });
+  const c = cachedOf(store, fakeSource((_m, o) => [{ v: JSON.stringify(o.filter) }]));
   await read(c.owox, 'm1', mtd);
   await read(c.owox, 'm1', qtd);
   expect((await c.flush()).written).toEqual(['m1']);
@@ -130,7 +130,7 @@ test('over the size limit the oldest entries of earlier runs go first', async ()
   const chunk = 'x'.repeat(MAX_CACHE_CHARS / 3);
   const entry = (at: string) => ({ rows: [{ chunk }], at });
   await cacheCol(store).put('m1', { v: 1, anchor: ANCHOR, fetchedAt: NOW.toISOString(), queries: { old: entry('2026-11-06T01:00:00.000Z'), newer: entry('2026-11-06T02:00:00.000Z') } }, { parentId: 'm1' });
-  const c = cachedOwox({ owox: fakeSource(() => [{ chunk }]).owox, store, anchor: ANCHOR, mode: 'write-only', now: () => NOW });
+  const c = cachedOf(store, fakeSource(() => [{ chunk }]), 'write-only');
   await read(c.owox, 'm1', opts);
   expect((await c.flush()).written).toEqual(['m1']);
   const doc = await cachedDoc(store);
@@ -140,7 +140,7 @@ test('over the size limit the oldest entries of earlier runs go first', async ()
 test('a flush whose own entries exceed the limit is reported and not written', async () => {
   const store = memoryCollections();
   const big = 'x'.repeat(MAX_CACHE_CHARS);
-  const c = cachedOwox({ owox: fakeSource(() => [{ big }]).owox, store, anchor: ANCHOR, mode: 'read-write', now: () => NOW });
+  const c = cachedOf(store, fakeSource(() => [{ big }]));
   await read(c.owox, 'm1', opts);
   expect(await c.flush()).toEqual({ written: [], failed: [], tooLarge: ['m1'] });
   expect(await store.collections(MART_CACHE).get('m1')).toBeNull();

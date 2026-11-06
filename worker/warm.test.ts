@@ -105,3 +105,11 @@ test('the page answers from what the Worker cached, plan Data Mart included', as
   expect(page.calls.filter((c) => c.path.startsWith('traverse:'))).toHaveLength(0);
   expect(src.stats().hits).toBeGreaterThan(0);
 });
+
+test('a member without an ontology falls back to the project model', async () => {
+  const store = memoryCollections();
+  await store.collections<Model>('model').put('current', model);
+  const r = await warm(store, [range('qtd')]);
+  expect(r.ranges).toBe(1);
+  expect(r.marts).toBe(1);
+});

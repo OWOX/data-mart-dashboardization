@@ -101,8 +101,8 @@ Project scope, bound to `data-mart` with `SEE` for read, create, update and dele
    3. For each range resolves it with `resolveRange` and runs `refreshCanvas` through the cache wrapper in `write-only` mode, then flushes.
    4. Stops starting new ranges when less than 30 seconds remain before `ctx.execution.deadlineAt`.
    5. Returns `{ ranges, marts, queries, skipped, failed, tooLarge, written }`.
-5. The code under `src/metrics`, `src/model`, `src/lib` and `src/cache` is imported by the Worker, so it must not import React or the DOM.
-6. Deploy: a `deploy-worker.yml` workflow runs `wrangler deploy` from `worker/` on pushes to `main` that touch `worker/**`, `src/metrics/**`, `src/cache/**`, `src/lib/**` or `src/model/**`. It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
+5. The code under `src/cache`, `src/lib`, `src/metrics`, `src/model`, `src/owox`, `src/schedules`, `src/store` and `src/types.ts` is imported by the Worker, so it must not import React or the DOM.
+6. Deploy: a `deploy-worker.yml` workflow runs `wrangler deploy` from `worker/` on pushes to `main` that touch `worker/**`, `src/cache/**`, `src/lib/**`, `src/metrics/**`, `src/model/**`, `src/owox/**`, `src/schedules/**`, `src/store/**`, `src/types.ts` or `package-lock.json`. It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
 
 ## 8. Release
 

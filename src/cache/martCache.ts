@@ -84,8 +84,14 @@ export function cachedOwox(args: { owox: OwoxLike; store: CollectionsLike; ancho
         const base = await load(martId);
         const doc: MartCacheDoc = { v: 1, anchor, fetchedAt: now().toISOString(), queries: { ...base?.queries, ...queries } };
         // over the limit: the oldest entries this flush did not record go first
-        const stale = Object.keys(doc.queries).filter((q) => !(q in queries)).sort((a, b) => (doc.queries[a]!.at < doc.queries[b]!.at ? -1 : 1));
-        while (stableJson(doc).length > MAX_CACHE_CHARS && stale.length) delete doc.queries[stale.shift()!];
+        const stale = Object.keys(doc.queries).filter((q) => !(q in queries)).sort((a, b) => (doc.queries[a]!.at < doc.queries[b]!.at ? -1 : doc.queries[a]!.at > doc.queries[b]!.at ? 1 : 0));
+        // each entry is measured once; the final doc is serialized once to confirm
+        let size = stableJson(doc).length;
+        while (size > MAX_CACHE_CHARS && stale.length) {
+          const q = stale.shift()!;
+          size -= stableJson(q).length + stableJson(doc.queries[q]).length + 2;
+          delete doc.queries[q];
+        }
         if (stableJson(doc).length > MAX_CACHE_CHARS) { tooLarge.push(martId); continue; }
         try {
           await col.put(martId, doc, { parentId: martId });

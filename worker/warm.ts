@@ -29,7 +29,7 @@ export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date 
   // an unparseable deadline must not switch the reserve off; assume the 5 minute action limit
   const parsed = Date.parse(ctx.execution.deadlineAt);
   const deadline = Number.isFinite(parsed) ? parsed : now().getTime() + 300_000;
-  const out: WarmResult = { ranges: 0, marts: new Set(model.classes.map((c) => c.martId)).size, queries: 0, skipped: 0, failed: [], tooLarge: [], written: [] };
+  const out: WarmResult = { ranges: 0, marts: 0, queries: 0, skipped: 0, failed: [], tooLarge: [], written: [] };
   for (const r of input.ranges) {
     if (deadline - now().getTime() < RESERVE_MS) { out.skipped++; continue; }
     const spec = resolveRange(r.range, r.compare, now(), r.weekStart);
@@ -53,5 +53,6 @@ export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date 
   if (out.ranges > 0 && out.queries === 0 && shownModel(model).classes.some((c) => c.metricIds.some((id) => known.has(id)))) {
     throw new ActionError('NO_DATA', 'No Data Mart returned any data. The member who created the schedule may not be able to read these Data Marts; check their access and run the schedule again.');
   }
+  out.marts = new Set(out.written).size;
   return out;
 }
