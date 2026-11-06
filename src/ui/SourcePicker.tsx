@@ -11,17 +11,25 @@ export interface FieldGroup {
 }
 
 type Pick = { martId: string; field: string } | null;
-const EXTRAPOLATED = '';
-const keyOf = (p: Pick): string => (p ? `${p.martId}\n${p.field}` : EXTRAPOLATED);
+const NO_SOURCE = '';
+const keyOf = (p: Pick): string => (p ? `${p.martId}\n${p.field}` : NO_SOURCE);
 // matches no option, so a filter with no match leaves nothing highlighted and Enter only closes
 const NONE = '\n';
 
+/** The words of a text: split on spaces, punctuation, `_`, `.`, `-` and lower→upper camel-case boundaries. */
+const wordsOf = (s: string): string[] => s.replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, '$1 $2').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
 /**
- * A combobox for the forecast source: "Extrapolated", then fields grouped by Data Mart. Typing filters by field
- * label, path or Data Mart title. Picking a field sets the Data Mart and the field at once.
+ * A combobox for a source: a first option meaning none, then fields grouped by Data Mart. Typing filters by field
+ * label, path or Data Mart title; each term of the query must start a word of one of them, so "book" doesn't match
+ * "Facebook". Picking a field sets the Data Mart and the field at once.
  */
-export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick }: {
-  /** The current source; null: extrapolated. */
+export function SourcePicker({ label, noneLabel, martId, field, groups, missing, onOpen, onPick }: {
+  /** The accessible name of the box and its list. */
+  label: string;
+  /** The first option, which picks no source. */
+  noneLabel: string;
+  /** The current source; null: none. */
   martId: string | null; field: string;
   groups: FieldGroup[];
   /** The current source no longer exists: the input turns red. */
@@ -34,25 +42,31 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState<string | null>(null);
   // the highlighted choice by key, so it stays put while schemas load and groups grow
-  const [activeKey, setActiveKey] = useState(EXTRAPOLATED);
+  const [activeKey, setActiveKey] = useState(NO_SOURCE);
 
-  const current = martId === null ? 'Extrapolated' : (() => {
+  const current = martId === null ? noneLabel : (() => {
     const g = groups.find((x) => x.martId === martId);
-    const label = g?.options.find((o) => o.value === field)?.label ?? field;
-    return `${g?.title ?? martId} › ${label}`;
+    const name = g?.options.find((o) => o.value === field)?.label ?? field;
+    return name === '' ? (g?.title ?? martId) : `${g?.title ?? martId} › ${name}`;
   })();
 
   const filtered = (text: string) => {
-    const q = text.trim().toLowerCase();
-    return groups.map((g) => ({
-      ...g,
-      options: q === '' || g.title.toLowerCase().includes(q) ? g.options
-        : g.options.filter((o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)),
-    })).filter((g) => g.options.length > 0 || (q === '' && g.status !== 'ok'));
+    // split like the option words, so a path such as ad_id finds its field
+    const terms = wordsOf(text);
+    return groups.map((g) => {
+      const title = wordsOf(g.title);
+      return {
+        ...g,
+        options: terms.length === 0 ? g.options : g.options.filter((o) => {
+          const words = [...title, ...wordsOf(o.label), ...wordsOf(o.value)];
+          return terms.every((t) => words.some((w) => w.startsWith(t)));
+        }),
+      };
+    }).filter((g) => g.options.length > 0 || (terms.length === 0 && g.status !== 'ok'));
   };
   const shown = filtered(query ?? '');
   const filtering = (query ?? '').trim() !== '';
-  // the order the arrow keys walk: Extrapolated first, then each group's fields
+  // the order the arrow keys walk: the none option first, then each group's fields
   const flat: Pick[] = [null, ...shown.flatMap((g) => g.options.map((o) => ({ martId: g.martId, field: o.value })))];
   const keys = flat.map(keyOf);
   // -1: the current choice isn't listed (its schema is loading, or it no longer exists); Enter then changes nothing
@@ -68,22 +82,22 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
   const show = () => { if (!open) { setOpen(true); setActiveKey(keyOf(martId === null ? null : { martId, field })); onOpen(); } };
   const close = () => { setOpen(false); setQuery(null); };
   const pick = (p: Pick) => { onPick(p); close(); };
-  const step = (d: number) => { byKeys.current = true; setActiveKey(keys[Math.min(Math.max(active + d, 0), keys.length - 1)] ?? EXTRAPOLATED); };
+  const step = (d: number) => { byKeys.current = true; setActiveKey(keys[Math.min(Math.max(active + d, 0), keys.length - 1)] ?? NO_SOURCE); };
 
   let i = 0;
   return (
     <span className="gy-combo">
       <input
-        ref={anchor} className={`gy-input gy-onto-pick${missing ? ' gy-bad' : ''}`} role="combobox" aria-label="Forecast source"
+        ref={anchor} className={`gy-input gy-onto-pick${missing ? ' gy-bad' : ''}`} role="combobox" aria-label={label}
         aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-invalid={missing || undefined}
         aria-activedescendant={open && active >= 0 ? optId(active) : undefined} title={missing ? `${current} no longer exists` : undefined}
         value={query ?? current} onClick={show} onBlur={close}
         onChange={(e) => {
           show();
           setQuery(e.target.value);
-          // a filter highlights its first match, so Enter takes it rather than Extrapolated
+          // a filter highlights its first match, so Enter takes it rather than the none option
           const first = filtered(e.target.value).flatMap((g) => g.options.map((o) => ({ martId: g.martId, field: o.value })))[0];
-          setActiveKey(e.target.value.trim() === '' ? EXTRAPOLATED : first ? keyOf(first) : NONE);
+          setActiveKey(e.target.value.trim() === '' ? NO_SOURCE : first ? keyOf(first) : NONE);
         }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') { e.preventDefault(); if (open) step(1); else show(); }
@@ -94,8 +108,8 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
       />
       {open && (
         // mousedown would blur the input before the click lands
-        <div id={`${id}-list`} role="listbox" aria-label="Forecast source" className="gy-combo-list" style={style} onMouseDown={(e) => e.preventDefault()}>
-          <div id={optId(0)} role="option" aria-selected={martId === null} className={`gy-combo-opt${active === 0 ? ' gy-combo-active' : ''}`} onClick={() => pick(null)}>Extrapolated</div>
+        <div id={`${id}-list`} role="listbox" aria-label={label} className="gy-combo-list" style={style} onMouseDown={(e) => e.preventDefault()}>
+          <div id={optId(0)} role="option" aria-selected={martId === null} className={`gy-combo-opt${active === 0 ? ' gy-combo-active' : ''}`} onClick={() => pick(null)}>{noneLabel}</div>
           {shown.map((g) => (
             <div key={g.martId} role="group" aria-label={g.title}>
               <div className="gy-combo-head" aria-hidden="true">{g.title}</div>
@@ -107,7 +121,7 @@ export function ForecastPicker({ martId, field, groups, missing, onOpen, onPick 
                   <div
                     key={o.value} id={optId(n)} role="option" aria-selected={martId === g.martId && field === o.value}
                     className={`gy-combo-opt${active === n ? ' gy-combo-active' : ''}`}
-                    onMouseEnter={() => { byKeys.current = false; setActiveKey(keys[n] ?? EXTRAPOLATED); }} onClick={() => pick({ martId: g.martId, field: o.value })}
+                    onMouseEnter={() => { byKeys.current = false; setActiveKey(keys[n] ?? NO_SOURCE); }} onClick={() => pick({ martId: g.martId, field: o.value })}
                   >
                     {o.label}
                   </div>

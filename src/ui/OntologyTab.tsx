@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, GripVertical, Info } from 'lucide-react';
 import { normalizeCurrency } from '../lib/format';
 import { describeError } from '../lib/errors';
@@ -10,19 +10,21 @@ import { deriveKeys } from '../model/shown';
 import { metricName } from '../model/metricName';
 import type { BuildStep } from '../model/build';
 import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricFormat, Model, Measure, PlanDef, PlanShape } from '../types';
+import { owoxPath } from '../lib/links';
 import { useBelow } from './anchor';
+import { HOSTS, LINGER_MS } from './Card';
+import { MarkdownText } from './MarkdownText';
 import { Blocked } from './Blocked';
 import { BuildProgress } from './BuildProgress';
 import { RebuildProposal } from './RebuildProposal';
 import { AGGS, FieldPicker, dateFields, fieldOptions, martFields, valueFields, type Option } from './FieldPicker';
-import { ForecastPicker, type FieldGroup } from './ForecastPicker';
+import { SourcePicker, type FieldGroup } from './SourcePicker';
 import { Select } from './Select';
 
 const FORMATS: { value: MetricFormat; label: string }[] = [{ value: 'number', label: 'Number' }, { value: 'percent', label: 'Percent' }, { value: 'currency', label: 'Currency' }];
 const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
 const CALCULATED = 'CALC';
 type DetailStatus = 'ok' | 'loading' | 'unreadable' | 'gone';
-const NO_MART: Option = { value: '', label: 'None' };
 
 /** The rebuild flow on the tab: nothing is saved until a proposal is applied. */
 type Rebuild =
@@ -56,25 +58,41 @@ export function validateDraft(model: Model, details?: ReadonlyMap<string, MartDe
   return null;
 }
 
-/** An (i) button that shows a live description on hover, focus and click. The text stays mounted so it is read once. */
+/** Where a link to an OWOX page in a tip goes, so it opens in the same tab. */
+const OpenPath = createContext<((path: string) => void) | undefined>(undefined);
+
+/** An (i) button that shows a live description as Markdown on hover, focus and click. The text stays mounted so it is read once; it lingers after the pointer leaves so a link in it can be clicked. */
 function InfoTip({ name, text }: { name: string; text: string }) {
   const id = useId();
+  const onOpen = useContext(OpenPath);
   const [hover, setHover] = useState(false);
   const [focus, setFocus] = useState(false);
   const [pinned, setPinned] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
   const open = hover || focus || pinned;
   const anchor = useRef<HTMLSpanElement>(null);
   const style = useBelow(anchor, open);
   return (
-    <span ref={anchor} className="gy-tip" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <span ref={anchor} className="gy-tip" onMouseEnter={() => { clearTimeout(timer.current); setHover(true); }} onMouseLeave={() => { clearTimeout(timer.current); timer.current = setTimeout(() => setHover(false), LINGER_MS); }}
+      onFocus={() => setFocus(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setFocus(false); setPinned(false); } }}>
       <button
         type="button" className="gy-tip-btn" aria-label={`About ${name}`} aria-describedby={id}
-        onClick={() => setPinned((v) => !v)} onFocus={() => setFocus(true)} onBlur={() => { setFocus(false); setPinned(false); }}
+        onClick={() => setPinned((v) => !v)}
         onKeyDown={(e) => { if (e.key === 'Escape') { setHover(false); setFocus(false); setPinned(false); } }}
       >
         <Info size={14} aria-hidden="true" />
       </button>
-      <span role="tooltip" id={id} hidden={!open} className="gy-tip-pop" style={style}>{text}</span>
+      <span
+        role="tooltip" id={id} hidden={!open} className="gy-tip-pop" style={style}
+        onClick={(e) => {
+          const a = (e.target as Element).closest('a');
+          const path = a && onOpen ? owoxPath(a.getAttribute('href') ?? '', HOSTS) : null;
+          if (path) { e.preventDefault(); setHover(false); setFocus(false); setPinned(false); onOpen!(path); }
+        }}
+      >
+        <div className="gy-md"><MarkdownText text={text} /></div>
+      </span>
     </span>
   );
 }
@@ -332,9 +350,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     return [{ martId: o.value, title: o.label, status, options: fieldOptions(valueFields(martFields(detail?.fields ?? []))) }];
   });
 
-  const emptyMeasure = (): Measure => ({ field: '', fn: 'SUM' });
-
   return (
+    <OpenPath.Provider value={onOpen}>
     <div className="gy-onto">
       <section className="dm-card gy-onto-intro">
         <p className="gy-onto-note">Your model. Changes here only affect what you see.</p>
@@ -431,9 +448,27 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                     const forecastNote = forecast && fieldNoteOf(forecastMart?.detail, forecast.measure.field);
                     const forecastMissing = !!forecast && !!forecastMart && (forecastMart.status === 'gone'
                       || (forecastMart.status === 'ok' && !martFields(forecastMart.detail?.fields ?? []).some((x) => x.path === forecast.measure.field)));
+                    const planMart = plan ? detailOf(plan.martId) : null;
+                    const planNote = plan && fieldNoteOf(planMart?.detail, plan.measure.field);
+                    const planMissing = !!plan && !!planMart && (planMart.status === 'gone'
+                      || (planMart.status === 'ok' && plan.measure.field !== '' && !martFields(planMart.detail?.fields ?? []).some((x) => x.path === plan.measure.field)));
+                    const planCombo = (
+                      <SourcePicker
+                        label="Plan source" noneLabel="No plan" martId={plan?.martId ?? null} field={plan?.measure.field ?? ''} groups={forecastGroups} missing={planMissing}
+                        onOpen={() => setBrowseAll(true)}
+                        onPick={(p) => patchMetric(m.id, (x) => {
+                          if (!p) return { ...x, plan: null };
+                          const f = martFields(detailOf(p.martId).detail?.fields ?? []).find((i) => i.path === p.field)?.field;
+                          const fn = f?.calculated?.level === 'metric' ? null : x.plan?.measure.fn ?? 'SUM';
+                          // the date field belongs to the Data Mart: a new one starts empty
+                          const dateField = x.plan?.martId === p.martId ? x.plan.dateField : '';
+                          return { ...x, plan: { martId: p.martId, measure: { field: p.field, fn }, dateField, shape: x.plan?.shape ?? 'daily' } satisfies PlanDef };
+                        })}
+                      />
+                    );
                     const combo = (
-                      <ForecastPicker
-                        martId={forecast?.martId ?? null} field={forecast?.measure.field ?? ''} groups={forecastGroups} missing={forecastMissing}
+                      <SourcePicker
+                        label="Forecast source" noneLabel="Extrapolated" martId={forecast?.martId ?? null} field={forecast?.measure.field ?? ''} groups={forecastGroups} missing={forecastMissing}
                         onOpen={() => setBrowseAll(true)}
                         onPick={(p) => patchMetric(m.id, (x) => {
                           if (!p) return { ...x, forecast: null };
@@ -492,17 +527,16 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                         </tr>
                         <tr>
                           <th scope="row" className="gy-onto-label">Plan</th>
-                          <td>
-                            <FieldPicker
-                              label="Plan data mart" value={plan?.martId ?? ''} options={martOptions} none={NO_MART} unverified={martsUnchecked}
-                              onChange={(id) => patchMetric(m.id, (x) => ({
-                                ...x, plan: id === '' ? null : { martId: id, measure: emptyMeasure(), dateField: '', shape: x.plan?.shape ?? 'daily' } satisfies PlanDef,
-                              }))}
-                            />
+                          {/* one cell either way, so the box keeps focus when a source is picked */}
+                          <td colSpan={2}>
+                            <span className="gy-onto-cell">
+                              {planCombo}
+                              {plan && planNote && <InfoTip name={plan.measure.field} text={planNote} />}
+                            </span>
                           </td>
                           {plan ? (
                             <Source
-                              label="Plan" {...detailOf(plan.martId)} measure={plan.measure} dateField={plan.dateField}
+                              label="Plan" {...detailOf(plan.martId)} measure={plan.measure} dateField={plan.dateField} noField
                               onMeasure={(measure) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, measure } } : x))}
                               onDate={(dateField) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, dateField } } : x))}
                             >
@@ -510,7 +544,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                                 <Select className="gy-onto-shape" label="Plan shape" value={plan.shape} options={SHAPES.map((s) => ({ value: s, label: s }))} onChange={(v) => patchMetric(m.id, (x) => (x.plan ? { ...x, plan: { ...x.plan, shape: v as PlanShape } } : x))} />
                               </td>
                             </Source>
-                          ) : <td colSpan={4} />}
+                          ) : <td colSpan={3} />}
                         </tr>
                         <tr>
                           <th scope="row" className="gy-onto-label">Forecast</th>
@@ -555,5 +589,6 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         </>
       )}
     </div>
+    </OpenPath.Provider>
   );
 }

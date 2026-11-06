@@ -18,18 +18,27 @@ export async function loadProjectModel(ctx: CollectionsLike): Promise<Model | nu
   return upgradeModel((await ctx.collections<unknown>('model').get('current'))?.document);
 }
 
+/** The default range is the member's own (`preferences/defaults`, member scope); the project's `defaultPreset` is only the fallback for members who never chose one. */
 export async function loadSettings(ctx: CollectionsLike): Promise<Settings> {
   const raw = ((await ctx.collections<Partial<Settings>>('settings').get('project'))?.document ?? {}) as Record<string, unknown>;
+  const own = (await ctx.collections<Record<string, unknown>>('preferences').get('defaults').catch(() => null))?.document;
   const d = DEFAULT_SETTINGS;
   const t = raw.thresholdPct;
   return {
     thresholdPct: typeof t === 'number' && Number.isFinite(t) ? Math.min(100, Math.max(1, t)) : d.thresholdPct,
-    defaultPreset: presetOf(raw.defaultPreset) ?? d.defaultPreset,
+    defaultPreset: presetOf(own?.defaultPreset) ?? presetOf(raw.defaultPreset) ?? d.defaultPreset,
     comparisonDefault: typeof raw.comparisonDefault === 'boolean' ? raw.comparisonDefault : d.comparisonDefault,
     weekStart: raw.weekStart === 'monday' || raw.weekStart === 'sunday' ? raw.weekStart : d.weekStart,
   };
 }
-export const saveSettings = async (ctx: CollectionsLike, s: Settings): Promise<void> => { await ctx.collections<Settings>('settings').put('project', s); };
+/** The preset goes to the member's document; the project document keeps whatever `defaultPreset` it had. */
+export async function saveSettings(ctx: CollectionsLike, s: Settings): Promise<void> {
+  const { defaultPreset, ...rest } = s;
+  await ctx.collections<{ defaultPreset: Preset }>('preferences').put('defaults', { defaultPreset });
+  const col = ctx.collections<Record<string, unknown>>('settings');
+  const kept = (await col.get('project'))?.document?.defaultPreset;
+  await col.put('project', kept === undefined ? rest : { ...rest, defaultPreset: kept });
+}
 
 const COMPARE_PRESETS: readonly ComparePreset[] = ['previous_period', 'preceding_days', 'year_before'];
 const isDay = (v: unknown): v is Day => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && toDay(Date.parse(`${v}T00:00:00Z`)) === v;

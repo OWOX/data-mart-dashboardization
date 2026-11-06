@@ -108,7 +108,19 @@ h2 { margin: 0; }
 .gy-chk-tag, .gy-chk-note { font-size: 0.6875rem; color: var(--muted-foreground); }
 .gy-chk-tag { border: 1px solid var(--border); border-radius: 0.25rem; padding: 0 0.25rem; }
 .gy-chk-detail { flex-basis: 100%; margin-left: 1.5rem; font-size: 0.75rem; color: var(--red); }
-.gy-chk-group { margin-top: 0.5rem; }
+.dm-collapsible { margin-top: 0.5rem; border: 1px solid var(--border); border-radius: 0.375rem; background: color-mix(in srgb, var(--muted) 50%, transparent); }
+.dm-collapsible-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.5rem 1rem; }
+.dm-collapsible-title { font-size: 0.8125rem; font-weight: 500; }
+.dm-collapsible-actions { display: flex; align-items: center; gap: 0.5rem; }
+.dm-collapsible-toggle { display: inline-grid; place-items: center; width: 1.75rem; height: 1.75rem; border: 0; border-radius: 50%; background: transparent; color: var(--muted-foreground); cursor: pointer; transition: background-color 0.2s; }
+.dm-collapsible-toggle:hover { background: color-mix(in srgb, var(--border) 50%, transparent); }
+.dm-collapsible-toggle svg { transition: transform 0.2s; transform: rotate(180deg); }
+.dm-collapsible-toggle svg[data-folded='true'] { transform: none; }
+.dm-collapsible-grid { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.2s; }
+.dm-collapsible-grid[data-folded='true'] { grid-template-rows: 0fr; }
+.dm-collapsible-clip { overflow: hidden; }
+.dm-collapsible-content { padding: 0.25rem 1rem 0.75rem; }
+@media (prefers-reduced-motion: reduce) { .dm-collapsible-grid, .dm-collapsible-toggle svg { transition: none; } }
 .gy-ck { display: grid; gap: 1.5rem; }
 .gy-ck-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
 .gy-ck-head h2 { margin: 0; font-size: 1rem; }
@@ -120,6 +132,7 @@ h2 { margin: 0; }
 .gy-ck-gmark { font-weight: 400; }
 .gy-ck-gmark[data-state='fail'] { color: var(--red); }
 .gy-ck-gmark[data-state='warn'] { color: var(--orange); }
+.gy-ck-gmark[data-state='ok'] { color: var(--primary); }
 .gy-chk[data-state='ok'] .gy-chk-mark { border-color: var(--primary); color: var(--primary); }
 .gy-chk[data-state='warn'] .gy-chk-mark { border-color: var(--orange); color: var(--orange); }
 .gy-chk[data-state='skip'] .gy-chk-mark { border-color: transparent; color: var(--muted-foreground); }
@@ -413,7 +426,7 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-tip { position: relative; display: inline-flex; align-items: center; }
 .gy-tip-btn { display: inline-grid; place-items: center; padding: 0.125rem; border: 0; background: none; color: var(--muted-foreground); cursor: pointer; }
 .gy-tip-btn:hover { color: var(--foreground); }
-.gy-tip-pop { position: absolute; z-index: 20; top: 100%; left: 0; width: max-content; max-width: 18rem; margin-top: 0.25rem; padding: 0.5rem 0.625rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card); color: var(--foreground); font-size: 0.8125rem; line-height: 1.4; box-shadow: 0 4px 12px rgb(0 0 0 / 0.12); white-space: pre-wrap; }
+.gy-tip-pop { position: absolute; z-index: 20; top: 100%; left: 0; width: max-content; max-width: 18rem; margin-top: 0.25rem; padding: 0.5rem 0.625rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card); color: var(--foreground); font-size: 0.8125rem; line-height: 1.4; box-shadow: 0 4px 12px rgb(0 0 0 / 0.12); }
 .gy-onto-contexts { font-size: 0.8125rem; }
 .gy-onto-check { width: 1rem; height: 1rem; margin: 0; accent-color: var(--primary); }
 /* the forecast list and the (i) popovers are placed fixed, so this scroll box doesn't clip them */
@@ -506,6 +519,9 @@ button.gy-badge:hover { color: var(--foreground); }
 .gy-line-tip { display: inline-flex; flex-shrink: 0; position: relative; top: 1px; opacity: 0; pointer-events: none; transition: opacity 120ms; }
 .gy-card:hover .gy-line-tip, .gy-card:focus-within .gy-line-tip { opacity: 1; pointer-events: auto; }
 @media (hover: none), (any-hover: none) { .gy-line-tip { opacity: 1; pointer-events: auto; } }
+/* Context pills beside the name: the OWOX secondary badge. The name ellipsizes first; pills keep their text. */
+.dm-badge { display: inline-flex; flex-shrink: 0; align-items: center; white-space: nowrap; padding: 0.125rem 0.375rem; border-radius: 9999px; border: 0; background: var(--muted); color: var(--muted-foreground); font-size: 0.6875rem; line-height: 1; }
+.gy-ctx-pill { align-self: center; }
 .gy-hint-left { right: auto; left: -0.25rem; }
 /* The Data Mart description: Markdown rendered by OWOX, so it needs room and readable type. */
 .gy-hint-md { display: block; width: 22rem; max-width: min(22rem, 80vw); max-height: 16rem; overflow: auto; white-space: normal; }
