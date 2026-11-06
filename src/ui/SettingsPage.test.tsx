@@ -74,3 +74,8 @@ test('every tab points at an existing panel', () => {
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} />);
   for (const t of screen.getAllByRole('tab')) expect(document.getElementById(t.getAttribute('aria-controls')!)).not.toBeNull();
 });
+
+test('the default date range says it applies only to the member', () => {
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} />);
+  expect(screen.getByLabelText('Default date range').closest('.gy-field')?.textContent).toContain('Only for you');
+});

@@ -95,6 +95,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
                   </optgroup>
                 ))}
               </select>
+              <span className="dm-muted gy-field-hint">Only for you</span>
             </div>
             <div className="gy-field">
               <label htmlFor="gy-week-start">Week starts on</label>

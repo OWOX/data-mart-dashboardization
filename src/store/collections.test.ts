@@ -93,3 +93,28 @@ test('a stored this_* preset loads as its to-date id, in settings and in prefere
   await savePreferences(ctx, { range: { kind: 'preset', preset: 'cur_month' }, compare: { kind: 'off' } });
   expect((await loadPreferences(ctx))!.range).toEqual({ kind: 'preset', preset: 'cur_month' });
 });
+
+test('the member default range overrides the project one; a missing or invalid one falls back to it', async () => {
+  const ctx = memoryCollections();
+  await ctx.collections<unknown>('settings').put('project', { ...DEFAULT_SETTINGS, defaultPreset: 'mtd' });
+  expect((await loadSettings(ctx)).defaultPreset).toBe('mtd');
+  await ctx.collections<unknown>('preferences').put('defaults', { defaultPreset: 'wtd' });
+  expect((await loadSettings(ctx)).defaultPreset).toBe('wtd');
+  await ctx.collections<unknown>('preferences').put('defaults', { defaultPreset: 'this_year' });
+  expect((await loadSettings(ctx)).defaultPreset).toBe('ytd');
+  await ctx.collections<unknown>('preferences').put('defaults', { defaultPreset: 'next_decade' });
+  expect((await loadSettings(ctx)).defaultPreset).toBe('mtd');
+  await ctx.collections<unknown>('preferences').put('defaults', 'junk');
+  expect((await loadSettings(ctx)).defaultPreset).toBe('mtd');
+});
+
+test('saving settings writes the preset to the member document and leaves the project one as it was', async () => {
+  const ctx = memoryCollections();
+  await ctx.collections<unknown>('settings').put('project', { ...DEFAULT_SETTINGS, defaultPreset: 'mtd' });
+  await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'wtd', thresholdPct: 35 });
+  expect((await ctx.collections<{ defaultPreset: string }>('preferences').get('defaults'))?.document).toEqual({ defaultPreset: 'wtd' });
+  const project = (await ctx.collections<Record<string, unknown>>('settings').get('project'))?.document;
+  expect(project?.defaultPreset).toBe('mtd');
+  expect(project?.thresholdPct).toBe(35);
+  expect((await loadSettings(ctx)).defaultPreset).toBe('wtd');
+});
