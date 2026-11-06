@@ -5,7 +5,8 @@ import { DEFAULT_SETTINGS, PRESET_LABELS, type CacheDoc, type CompareChoice, typ
 export interface CollectionsLike {
   collections<T>(name: string): {
     get(id: string): Promise<{ document: T } | null>;
-    put(id: string, doc: T): Promise<unknown>;
+    /** `parentId` is required by collections bound to an entity, such as `mart-cache`. */
+    put(id: string, doc: T, options?: { parentId?: string }): Promise<unknown>;
   };
 }
 
@@ -87,16 +88,21 @@ export const saveCache = async (ctx: CollectionsLike, key: string, doc: CacheDoc
 export const isStale = (doc: CacheDoc | null, model: Model, anchor: Day, thresholdPct: number): boolean =>
   !doc || doc.anchor !== anchor || doc.builtAt !== model.builtAt || (doc.editedAt ?? null) !== model.editedAt || doc.thresholdPct !== thresholdPct;
 
-export function memoryCollections(): CollectionsLike {
+export function memoryCollections(): CollectionsLike & { parentOf(name: string, id: string): string | undefined } {
   const store = new Map<string, Map<string, unknown>>();
+  const parents = new Map<string, string>();
   return {
     collections<T>(name: string) {
       const col = store.get(name) ?? new Map<string, unknown>();
       store.set(name, col);
       return {
         get: async (id: string) => (col.has(id) ? { document: col.get(id) as T } : null),
-        put: async (id: string, doc: T) => { col.set(id, doc); },
+        put: async (id: string, doc: T, options?: { parentId?: string }) => {
+          col.set(id, doc);
+          if (options?.parentId) parents.set(`${name}/${id}`, options.parentId);
+        },
       };
     },
+    parentOf: (name, id) => parents.get(`${name}/${id}`),
   };
 }

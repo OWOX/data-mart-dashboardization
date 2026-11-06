@@ -118,3 +118,9 @@ test('saving settings writes the preset to the member document and leaves the pr
   expect(project?.thresholdPct).toBe(35);
   expect((await loadSettings(ctx)).defaultPreset).toBe('wtd');
 });
+
+test('memoryCollections keeps the parentId of a put', async () => {
+  const m = memoryCollections();
+  await m.collections('mart-cache').put('a:qtd:off', { x: 1 }, { parentId: 'a' });
+  expect(m.parentOf('mart-cache', 'a:qtd:off')).toBe('a');
+});
