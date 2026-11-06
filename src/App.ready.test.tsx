@@ -405,20 +405,20 @@ test('the toolbar shows the cut windows when a comparison is cut short', async (
 });
 
 test('the week start setting changes the doc id of a week preset', async () => {
-  const keyOf = async (weekStart: 'monday' | 'sunday') => {
-    const { deps, store } = await setup({ cache: 'none' });
+  const { deps, store } = await setup({ cache: 'none' });
+  const docFor = async (weekStart: 'monday' | 'sunday') => {
     await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'wtd', comparisonDefault: false, weekStart });
     render(<App ctx={ctxWith().ctx} deps={deps} />);
     await screen.findByText(/Updated just now/);
-    const key = cacheKey({ kind: 'preset', preset: 'wtd' }, { kind: 'off' }, weekStart);
-    await waitFor(async () => expect(await store.collections('mart-cache').get(`${GID}:${key}`)).not.toBeNull());
+    const id = `${GID}:${cacheKey({ kind: 'preset', preset: 'wtd' }, { kind: 'off' }, weekStart)}`;
+    await waitFor(async () => expect(await store.collections('mart-cache').get(id)).not.toBeNull());
     cleanup();
-    return { key, store };
+    return id;
   };
-  const monday = await keyOf('monday');
-  const sunday = await keyOf('sunday');
-  expect(sunday.key).not.toBe(monday.key);
-  expect(await sunday.store.collections('mart-cache').get(`${GID}:${monday.key}`)).toBeNull();
+  const monday = await docFor('monday');
+  const sunday = await docFor('sunday');
+  expect(sunday).not.toBe(monday);
+  expect(await store.collections('mart-cache').get(monday)).not.toBeNull();
 });
 
 test('with a comparison the header shows the days so far, not the whole range', async () => {
@@ -522,6 +522,8 @@ test('a fresh cache shows no line', async () => {
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await screen.findByText(/Updated 1 h ago/);
+  // the Data Mart reads behind the canvas end when Refresh is enabled again
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled());
   expect(line()).toBeNull();
 });
 

@@ -19,7 +19,7 @@ const model: Model = {
 const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'Unique Count': 5, date: '2026-10-20' }] });
 
 const NOW = new Date('2026-11-06T08:00:00Z');
-const range = (preset: string) => ({ range: { kind: 'preset', preset }, compare: { kind: 'off' }, weekStart: 'monday' });
+const range = (preset: string, weekStart = 'monday') => ({ range: { kind: 'preset', preset }, compare: { kind: 'off' }, weekStart });
 
 // the member's own ontology, which the run reads as that member
 async function setup(m: Model = model) {
@@ -32,14 +32,15 @@ const ctxOf = (store: ReturnType<typeof memoryCollections>, deadline = '2026-11-
 const warm = (store: ReturnType<typeof memoryCollections>, ranges: unknown[], deadline?: string, o?: unknown, now: () => Date = () => NOW) =>
   warmCache({ ranges }, ctxOf(store, deadline, o), now);
 
-test('a run writes one cache doc per Data Mart, with the queries of every range', async () => {
+test('a run writes one cache doc per Data Mart and range', async () => {
   const store = await setup();
   const r = await warm(store, [range('qtd'), range('last_month')]);
   expect(r.ranges).toBe(2);
   expect(r.skipped).toBe(0);
   expect(r.queries).toBeGreaterThan(0);
-  const doc = await store.collections<MartCacheDoc>(MART_CACHE).get('a:qtd:off');
-  expect(doc?.document.anchor).toBe('2026-11-05'); // the anchor is the last complete day
+  const docs = store.collections<MartCacheDoc>(MART_CACHE);
+  expect((await docs.get('a:qtd:off'))?.document.anchor).toBe('2026-11-05'); // the anchor is the last complete day
+  expect(await docs.get('a:last_month:off')).not.toBeNull();
 });
 
 test('an invalid input fails with INVALID_RANGES', async () => {
@@ -84,22 +85,22 @@ test('a model whose classes list no metric is not NO_DATA', async () => {
   expect(await warm(await setup(bare), [range('qtd')])).toMatchObject({ ranges: 1, queries: 0 });
 });
 
-test('the page answers from what the Worker cached, plan Data Mart included', async () => {
+test.each([['qtd', 'monday'], ['wtd', 'sunday']])('the page answers from what the Worker cached (%s, week from %s), plan Data Mart included', async (preset, weekStart) => {
   const planned: Model = {
     ...model,
     metrics: [{ ...model.metrics[0]!, plan: { martId: 'b', measure: { field: 'target', fn: 'SUM' }, dateField: 'date', shape: 'daily' } }],
   };
   const store = await setup(planned);
   const worker = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'Unique Count': 5, date: '2026-10-20' }] });
-  const r = range('qtd');
+  const r = range(preset, weekStart);
   await warm(store, [r], undefined, worker);
   expect(worker.calls.some((c) => c.path === 'traverse:b')).toBe(true);
 
   // the page: same store, same now, the same ontology
   const page = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: () => [{ 'Unique Count': 5, date: '2026-10-20' }] });
   const pageModel = (await loadOntology(store))!;
-  const spec = resolveRange(r.range as never, r.compare as never, NOW, 'monday');
-  const key = cacheKey(r.range as never, r.compare as never, 'monday');
+  const spec = resolveRange(r.range as never, r.compare as never, NOW, weekStart as never);
+  const key = cacheKey(r.range as never, r.compare as never, weekStart as never);
   const src = cachedOwox({ owox: page as OwoxLike, store, key, anchor: spec.anchor, mode: 'read-write', now: () => NOW });
   await refreshCanvas({ owox: src.owox, model: pageModel, spec, key, thresholdPct: DEFAULT_SETTINGS.thresholdPct });
   expect(page.calls.filter((c) => c.path.startsWith('traverse:'))).toHaveLength(0);
