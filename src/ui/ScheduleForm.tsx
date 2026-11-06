@@ -5,24 +5,25 @@ import { CADENCE_PRESETS, HOUR_INTERVALS, MINUTE_INTERVALS, WEEKDAYS, fromCron, 
 import { MAX_RANGES, WARM_ACTION, parseWarmInput, rangesFor } from '../schedules/input';
 import { writeSnapshot } from '../schedules/snapshot';
 import type { CollectionsLike } from '../store/collections';
-import { describeError } from '../lib/errors';
+import { describeActionError } from '../lib/errors';
 
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 const TYPES: { id: Cadence['type']; label: string }[] = [{ id: 'daily', label: 'Daily' }, { id: 'weekly', label: 'Weekly' }, { id: 'monthly', label: 'Monthly' }, { id: 'interval', label: 'Interval' }];
 
 const browserZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+let zoneList: string[] | null = null;
 function zones(): string[] {
+  if (zoneList) return zoneList;
+  zoneList = computeZones();
+  return zoneList;
+}
+function computeZones(): string[] {
   const fn = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;
   try { if (fn) return fn('timeZone'); } catch { /* fall back below */ }
   return [...new Set([browserZone(), 'UTC'])];
 }
 
 const toggle = <T,>(xs: T[], x: T): T[] => (xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x]);
-
-function failure(e: unknown): string {
-  if (e instanceof Error && e.name === 'PluginActionError') return `${(e as Error & { code?: string }).code ?? ''} ${e.message}`.trim();
-  return describeError(e);
-}
 
 export interface ScheduleFormProps {
   schedules: PluginSchedules; schedule: PluginSchedule | null; memberId: string; model: Model | null; settings: Settings; store: CollectionsLike;
@@ -73,7 +74,7 @@ export function ScheduleForm({ schedules, schedule, memberId, model, settings, s
       else await schedules.create({ action: WARM_ACTION, parameters, cron, timeZone: zone, name, enabled });
       await onSaved();
     } catch (e) {
-      setError(failure(e));
+      setError(describeActionError(e));
       setBusy(false);
     }
   };
@@ -123,7 +124,7 @@ export function ScheduleForm({ schedules, schedule, memberId, model, settings, s
               <div className="gy-field">
                 <label htmlFor="gy-sch-every">Every</label>
                 <select id="gy-sch-every" className="gy-select" value={every} onChange={(e) => setEvery(Number(e.target.value))}>
-                  {intervals.map((n) => <option key={n} value={n}>{n}</option>)}
+                  {intervals.map((n) => <option key={n} value={n}>{n} {unit === 'minutes' ? 'min' : 'h'}</option>)}
                 </select>
               </div>
             </>

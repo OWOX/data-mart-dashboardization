@@ -5,7 +5,7 @@ import { describeCadence, fromCron } from '../schedules/cron';
 import { parseWarmInput } from '../schedules/input';
 import { ownSchedules } from '../schedules/sync';
 import type { CollectionsLike } from '../store/collections';
-import { describeError } from '../lib/errors';
+import { describeActionError } from '../lib/errors';
 import { ScheduleForm } from './ScheduleForm';
 
 const LIMIT = 20;
@@ -23,7 +23,7 @@ export function SchedulesTab({ schedules, memberId, model, settings, store }: Sc
   const load = useCallback(async () => {
     if (!schedules) return;
     setLoadError(null);
-    try { setAll(await schedules.list()); } catch (e) { setLoadError(`Couldn't load schedules: ${describeError(e)}`); }
+    try { setAll(await schedules.list()); } catch (e) { setLoadError(`Couldn't load schedules: ${describeActionError(e)}`); }
   }, [schedules]);
   useEffect(() => { void load(); }, [load]);
 
@@ -33,7 +33,7 @@ export function SchedulesTab({ schedules, memberId, model, settings, store }: Sc
 
   const act = async (fn: () => Promise<unknown>) => {
     setRowError(null);
-    try { await fn(); await load(); } catch (e) { setRowError(describeError(e)); }
+    try { await fn(); await load(); } catch (e) { setRowError(describeActionError(e)); }
   };
   const full = all.length >= LIMIT;
 

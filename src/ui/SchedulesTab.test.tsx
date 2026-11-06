@@ -1,5 +1,5 @@
 import type { PluginSchedule, PluginSchedules } from '@owox/plugin-sdk';
-import { render, screen, fireEvent, waitFor, within } from '../test-host';
+import { render, screen, fireEvent, waitFor } from '../test-host';
 import { SchedulesTab } from './SchedulesTab';
 import { memoryCollections } from '../store/collections';
 import { DEFAULT_SETTINGS } from '../types';
@@ -24,6 +24,9 @@ const row = (id: string, memberId: unknown, extra: Partial<PluginSchedule> = {})
   id, name: null, action: 'warm-cache', parameters: { memberId, martIds: ['m1'], ranges: [range] }, cron: '0 9 * * 1,2,3,4,5', timeZone: 'UTC',
   enabled: true, disabledReason: null, nextRunAt: null, lastRun: null, createdAt: '', modifiedAt: '', ...extra,
 });
+beforeEach(() => { window.confirm = vi.fn(() => true); });
+afterEach(() => { delete (window as { confirm?: unknown }).confirm; });
+
 const props = (schedules: PluginSchedules | undefined, extra = {}) => ({ schedules, memberId: 'u1', model: fixtureModel, settings: DEFAULT_SETTINGS, store: memoryCollections(), ...extra });
 
 test('without ctx.schedules the tab says OWOX is too old', () => {
@@ -73,7 +76,6 @@ test('a refusal shows its code', async () => {
 
 test('pause, edit and delete act on the schedule', async () => {
   const api = fakeSchedules([row('a', 'u1')]);
-  window.confirm = vi.fn(() => true);
   render(<SchedulesTab {...props(api)} />);
   fireEvent.click(await screen.findByLabelText('Enabled'));
   await waitFor(() => expect(api.pause).toHaveBeenCalledWith('a'));
@@ -90,4 +92,21 @@ test('at most five ranges can be picked', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Add schedule' }));
   for (const l of ['This year to date', 'This quarter to date', 'This month to date', 'Last month', 'Last week']) fireEvent.click(screen.getByLabelText(l));
   expect(screen.getByLabelText('Yesterday')).toBeDisabled();
+});
+
+test('a refused resume shows its code', async () => {
+  const api = fakeSchedules([row('a', 'u1', { enabled: false })]);
+  api.resume = vi.fn(async () => { throw Object.assign(new Error('Paused'), { name: 'PluginActionError', code: 'PAUSED_BY_ADMIN' }); });
+  render(<SchedulesTab {...props(api)} />);
+  fireEvent.click(await screen.findByLabelText('Enabled'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('PAUSED_BY_ADMIN');
+});
+
+test('a schedule with an unparsable cron keeps it on save', async () => {
+  const api = fakeSchedules([row('a', 'u1', { cron: '0 9 1 * 1' })]);
+  render(<SchedulesTab {...props(api)} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  expect(screen.getByText('Cron: 0 9 1 * 1')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(api.update).toHaveBeenCalledWith('a', expect.objectContaining({ cron: '0 9 1 * 1' })));
 });
