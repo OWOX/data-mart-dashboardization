@@ -44,7 +44,7 @@ export function cachedOwox(args: { owox: OwoxLike; store: CollectionsLike; key: 
   const load = (martId: string) => {
     let p = loaded.get(martId);
     if (!p) {
-      p = col.get(martCacheId(martId, key)).then((d) => (d?.document?.v === 1 && d.document.anchor === anchor ? d.document : null), () => null);
+      p = col.get(martCacheId(martId, key)).then((d) => (d?.document?.v === 1 && d.document.anchor === anchor && typeof d.document.queries === 'object' && d.document.queries !== null ? d.document : null), () => null);
       loaded.set(martId, p);
     }
     return p;
@@ -53,7 +53,7 @@ export function cachedOwox(args: { owox: OwoxLike; store: CollectionsLike; key: 
   const traverseData: OwoxLike['dataMarts']['traverseData'] = async (martId, options) => {
     const q = stableJson(options);
     if (mode === 'read-write') {
-      const hit = (await load(martId))?.queries[q];
+      const hit = (await load(martId))?.queries?.[q];
       if (hit) {
         hits++;
         if (oldestHit === null || hit.at < oldestHit) oldestHit = hit.at;

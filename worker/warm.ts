@@ -13,7 +13,7 @@ export class ActionError extends Error {
 }
 
 export interface WarmContext { owox: unknown; collections: CollectionsLike['collections']; execution: { deadlineAt: string } }
-export interface WarmResult { ranges: number; marts: number; queries: number; skipped: number; failed: string[]; tooLarge: string[] }
+export interface WarmResult { ranges: number; marts: number; queries: number; skipped: number; failed: string[]; tooLarge: string[]; written: string[] }
 
 // a range is a full canvas refresh; one that starts this close to the deadline would be cut off mid-way
 const RESERVE_MS = 30_000;
@@ -23,10 +23,12 @@ export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date 
   if (!input) throw new ActionError('INVALID_RANGES', 'The schedule parameters are not valid; save the schedule again.');
   const store: CollectionsLike = { collections: ctx.collections };
   const model = await readSnapshot(store, input.memberId, input.martIds);
-  if (!model) throw new ActionError('MODEL_MISSING', "The schedule's model snapshot is missing; save the schedule again.");
+  if (!model) throw new ActionError('MODEL_MISSING', "The schedule's model snapshot was not found. Save the schedule again; if that does not help, the member who installed Gyroscope may not have access to these Data Marts.");
   const owox = ctx.owox as OwoxLike;
-  const deadline = Date.parse(ctx.execution.deadlineAt);
-  const out: WarmResult = { ranges: 0, marts: input.martIds.length, queries: 0, skipped: 0, failed: [], tooLarge: [] };
+  // an unparseable deadline must not switch the reserve off; assume the 5 minute action limit
+  const parsed = Date.parse(ctx.execution.deadlineAt);
+  const deadline = Number.isFinite(parsed) ? parsed : now().getTime() + 300_000;
+  const out: WarmResult = { ranges: 0, marts: input.martIds.length, queries: 0, skipped: 0, failed: [], tooLarge: [], written: [] };
   for (const r of input.ranges) {
     if (deadline - now().getTime() < RESERVE_MS) { out.skipped++; continue; }
     const spec = resolveRange(r.range, r.compare, now(), r.weekStart);
@@ -39,6 +41,14 @@ export async function warmCache(raw: unknown, ctx: WarmContext, now: () => Date 
     out.queries += src.stats().misses;
     out.failed.push(...f.failed);
     out.tooLarge.push(...f.tooLarge);
+    out.written.push(...f.written);
+  }
+  // refreshCanvas swallows per-metric errors, so a run can finish "fine" with nothing cached
+  if (out.ranges > 0 && out.written.length === 0 && (out.failed.length > 0 || out.tooLarge.length > 0)) {
+    throw new ActionError('CACHE_NOT_WRITTEN', `Nothing was saved to the cache: ${out.failed.length} write(s) failed and ${out.tooLarge.length} were too large. Run the schedule again; if it keeps failing, reduce the number of metrics.`);
+  }
+  if (out.ranges > 0 && out.queries === 0 && model.metrics.length > 0) {
+    throw new ActionError('NO_DATA', 'No Data Mart returned any data. The member who installed Gyroscope may not be able to read these Data Marts; check their access and run the schedule again.');
   }
   return out;
 }

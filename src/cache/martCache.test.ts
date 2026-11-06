@@ -134,3 +134,13 @@ test('the wrapper delegates every other OwoxLike member', async () => {
   expect(await c.owox.getJson('/api/x')).toBe('ok');
   expect(await c.owox.project.getSettings()).toEqual({ description: null });
 });
+
+test('a doc of today without queries is no doc, and does not throw', async () => {
+  const store = memoryCollections();
+  await store.collections<unknown>(MART_CACHE).put('m1:' + KEY, { v: 1, anchor: ANCHOR, fetchedAt: NOW.toISOString() });
+  const src = fakeSource(() => [{ v: 1 }]);
+  const c = cachedOwox({ owox: src.owox, store, key: KEY, anchor: ANCHOR, mode: 'read-write', now: () => NOW });
+  expect(await read(c.owox, 'm1', opts)).toEqual([{ v: 1 }]);
+  expect(src.calls).toHaveLength(1);
+  expect(c.stats().hits).toBe(0);
+});

@@ -109,8 +109,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [dismissedHash, setDismissedHash] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
-  // the seeded model couldn't be saved on first open; shown until a save goes through
   const [scheduleNote, setScheduleNote] = useState<string | null>(null);
+  // the seeded model couldn't be saved on first open; shown until a save goes through
   const [seedNote, setSeedNote] = useState<string | null>(null);
   // what this member can see, fetched once per model; data is null when the fetch failed
   const [inputs, setInputs] = useState<{ model: Model; data: Inputs | null } | null>(null);
