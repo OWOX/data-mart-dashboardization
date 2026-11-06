@@ -253,18 +253,10 @@ test("the Data Mart's (i) sits beside its name, sized to the line", () => {
   expect(container.querySelector('.gy-card-title + .gy-line-tip')).toBeNull();
 });
 
-test('the class contexts show as pills beside the name, folding past two into +N', () => {
-  const ctx = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `x${i}`, name: `Ctx ${i + 1}` }));
-  const show = (n: number) => render(<Card cls={{ ...cls, contexts: ctx(n) }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
-  const two = show(2);
-  expect([...two.container.querySelectorAll('.dm-badge')].map((e) => e.textContent)).toEqual(['Ctx 1', 'Ctx 2']);
-  two.unmount();
-  const four = show(4);
-  const pills = [...four.container.querySelectorAll('.dm-badge')];
-  expect(pills.map((e) => e.textContent)).toEqual(['Ctx 1', 'Ctx 2', '+2']);
-  expect(pills[2]!.getAttribute('title')).toBe('Ctx 3, Ctx 4');
-  four.unmount();
-  expect(show(0).container.querySelector('.dm-badge')).toBeNull();
+test('the card shows no context pills: they belong on the Ontology tab', () => {
+  const { container } = render(<Card cls={{ ...cls, contexts: [{ id: 'x', name: 'Finance' }] }} metrics={[arr, uc]} cache={cache()} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.dm-badge')).toBeNull();
+  expect(container).not.toHaveTextContent('Finance');
 });
 
 test('a warning on the key number shows the icon, with the text in the tooltip', () => {

@@ -54,6 +54,12 @@ const pickSource = (box: HTMLElement, group: string, name: string) => {
 };
 const row = (name: string) => within(screen.getByRole('rowgroup', { name: `Metric ${name}` }));
 
+test("a class's contexts show as pills in its row", () => {
+  setup();
+  const section = screen.getByRole('region', { name: 'Customers' });
+  expect([...section.querySelectorAll('.gy-onto-pills .dm-badge')].map((e) => e.textContent)).toEqual(['Sales']);
+});
+
 test('the Format select saves, and a currency code input appears for Currency', async () => {
   const { onSave } = setup();
   const r = row('Units');
