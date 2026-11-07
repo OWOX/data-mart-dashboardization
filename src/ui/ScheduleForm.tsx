@@ -1,12 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Zap } from 'lucide-react';
 import type { PluginSchedule, PluginSchedules } from '@owox/plugin-sdk';
 import { PRESET_GROUPS, PRESET_LABELS, type Model, type Preset, type Settings } from '../types';
-import { CADENCE_PRESETS, HOUR_INTERVALS, MINUTE_INTERVALS, WEEKDAYS, fromCron, toCron, type Cadence } from '../schedules/cron';
+import { CADENCE_PRESETS, HOUR_INTERVALS, MINUTE_INTERVALS, WEEKDAYS, describeCadence, fromCron, ordinal, toCron, type Cadence } from '../schedules/cron';
 import { MAX_RANGES, WARM_ACTION, parseWarmInput, rangesFor } from '../schedules/input';
 import { describeActionError } from '../lib/errors';
+import { MultiSelect } from './MultiSelect';
+import { Select } from './Select';
+import { Switch } from './Switch';
 
-const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
-const TYPES: { id: Cadence['type']; label: string }[] = [{ id: 'daily', label: 'Daily' }, { id: 'weekly', label: 'Weekly' }, { id: 'monthly', label: 'Monthly' }, { id: 'interval', label: 'Interval' }];
+const MONTH_DAYS = Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: ordinal(i + 1) }));
+const TYPES: { value: Cadence['type']; label: string }[] = [{ value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' }, { value: 'monthly', label: 'Monthly' }, { value: 'interval', label: 'Interval' }];
+const RANGE_OPTIONS = PRESET_GROUPS.flatMap((g) => g.presets.map((p) => ({ value: p, label: PRESET_LABELS[p], group: g.label })));
 
 const browserZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 let zoneList: string[] | null = null;
@@ -21,13 +26,12 @@ function computeZones(): string[] {
   return [...new Set([browserZone(), 'UTC'])];
 }
 
-const toggle = <T,>(xs: T[], x: T): T[] => (xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x]);
-
 interface ScheduleFormProps {
   schedules: PluginSchedules; schedule: PluginSchedule | null; model: Model | null; settings: Settings;
   onSaved: () => void | Promise<void>; onCancel: () => void;
 }
 
+/** The body and footer of the schedule sheet: the fields as OWOX's ScheduleConfig lays them out, then Save and Cancel. */
 export function ScheduleForm({ schedules, schedule, model, settings, onSaved, onCancel }: ScheduleFormProps) {
   const parsed = schedule ? fromCron(schedule.cron) : null;
   const raw = !!schedule && !parsed;
@@ -47,17 +51,27 @@ export function ScheduleForm({ schedules, schedule, model, settings, onSaved, on
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // the chip that was just applied shows a check for half a second, as OWOX's preset chips do
+  const [flash, setFlash] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(flashTimer.current), []);
 
   const cadence = (): Cadence => type === 'daily' ? { type, time } : type === 'weekly' ? { type, time, weekdays } : type === 'monthly' ? { type, time, days } : { type, unit, every };
-  const applyPreset = (c: Cadence) => {
+  const applyPreset = (label: string, c: Cadence) => {
     setType(c.type);
-    if (c.type === 'interval') { setUnit(c.unit); setEvery(c.every); return; }
-    setTime(c.time);
-    if (c.type === 'weekly') setWeekdays(c.weekdays);
-    if (c.type === 'monthly') setDays(c.days);
+    if (c.type === 'interval') { setUnit(c.unit); setEvery(c.every); } else {
+      setTime(c.time);
+      if (c.type === 'weekly') setWeekdays(c.weekdays);
+      if (c.type === 'monthly') setDays(c.days);
+    }
+    setFlash(label);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlash(null), 500);
   };
-  const timeZones = zones().includes(zone) ? zones() : [zone, ...zones()];
+  const timeZones = useMemo(() => (zones().includes(zone) ? zones() : [zone, ...zones()]).map((z) => ({ value: z, label: z })), [zone]);
   const intervals = unit === 'minutes' ? MINUTE_INTERVALS : HOUR_INTERVALS;
+  const missingDays = (type === 'weekly' && weekdays.length === 0) || (type === 'monthly' && days.length === 0);
+  const summary = raw ? `Cron: ${schedule!.cron}` : missingDays ? 'Pick at least one day' : describeCadence(cadence());
 
   const save = async () => {
     setError(null);
@@ -76,81 +90,105 @@ export function ScheduleForm({ schedules, schedule, model, settings, onSaved, on
     }
   };
 
+  const zoneField = (
+    <div className="gy-field gy-grow">
+      <span className="gy-label">Timezone</span>
+      <Select label="Timezone" value={zone} options={timeZones} onChange={setZone} />
+    </div>
+  );
+
   return (
-    <form className="dm-card gy-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-      <div className="gy-field">
-        <label htmlFor="gy-sch-name">Name</label>
-        <input id="gy-sch-name" className="gy-input gy-input-wide" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
-        <span className="dm-muted gy-field-hint">Optional</span>
-      </div>
-      {raw ? <p className="dm-muted">Cron: {schedule!.cron}</p> : (
-        <>
-          <div className="gy-chips" role="group" aria-label="Presets">
-            {CADENCE_PRESETS.map((p) => <button key={p.label} type="button" className="gy-chip" onClick={() => applyPreset(p.cadence)}>{p.label}</button>)}
-          </div>
-          <div className="gy-field">
-            <label htmlFor="gy-sch-type">Type</label>
-            <select id="gy-sch-type" className="gy-select" value={type} onChange={(e) => setType(e.target.value as Cadence['type'])}>
-              {TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-            </select>
-          </div>
-          {type !== 'interval' && (
-            <div className="gy-field">
-              <label htmlFor="gy-sch-time">Time</label>
-              <input id="gy-sch-time" className="gy-input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+    <form className="gy-sheet-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+      <div className="gy-sheet-body">
+        <div className="gy-field">
+          <label className="gy-label" htmlFor="gy-sch-name">Name</label>
+          <input id="gy-sch-name" className="gy-input gy-input-wide" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+          <span className="dm-muted gy-field-hint">Optional</span>
+        </div>
+        <div className="gy-sched-box">
+          {!schedule && (
+            <div className="gy-switch-row">
+              <Switch id="gy-sch-enabled" checked={enabled} onChange={setEnabled} />
+              <label htmlFor="gy-sch-enabled">Enabled</label>
             </div>
           )}
-          {type === 'weekly' && (
-            <fieldset className="gy-field gy-checks"><legend>Days of the week</legend>
-              {WEEKDAYS.map((d) => <label key={d.value} className="gy-check"><input type="checkbox" checked={weekdays.includes(d.value)} onChange={() => setWeekdays(toggle(weekdays, d.value))} />{d.label}</label>)}
-            </fieldset>
-          )}
-          {type === 'monthly' && (
-            <fieldset className="gy-field gy-checks"><legend>Days of the month</legend>
-              {DAYS.map((d) => <label key={d} className="gy-check"><input type="checkbox" checked={days.includes(d)} onChange={() => setDays(toggle(days, d))} />{d}</label>)}
-            </fieldset>
-          )}
-          {type === 'interval' && (
+          {raw ? (
+            <>
+              <p className="dm-muted gy-sched-raw">{summary}</p>
+              {zoneField}
+            </>
+          ) : (
             <>
               <div className="gy-field">
-                <label htmlFor="gy-sch-unit">Unit</label>
-                <select id="gy-sch-unit" className="gy-select" value={unit} onChange={(e) => { const u = e.target.value as 'minutes' | 'hours'; setUnit(u); setEvery((u === 'minutes' ? MINUTE_INTERVALS : HOUR_INTERVALS)[0]!); }}>
-                  <option value="minutes">Minutes</option><option value="hours">Hours</option>
-                </select>
+                <div className="gy-field-head">
+                  <span className="gy-label">Type</span>
+                  <div className="gy-presets" role="group" aria-label="Presets">
+                    {CADENCE_PRESETS.map((p) => (
+                      <button key={p.label} type="button" className="gy-preset" onClick={() => applyPreset(p.label, p.cadence)}>
+                        <Zap size={12} aria-hidden="true" className="gy-preset-icon" data-hide={flash === p.label} />
+                        <Check size={12} aria-hidden="true" className="gy-preset-icon" data-hide={flash !== p.label} />
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <Select label="Type" value={type} options={TYPES} onChange={(v) => setType(v as Cadence['type'])} />
               </div>
-              <div className="gy-field">
-                <label htmlFor="gy-sch-every">Every</label>
-                <select id="gy-sch-every" className="gy-select" value={every} onChange={(e) => setEvery(Number(e.target.value))}>
-                  {intervals.map((n) => <option key={n} value={n}>{n} {unit === 'minutes' ? 'min' : 'h'}</option>)}
-                </select>
-              </div>
+              {type !== 'interval' && (
+                <div className="gy-frow">
+                  <div className="gy-field">
+                    <label className="gy-label" htmlFor="gy-sch-time">Time</label>
+                    <input id="gy-sch-time" className="gy-input gy-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+                  </div>
+                  {zoneField}
+                </div>
+              )}
+              {type === 'weekly' && (
+                <div className="gy-field">
+                  <span className="gy-label">Days of week</span>
+                  <MultiSelect label="Days of week" value={weekdays} options={WEEKDAYS} onChange={setWeekdays} placeholder="Select days…" />
+                </div>
+              )}
+              {type === 'monthly' && (
+                <div className="gy-field">
+                  <span className="gy-label">Days of month</span>
+                  <MultiSelect label="Days of month" value={days} options={MONTH_DAYS} onChange={setDays} placeholder="Select days…" maxShown={4} />
+                </div>
+              )}
+              {type === 'interval' && (
+                <>
+                  <div className="gy-frow gy-frow-even">
+                    <div className="gy-field">
+                      <span className="gy-label">Unit</span>
+                      <Select label="Unit" value={unit} options={[{ value: 'minutes', label: 'Minutes' }, { value: 'hours', label: 'Hours' }]} onChange={(v) => { const u = v as 'minutes' | 'hours'; setUnit(u); setEvery((u === 'minutes' ? MINUTE_INTERVALS : HOUR_INTERVALS)[0]!); }} />
+                    </div>
+                    <div className="gy-field">
+                      <span className="gy-label">Every</span>
+                      <Select label="Every" value={String(every)} options={intervals.map((n) => ({ value: String(n), label: `${n} ${unit === 'minutes' ? 'min' : 'hr'}` }))} onChange={(v) => setEvery(Number(v))} />
+                    </div>
+                  </div>
+                  {zoneField}
+                </>
+              )}
             </>
           )}
-        </>
-      )}
-      <div className="gy-field">
-        <label htmlFor="gy-sch-zone">Time zone</label>
-        <select id="gy-sch-zone" className="gy-select" value={zone} onChange={(e) => setZone(e.target.value)}>
-          {timeZones.map((z) => <option key={z} value={z}>{z}</option>)}
-        </select>
+          {!raw && (
+            <p className="gy-sched-preview" aria-live="polite">
+              <span className="gy-sched-preview-k">Schedule</span>
+              <span>{summary}</span>
+            </p>
+          )}
+        </div>
+        <div className="gy-field">
+          <span className="gy-label">Data ranges</span>
+          <MultiSelect label="Data ranges" value={picked} options={RANGE_OPTIONS} onChange={setPicked} max={MAX_RANGES} maxShown={2} placeholder={`Default range, ${PRESET_LABELS[settings.defaultPreset]}`} describedBy="gy-sch-ranges-hint" />
+          <span id="gy-sch-ranges-hint" className="dm-muted gy-field-hint">None picked: your default range, {PRESET_LABELS[settings.defaultPreset]}</span>
+        </div>
       </div>
-      {!schedule && <label className="gy-check"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Enabled</label>}
-      <fieldset className="gy-field"><legend>Data ranges</legend>
-        {PRESET_GROUPS.map((g) => (
-          <div key={g.label} className="gy-checks"><span className="dm-muted">{g.label}</span>
-            {g.presets.map((p) => (
-              <label key={p} className="gy-check">
-                <input type="checkbox" checked={picked.includes(p)} disabled={!picked.includes(p) && picked.length >= MAX_RANGES} onChange={() => setPicked(toggle(picked, p))} />{PRESET_LABELS[p]}
-              </label>
-            ))}
-          </div>
-        ))}
-        <span className="dm-muted gy-field-hint">None picked: your default range, {PRESET_LABELS[settings.defaultPreset]}</span>
-      </fieldset>
-      {error && <p role="alert" className="gy-form-error">{error}</p>}
-      <div className="gy-form-actions">
-        <button type="submit" className="gy-btn gy-btn-primary" disabled={busy}>Save</button>
-        <button type="button" className="gy-btn" onClick={onCancel}>Cancel</button>
+      <div className="gy-sheet-footer">
+        {error && <p role="alert" className="gy-form-error">{error}</p>}
+        <button type="submit" className="gy-btn gy-btn-primary gy-btn-block" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="gy-btn gy-btn-block" onClick={onCancel}>Cancel</button>
       </div>
     </form>
   );

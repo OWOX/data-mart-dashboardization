@@ -28,9 +28,10 @@ test('a weekly cadence without weekdays or a monthly one without days has no cro
 });
 
 test('cadences read in words', () => {
-  expect(describeCadence({ type: 'daily', time: '09:30' })).toBe('Every day at 09:30');
-  expect(describeCadence({ type: 'weekly', time: '09:00', weekdays: [1, 2, 3, 4, 5] })).toBe('Mon, Tue, Wed, Thu, Fri at 09:00');
-  expect(describeCadence({ type: 'monthly', time: '09:00', days: [1, 15] })).toBe('Day 1, 15 of each month at 09:00');
+  expect(describeCadence({ type: 'daily', time: '09:30' })).toBe('Daily at 09:30');
+  expect(describeCadence({ type: 'weekly', time: '09:00', weekdays: [1, 2, 3, 4, 5] })).toBe('Weekly on Monday, Tuesday, Wednesday, Thursday, Friday at 09:00');
+  expect(describeCadence({ type: 'monthly', time: '09:00', days: [1, 15] })).toBe('Monthly on the 1st and 15th at 09:00');
   expect(describeCadence({ type: 'interval', unit: 'hours', every: 1 })).toBe('Every hour');
   expect(describeCadence({ type: 'interval', unit: 'minutes', every: 30 })).toBe('Every 30 minutes');
+  expect(describeCadence({ type: 'monthly', time: '06:00', days: [22, 2, 11, 1] })).toBe('Monthly on the 1st, 2nd, 11th, and 22nd at 06:00');
 });

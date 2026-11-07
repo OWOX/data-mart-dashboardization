@@ -9,8 +9,8 @@ export const MINUTE_INTERVALS = [5, 10, 15, 30];
 export const HOUR_INTERVALS = [1, 2, 3, 4, 6, 8, 12];
 // cron numbers the days from Sunday = 0; the form lists Monday first
 export const WEEKDAYS = [
-  { value: 1, label: 'Mon' }, { value: 2, label: 'Tue' }, { value: 3, label: 'Wed' }, { value: 4, label: 'Thu' },
-  { value: 5, label: 'Fri' }, { value: 6, label: 'Sat' }, { value: 0, label: 'Sun' },
+  { value: 1, label: 'Monday' }, { value: 2, label: 'Tuesday' }, { value: 3, label: 'Wednesday' }, { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' }, { value: 6, label: 'Saturday' }, { value: 0, label: 'Sunday' },
 ];
 
 export const CADENCE_PRESETS: { label: string; cadence: Cadence }[] = [
@@ -64,9 +64,19 @@ export function fromCron(cron: string): Cadence | null {
   return null;
 }
 
+/** 1st, 2nd, 3rd, 4th, 11th, 21st: the day of a month as a person says it. */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
+  return `${n}${suffix}`;
+}
+
+/** A cadence in words, the way Data Mart schedules read: "Daily at 09:00", "Weekly on Monday, Friday at 09:00". */
 export function describeCadence(c: Cadence): string {
   if (c.type === 'interval') return c.every === 1 ? `Every ${c.unit === 'hours' ? 'hour' : 'minute'}` : `Every ${c.every} ${c.unit}`;
-  if (c.type === 'daily') return `Every day at ${c.time}`;
-  if (c.type === 'weekly') return `${WEEKDAYS.filter((d) => c.weekdays.includes(d.value)).map((d) => d.label).join(', ')} at ${c.time}`;
-  return `Day ${[...c.days].sort((a, b) => a - b).join(', ')} of each month at ${c.time}`;
+  if (c.type === 'daily') return `Daily at ${c.time}`;
+  if (c.type === 'weekly') return `Weekly on ${WEEKDAYS.filter((d) => c.weekdays.includes(d.value)).map((d) => d.label).join(', ')} at ${c.time}`;
+  const days = [...c.days].sort((a, b) => a - b).map(ordinal);
+  const list = days.length <= 2 ? days.join(' and ') : `${days.slice(0, -1).join(', ')}, and ${days[days.length - 1]}`;
+  return `Monthly on the ${list} at ${c.time}`;
 }
