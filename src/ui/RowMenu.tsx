@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { useBelow } from './anchor';
 
@@ -10,12 +10,18 @@ export interface RowMenuItem { label: string; icon: LucideIcon; onSelect: () => 
  * closes the list and hands focus back to the button before the action runs, so an action that opens something (the
  * sheet) can take focus from there.
  */
-export function RowMenu({ label, items, buttonRef }: { label: string; items: RowMenuItem[]; buttonRef?: (el: HTMLButtonElement | null) => void }) {
+export function RowMenu({ label, items, rowId, buttons }: { label: string; items: RowMenuItem[]; rowId?: string; buttons?: Map<string, HTMLButtonElement> }) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const style = useBelow(button, open, true);
+  // the button is registered under the row's id so the row can hand focus back to it; the callback keeps its identity between renders
+  const setButton = useCallback((el: HTMLButtonElement | null) => {
+    button.current = el;
+    if (!buttons || rowId === undefined) return;
+    if (el) buttons.set(rowId, el); else buttons.delete(rowId);
+  }, [buttons, rowId]);
   const itemEls = () => [...(list.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
 
   // opening puts focus on the first item, once the list is in the page
@@ -42,7 +48,7 @@ export function RowMenu({ label, items, buttonRef }: { label: string; items: Row
   return (
     <>
       <button
-        ref={(el) => { button.current = el; buttonRef?.(el); }} type="button" className="gy-row-btn" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? `${id}-menu` : undefined}
+        ref={setButton} type="button" className="gy-row-btn" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? `${id}-menu` : undefined}
         onClick={() => setOpen((o) => !o)}
         onKeyDown={(e) => { if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); } }}
       >

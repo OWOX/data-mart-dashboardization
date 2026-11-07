@@ -102,7 +102,7 @@ export function ScheduleForm({ schedules, schedule, model, settings, onSaved, on
       <div className="gy-sheet-body">
         <div className="gy-field">
           <label className="gy-label" htmlFor="gy-sch-name">Name</label>
-          <input id="gy-sch-name" className="gy-input gy-input-wide" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+          <input id="gy-sch-name" className="gy-input" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
           <span className="dm-muted gy-field-hint">Optional</span>
         </div>
         <div className="gy-sched-box">

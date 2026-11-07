@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -17,6 +17,8 @@ export function Sheet({ title, description, onClose, returnTo, children }: {
   const descId = useId();
   const overlay = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  // the slide-in animation holds a transform, which would make fixed popups inside measure against the panel; drop it when done
+  const [settled, setSettled] = useState(false);
   // the opener is read once, on the first render, before the sheet takes focus
   const opener = useRef<HTMLElement | null>(returnTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null));
 
@@ -46,7 +48,7 @@ export function Sheet({ title, description, onClose, returnTo, children }: {
 
   return createPortal(
     <div ref={overlay} className="gy-sheet-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId} tabIndex={-1} className="gy-sheet" onKeyDown={onKeyDown}>
+      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId} tabIndex={-1} className="gy-sheet" data-settled={settled || undefined} onKeyDown={onKeyDown} onAnimationEnd={(e) => { if (e.target === e.currentTarget) setSettled(true); }}>
         <div className="gy-sheet-header">
           <h2 id={titleId} className="gy-sheet-title">{title}</h2>
           <p id={descId} className="gy-sheet-desc">{description}</p>

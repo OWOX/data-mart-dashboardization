@@ -1,4 +1,4 @@
-import { CADENCE_PRESETS, describeCadence, fromCron, toCron, type Cadence } from './cron';
+import { CADENCE_PRESETS, describeCadence, fromCron, ordinal, toCron, type Cadence } from './cron';
 
 test.each<[Cadence, string]>([
   [{ type: 'daily', time: '09:30' }, '30 9 * * *'],
@@ -34,4 +34,8 @@ test('cadences read in words', () => {
   expect(describeCadence({ type: 'interval', unit: 'hours', every: 1 })).toBe('Every hour');
   expect(describeCadence({ type: 'interval', unit: 'minutes', every: 30 })).toBe('Every 30 minutes');
   expect(describeCadence({ type: 'monthly', time: '06:00', days: [22, 2, 11, 1] })).toBe('Monthly on the 1st, 2nd, 11th, and 22nd at 06:00');
+});
+
+test.each<[number, string]>([[1, '1st'], [2, '2nd'], [3, '3rd'], [4, '4th'], [11, '11th'], [12, '12th'], [13, '13th'], [21, '21st'], [22, '22nd'], [23, '23rd'], [31, '31st']])('day %i is the %s', (n, text) => {
+  expect(ordinal(n)).toBe(text);
 });

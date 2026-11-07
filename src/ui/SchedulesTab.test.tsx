@@ -213,6 +213,18 @@ test('Cancel closes the sheet and Edit returns focus to the row menu button', as
   expect(button).toHaveFocus();
 });
 
+test('the sheet drops its slide-in transform when the animation ends', async () => {
+  render(<SchedulesTab {...props(fakeSchedules())} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Add schedule' }));
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).not.toHaveAttribute('data-settled');
+  // an animation ending on a child does not count
+  fireEvent.animationEnd(screen.getByRole('button', { name: 'Close' }));
+  expect(dialog).not.toHaveAttribute('data-settled');
+  fireEvent.animationEnd(dialog);
+  expect(dialog).toHaveAttribute('data-settled');
+});
+
 test('Escape inside an open list closes the list, not the sheet', async () => {
   render(<SchedulesTab {...props(fakeSchedules())} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add schedule' }));

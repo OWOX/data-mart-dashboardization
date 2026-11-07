@@ -138,7 +138,7 @@ export function SchedulesTab({ schedules, model, settings }: SchedulesProps) {
                   <td className="gy-col-actions" onClick={(e) => e.stopPropagation()}>
                     <RowMenu
                       label={`Actions for ${title}`}
-                      buttonRef={(el) => { if (el) menuButtons.current.set(s.id, el); else menuButtons.current.delete(s.id); }}
+                      rowId={s.id} buttons={menuButtons.current}
                       items={[
                         { label: 'Edit schedule', icon: Pencil, onSelect: () => edit(s) },
                         s.enabled ? { label: 'Pause schedule', icon: Pause, onSelect: () => toggle(s) } : { label: 'Resume schedule', icon: Play, onSelect: () => toggle(s) },
