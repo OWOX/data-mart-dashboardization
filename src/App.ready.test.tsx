@@ -3,9 +3,8 @@ import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
 import { cacheKey } from './metrics/refresh';
-import { rangeFor } from './lib/dates';
-import { loadOntology, loadPreferences, memoryCollections, saveCache, saveOntology, savePreferences, saveSettings, type CollectionsLike } from './store/collections';
-import { DEFAULT_SETTINGS, type CacheDoc, type Model } from './types';
+import { loadOntology, loadPreferences, memoryCollections, saveOntology, savePreferences, saveSettings, type CollectionsLike } from './store/collections';
+import { DEFAULT_SETTINGS, type Model } from './types';
 
 const GID = '11111111-1111-1111-1111-111111111111';
 const NOW = new Date('2026-10-24T10:00:00Z');
@@ -24,7 +23,7 @@ const data = (): FakeOwoxData => ({
   blendables: { [GID]: { availableSources: [], mainUniqueCountKeyFields: ['id'] } },
 });
 
-async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | 'stale' | 'none'; store?: CollectionsLike; inputHash?: string; withCustomers?: boolean } = {}) {
+async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | 'stale' | 'none'; store?: CollectionsLike; inputHash?: string; withCustomers?: boolean; planned?: boolean } = {}) {
   const d = data();
   if (opts.withCustomers) {
     d.marts.push(mart(CID, 'Customers'));
@@ -37,33 +36,42 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
   const store = opts.store ?? memoryCollections();
   const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW });
   if (!built.ok) throw new Error('fixture');
-  const model: Model = { ...built.model, inputHash: opts.inputHash ?? built.model.inputHash };
+  let model: Model = { ...built.model, inputHash: opts.inputHash ?? built.model.inputHash };
+  if (opts.planned) {
+    // Revenue is dated and has a daily plan; every query answers one day with a fact 18% below the plan
+    d.details[GID]!.fields.push({ name: 'date', type: 'DATE', isPrimaryKey: false }, { name: 'plan', type: 'FLOAT', isPrimaryKey: false });
+    d.rows = () => [{ date: '2026-10-10', 'revenue | SUM': 82, 'plan | SUM': 100 }];
+    model = { ...model, metrics: model.metrics.map((m) => (m.alias === 'Revenue' ? { ...m, dateField: 'date', plan: { martId: GID, measure: { field: 'plan', fn: 'SUM' }, dateField: 'date', shape: 'daily' } } : m)) };
+  }
   await saveOntology(store, model);
   const cache = opts.cache ?? 'fresh';
-  if (cache !== 'none') {
-    const doc: CacheDoc = {
-      modelHash: model.inputHash, builtAt: model.builtAt, editedAt: model.editedAt, thresholdPct: 20,
-      anchor: cache === 'fresh' ? rangeFor('qtd', NOW).anchor : '2000-01-01',
-      refreshedAt: '2026-10-24T09:00:00Z', key: 'qtd:previous_period', comparison: true, cards: {},
-    };
-    await saveCache(store, cacheKey({ kind: 'preset', preset: 'qtd' }, { kind: 'preset', preset: 'previous_period' }), doc);
-  }
-  let clock = NOW.getTime();
+  // a fresh cache was filled an hour before NOW, a stale one the day before
+  let clock = NOW.getTime() - (cache === 'fresh' ? 3_600_000 : cache === 'stale' ? 86_400_000 : 0);
   const deps: AppDeps = { owox, store, generate: opts.generate === undefined ? async () => goalAi : opts.generate, userId: 'u1', now: () => new Date(clock) };
+  let baseline = 0;
+  const traversals = () => owox.calls.filter((c) => c.path.startsWith('traverse:')).length - baseline;
+  if (cache !== 'none') {
+    // a first open fills the shared Data Mart cache
+    const first = render(<App ctx={{ projectId: 'p', ui: { setRoute: vi.fn() } } as never} deps={deps} />);
+    await screen.findByText(/Updated just now/);
+    await waitFor(() => expect(first.container.querySelector('[role="progressbar"]')).toBeNull());
+    cleanup();
+    clock = NOW.getTime();
+    baseline = owox.calls.filter((c) => c.path.startsWith('traverse:')).length;
+  }
   const tick = () => { clock += 60_000; };
-  const traversals = () => owox.calls.filter((c) => c.path.startsWith('traverse:')).length;
   return { deps, traversals, store, d, owox, tick };
 }
 const ctxWith = (setRoute = vi.fn()) => ({ ctx: { projectId: 'p', ui: { setRoute } } as never, setRoute });
 
-test('a fresh cache renders at once without refreshing', async () => {
+test('a warm Data Mart cache makes no live queries and the header shows its age', async () => {
   const { deps, traversals } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   expect(await screen.findByText(/Updated 1 h ago/)).toBeInTheDocument();
   expect(traversals()).toBe(0);
 });
 
-test('a cache from another anchor triggers a refresh', async () => {
+test('a Data Mart cache of another day answers nothing and queries again', async () => {
   const { deps, traversals } = await setup({ cache: 'stale' });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await waitFor(() => expect(traversals()).toBeGreaterThan(0));
@@ -235,17 +243,20 @@ test('a partial Apply that leaves a new class unchecked does not bring the notic
   expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
 });
 
-test('saving a changed threshold refreshes; an unchanged one does not', async () => {
-  const { deps, traversals } = await setup();
+test('saving a changed threshold recolors from the Data Mart cache without new queries', async () => {
+  const { deps, traversals } = await setup({ planned: true });
+  const status = () => document.querySelector('.gy-card[data-status]')?.getAttribute('data-status');
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await screen.findByText(/Updated 1 h ago/);
+  await waitFor(() => expect(status()).toBe('near'));
   expect(traversals()).toBe(0);
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   fireEvent.change(screen.getByLabelText(/Red when below plan/), { target: { value: '15' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(traversals()).toBeGreaterThan(0));
+  await waitFor(() => expect(status()).toBe('below'));
+  expect(traversals()).toBe(0);
 });
 
 test('a failed settings save shows an error and stays on the page', async () => {
@@ -339,28 +350,28 @@ test('an invisible main shows the no-access card', async () => {
   expect(await screen.findByText('Data Mart not found or not accessible')).toBeInTheDocument();
 });
 
-test('a failed cache save keeps the new values on screen and shows a note', async () => {
+test('a failed Data Mart cache save keeps the new values on screen and shows a note', async () => {
   const mem = memoryCollections();
   const store: CollectionsLike = {
     collections: <T,>(name: string) => {
       const c = mem.collections<T>(name);
-      return name === 'cache' ? { ...c, put: async () => { throw new Error('too big'); } } : c;
+      return name === 'mart-cache' ? { ...c, put: async () => { throw new Error('too big'); } } : c;
     },
   };
   const { deps, d } = await setup({ store, cache: 'none' });
   d.rows = () => [{ 'revenue | SUM': 1234 }];
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  expect(await screen.findByText("Couldn't save the refreshed data: too big")).toBeInTheDocument();
+  expect(await screen.findByText("Couldn't save the refreshed data for 1 Data Mart(s).")).toBeInTheDocument();
   expect(screen.getByText('1.23K')).toBeInTheDocument();
 });
 
-test('a custom range computes the canvas without touching the cache store for its key', async () => {
+test('a custom range computes the canvas without touching the Data Mart cache', async () => {
   const inner = memoryCollections();
   const seen: string[] = [];
   const store: CollectionsLike = {
     collections<T>(name: string) {
       const c = inner.collections<T>(name);
-      if (name !== 'cache') return c;
+      if (name !== 'mart-cache') return c;
       return { get: async (id: string) => { seen.push(`get:${id}`); return c.get(id); }, put: async (id: string, doc: T) => { seen.push(`put:${id}`); return c.put(id, doc); } };
     },
   };
@@ -376,7 +387,7 @@ test('a custom range computes the canvas without touching the cache store for it
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(traversals()).toBeGreaterThan(before));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled());
-  expect(seen.filter((x) => x.includes('c:'))).toEqual([]);
+  expect(seen).toEqual([]);
 });
 
 test('the toolbar shows the cut windows when a comparison is cut short', async () => {
@@ -393,23 +404,21 @@ test('the toolbar shows the cut windows when a comparison is cut short', async (
   expect(document.querySelector('.gy-period-shown')).toBeNull();
 });
 
-test('the week start setting changes the cache key of a week preset', async () => {
-  const mk = async (weekStart: 'monday' | 'sunday') => {
-    const { deps, store, traversals } = await setup({ cache: 'none' });
+test('the week start setting changes the doc id of a week preset', async () => {
+  const { deps, store } = await setup({ cache: 'none' });
+  const docFor = async (weekStart: 'monday' | 'sunday') => {
     await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'wtd', comparisonDefault: false, weekStart });
-    // a fresh doc under the Monday key only
-    const monday = cacheKey({ kind: 'preset', preset: 'wtd' }, { kind: 'off' });
-    const m = (await loadOntology(store))!;
-    await saveCache(store, monday, { modelHash: m.inputHash, builtAt: m.builtAt, editedAt: m.editedAt, thresholdPct: 20, anchor: rangeFor('wtd', NOW).anchor, refreshedAt: '2026-10-24T09:00:00Z', key: monday, comparison: false, cards: {} });
     render(<App ctx={ctxWith().ctx} deps={deps} />);
-    return traversals;
+    await screen.findByText(/Updated just now/);
+    const id = `${GID}:${cacheKey({ kind: 'preset', preset: 'wtd' }, { kind: 'off' }, weekStart)}`;
+    await waitFor(async () => expect(await store.collections('mart-cache').get(id)).not.toBeNull());
+    cleanup();
+    return id;
   };
-  const monTraversals = await mk('monday');
-  await screen.findByText(/Updated 1 h ago/);
-  expect(monTraversals()).toBe(0);
-  cleanup();
-  const sunTraversals = await mk('sunday');
-  await waitFor(() => expect(sunTraversals()).toBeGreaterThan(0));
+  const monday = await docFor('monday');
+  const sunday = await docFor('sunday');
+  expect(sunday).not.toBe(monday);
+  expect(await store.collections('mart-cache').get(monday)).not.toBeNull();
 });
 
 test('with a comparison the header shows the days so far, not the whole range', async () => {
@@ -513,6 +522,8 @@ test('a fresh cache shows no line', async () => {
   const { deps } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await screen.findByText(/Updated 1 h ago/);
+  // the Data Mart reads behind the canvas end when Refresh is enabled again
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled());
   expect(line()).toBeNull();
 });
 
@@ -553,12 +564,12 @@ test('Refresh never says Reading Data Marts', async () => {
   await waitFor(() => expect(line()).toBeNull());
 });
 
-test('a stale cache starts with Loading metrics, not Reading Data Marts', async () => {
-  const s = await setup({ cache: 'stale' });
+test('a warm Data Mart cache moves from Reading Data Marts to Loading metrics once the list is in', async () => {
+  const s = await setup();
   const g = gated(s.deps);
   render(<App ctx={ctxWith().ctx} deps={g.deps} />);
   await screen.findByRole('button', { name: 'Date range' });
-  expect(screen.queryByText(/Reading Data Marts/)).toBeNull();
+  expect(await screen.findByText(/Reading Data Marts…/)).toBeInTheDocument();
   g.openList();
   expect(await screen.findByText(/Loading metrics/)).toBeInTheDocument();
   expect(screen.queryByText(/Reading Data Marts/)).toBeNull();
@@ -730,4 +741,36 @@ describe('data quality icons', () => {
     expect(screen.queryByRole('button', { name: /Data quality/ })).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });
+});
+
+test('a second open on the same day answers every query from the Data Mart cache', async () => {
+  const { deps, traversals, store } = await setup({ cache: 'none' });
+  const first = render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await screen.findByText(/Updated just now/);
+  await waitFor(() => expect(first.container.querySelector('[role="progressbar"]')).toBeNull());
+  const key = cacheKey({ kind: 'preset', preset: 'qtd' }, { kind: 'preset', preset: 'previous_period' });
+  await waitFor(async () => expect(await store.collections('mart-cache').get(`${GID}:${key}`)).not.toBeNull());
+  cleanup();
+  const after = traversals();
+  expect(after).toBeGreaterThan(0);
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await screen.findByRole('button', { name: 'Date range' });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled());
+  expect(traversals()).toBe(after);
+});
+
+test('Refresh skips the Data Mart cache and queries live', async () => {
+  const { deps, traversals } = await setup();
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await screen.findByText(/Updated 1 h ago/);
+  expect(traversals()).toBe(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(traversals()).toBeGreaterThan(0));
+});
+
+test('a Data Mart answer too large to save counts in the save note', async () => {
+  const { deps, d } = await setup({ cache: 'none' });
+  d.rows = () => [{ 'revenue | SUM': 1, pad: 'x'.repeat(1_000_000) }];
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  expect(await screen.findByText("Couldn't save the refreshed data for 1 Data Mart(s).")).toBeInTheDocument();
 });

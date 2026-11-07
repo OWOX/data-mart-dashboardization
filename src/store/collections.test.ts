@@ -1,8 +1,6 @@
-import { isStale, loadCache, loadOntology, loadPreferences, loadProjectModel, loadSettings, memoryCollections, saveCache, saveOntology, savePreferences, saveSettings } from './collections';
+import { loadOntology, loadPreferences, loadProjectModel, loadSettings, memoryCollections, saveOntology, savePreferences, saveSettings } from './collections';
 import { model } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type CacheDoc, type Model } from '../types';
-
-const doc = { modelHash: 'h', anchor: '2026-10-23', builtAt: 'b1', thresholdPct: 20 } as CacheDoc;
+import { DEFAULT_SETTINGS } from '../types';
 
 test('round trips and defaults', async () => {
   const ctx = memoryCollections();
@@ -10,31 +8,8 @@ test('round trips and defaults', async () => {
   expect(await loadSettings(ctx)).toEqual(DEFAULT_SETTINGS);
   await saveOntology(ctx, model);
   await saveSettings(ctx, { ...DEFAULT_SETTINGS, thresholdPct: 500 });
-  await saveCache(ctx, 'k', doc);
   expect(await loadOntology(ctx)).toEqual(model);
   expect((await loadSettings(ctx)).thresholdPct).toBe(100);
-  expect(await loadCache(ctx, 'k')).toEqual(doc);
-});
-
-test('staleness', () => {
-  expect(isStale(null, model, '2026-10-23', 20)).toBe(true);
-  expect(isStale(doc, model, '2026-10-23', 20)).toBe(false);
-  expect(isStale(doc, model, '2026-10-24', 20)).toBe(true);
-  // the model version is builtAt + editedAt: a hash that moves alone keeps the cache
-  expect(isStale(doc, { ...model, inputHash: 'x' }, '2026-10-23', 20)).toBe(false);
-  expect(isStale({ ...doc, editedAt: null }, { ...model, inputHash: 'x', editedAt: '2026-11-04T10:00:00Z' }, '2026-10-23', 20)).toBe(true);
-});
-
-test('a rebuild or a threshold change makes the cache stale', () => {
-  expect(isStale(doc, { ...model, builtAt: 'b2' }, '2026-10-23', 20)).toBe(true);
-  expect(isStale(doc, model, '2026-10-23', 15)).toBe(true);
-});
-
-test('an edit makes the cache stale', () => {
-  expect(isStale({ ...doc, editedAt: null }, { ...model, editedAt: '2026-11-04T10:00:00Z' }, '2026-10-23', 20)).toBe(true);
-  expect(isStale({ ...doc, editedAt: '2026-11-04T10:00:00Z' }, { ...model, editedAt: '2026-11-04T10:00:00Z' }, '2026-10-23', 20)).toBe(false);
-  // a doc written before editedAt existed counts as never edited
-  expect(isStale(doc, model, '2026-10-23', 20)).toBe(false);
 });
 
 test('the project model is read through the upgrade, never written by the ontology', async () => {
@@ -117,4 +92,10 @@ test('saving settings writes the preset to the member document and leaves the pr
   expect(project?.defaultPreset).toBe('mtd');
   expect(project?.thresholdPct).toBe(35);
   expect((await loadSettings(ctx)).defaultPreset).toBe('wtd');
+});
+
+test('memoryCollections keeps the parentId of a put', async () => {
+  const m = memoryCollections();
+  await m.collections('mart-cache').put('a:qtd:off', { x: 1 }, { parentId: 'a' });
+  expect(m.parentOf('mart-cache', 'a:qtd:off')).toBe('a');
 });

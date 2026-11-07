@@ -13,8 +13,9 @@ import { fetchQuality, type QualitySummary } from './owox/quality';
 import { fetchInputs, fetchMartDetail, type Inputs, type MartDetail, type OwoxLike } from './owox/sources';
 import { runPool } from './lib/pool';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
+import { cachedOwox } from './cache/martCache';
 import {
-  isStale, loadCache, loadOntology, loadPreferences, loadProjectModel, loadSettings, saveCache, saveOntology, savePreferences, saveSettings, type CollectionsLike,
+  loadOntology, loadPreferences, loadProjectModel, loadSettings, saveOntology, savePreferences, saveSettings, type CollectionsLike,
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { BuildProgress } from './ui/BuildProgress';
@@ -58,11 +59,11 @@ export function depsFrom(ctx: PluginContext): AppDeps {
 
 const SEED_NOTE = "Couldn't save your model; it will be saved next time.";
 
-const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology', checkup: '/settings/checkup' };
+const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology', checkup: '/settings/checkup', schedules: '/settings/schedules' };
 /** The settings tab a route opens; anything else opens the canvas. */
 const tabOf = (route: string | undefined): SettingsTab | null => {
   const path = route?.replace(/\/+$/, '');
-  return path === ROUTES.ontology ? 'ontology' : path === ROUTES.checkup ? 'checkup' : path === ROUTES.general ? 'general' : null;
+  return path === ROUTES.ontology ? 'ontology' : path === ROUTES.checkup ? 'checkup' : path === ROUTES.schedules ? 'schedules' : path === ROUTES.general ? 'general' : null;
 };
 
 const rangeOf = (s: Settings): RangeChoice => ({ kind: 'preset', preset: s.defaultPreset });
@@ -226,31 +227,27 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     const key = cacheKey(range, compare, settings.weekStart);
     const keep = persistable(range, compare);
     try {
-      // Custom choices are not persisted: they compute and stay in state only.
-      const saved = keep ? await loadCache(store, key) : null;
-      if (!current()) return false;
-      if (keep) setCache(saved);
-      else setCache((c) => (c?.key === key ? c : null));
-      if (!force && keep && !isStale(saved, model, spec.anchor, settings.thresholdPct)) { setRefreshing(false); setLoading(false); return true; }
-      // the doc on screen (a custom range has no saved one) keeps its numbers until a new result replaces them
-      const shown = keep ? saved : cacheNow.current?.key === key ? cacheNow.current : null;
+      setCache((c) => (c?.key === key ? c : null));
+      // the doc on screen keeps its numbers until a new result replaces them
+      const shown = cacheNow.current?.key === key ? cacheNow.current : null;
       setLoading(true);
       setProgress(null);
       setRefreshing(true);
+      // custom choices are not persisted: they compute live and stay in state only
+      const src = keep ? cachedOwox({ owox, store, key, anchor: spec.anchor, mode: force ? 'write-only' : 'read-write', now }) : null;
       const doc = await refreshCanvas({
-        owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible, issues: issuesNow, details: detailsNow,
+        owox: src ? src.owox : owox, model, spec, key, thresholdPct: settings.thresholdPct, visibleIds: visible, issues: issuesNow, details: detailsNow,
         onProgress: (done, total) => { if (current()) setProgress({ done, total }); },
         onPartial: (cards) => { if (current()) setCache(mergePartial(shown, cards, shownModel(model, detailsNow), spec.anchor, settings.thresholdPct, key, spec.comparison !== null)); },
       });
       if (!current()) return false;
-      setCache(doc);
+      // the header shows the age of the oldest cached answer
+      setCache(src ? { ...doc, refreshedAt: src.stats().oldestHit ?? doc.refreshedAt } : doc);
       setSaveNote(null);
-      if (keep) {
-        try {
-          await saveCache(store, key, doc);
-        } catch (e) {
-          if (current()) setSaveNote(`Couldn't save the refreshed data: ${describeError(e)}`);
-        }
+      if (src) {
+        const f = await src.flush();
+        const unsaved = f.failed.length + f.tooLarge.length;
+        if (current() && unsaved) setSaveNote(`Couldn't save the refreshed data for ${unsaved} Data Mart(s).`);
       }
     } catch {
       // cards keep their last cached values
@@ -266,12 +263,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   useEffect(() => {
     if ((!inReady && !inSettings) || !model || fetchedFor.current === model) return;
     fetchedFor.current = model;
-    // without a cached doc the line shows from the first screen, not empty cards
-    const probe = refreshId.current;
-    const probeKey = cacheKey(range, compare, settings.weekStart);
-    void (persistable(range, compare) ? loadCache(store, probeKey).catch(() => null) : Promise.resolve(null)).then((saved) => {
-      if (!saved && refreshId.current === probe) setLoading(true);
-    });
+    // the line shows from the first screen, not empty cards
+    setLoading(true);
     fetchInputs(owox).catch(() => null).then(async (data) => {
       // the check lands before the inputs, so the first refresh already knows what is broken
       const checked = data ? await checkHealth(owox, model, new Set(data.marts.map((m) => m.id))).catch(() => null) : null;
@@ -366,6 +359,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
           ontology={ontologyProps}
           noModel={!model}
+          schedules={{ schedules: ctx.schedules, model, settings }}
           checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
           onBack={leaveSettings}
           onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), onStep })}

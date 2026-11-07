@@ -9,3 +9,9 @@ export function describeError(error: unknown): string {
   }
   return error instanceof Error ? error.message : String(error);
 }
+
+/** Like describeError, but a refused schedule action keeps its code: "TOO_MANY_SCHEDULES Too many". */
+export function describeActionError(e: unknown): string {
+  if (e instanceof Error && e.name === 'PluginActionError') return `${(e as Error & { code?: string }).code ?? ''} ${e.message}`.trim();
+  return describeError(e);
+}

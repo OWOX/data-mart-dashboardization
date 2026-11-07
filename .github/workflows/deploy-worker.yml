@@ -1,0 +1,28 @@
+name: Deploy the Gyroscope Worker
+
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', 'src/cache/**', 'src/lib/**', 'src/metrics/**', 'src/model/**', 'src/owox/**', 'src/schedules/**', 'src/store/**', 'src/types.ts', 'package-lock.json']
+  workflow_dispatch:
+
+concurrency:
+  group: gyroscope-worker
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run deploy:worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

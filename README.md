@@ -28,6 +28,8 @@ The plugin platform does not support a local preview. Test Gyroscope as an insta
 3. Check the plugin with `owox-ctl plugins check OWOX/gyroscope --ref main`.
 4. Create a release with `gh release create v0.3.0 --target <full commit SHA> --generate-notes`.
 5. In OWOX, open Plugins, then Publish Plugin, and choose "Only me" for testing.
+6. The Worker deploys from `worker/` with `npm run deploy:worker` or the `deploy-worker.yml` workflow, which needs the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+7. `plugin.json` `backend.url` must be the Worker's `workers.dev` URL before the first 0.4 release, and it cannot change within 0.4.
 
 ## How it works
 
@@ -39,3 +41,4 @@ The [design spec](docs/superpowers/specs/2026-10-24-gyroscope-design.md) has the
 4. Canvas and card: layout by reference distance, context filters, and the metric card (section 8).
 5. States: blocked, failed and loading screens, each with a fix or a retry (section 9).
 6. Cache: the canvas reads cached results, and a refresh runs when the data is stale (section 10).
+7. Schedules: each member's schedules run the `warm-cache` action on the Worker, which stores Data Mart rows per Data Mart and range in `mart-cache`; the canvas answers from it (spec `docs/superpowers/specs/2026-11-05-schedules-design.md`).

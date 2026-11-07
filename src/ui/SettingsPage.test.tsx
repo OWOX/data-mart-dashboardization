@@ -36,11 +36,14 @@ test('the tabs are a tablist that arrow keys move through', () => {
   const checkup = screen.getByRole('tab', { name: 'Checkup' });
   fireEvent.keyDown(onto, { key: 'ArrowRight' });
   expect(checkup).toHaveAttribute('aria-selected', 'true');
+  const schedulesTab = screen.getByRole('tab', { name: 'Schedules' });
   fireEvent.keyDown(checkup, { key: 'ArrowRight' });
+  expect(schedulesTab).toHaveAttribute('aria-selected', 'true');
+  fireEvent.keyDown(schedulesTab, { key: 'ArrowRight' });
   expect(general).toHaveAttribute('aria-selected', 'true');
   fireEvent.keyDown(general, { key: 'End' });
-  expect(checkup).toHaveAttribute('aria-selected', 'true');
-  fireEvent.keyDown(checkup, { key: 'Home' });
+  expect(schedulesTab).toHaveAttribute('aria-selected', 'true');
+  fireEvent.keyDown(schedulesTab, { key: 'Home' });
   expect(general).toHaveFocus();
 });
 
@@ -48,7 +51,7 @@ test('the Checkup tab follows Metrics and mounts its panel only while selected',
   const run = vi.fn(() => Promise.resolve([]));
   const checkup = { run, projectId: 'p', now: () => new Date() };
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} checkup={checkup} />);
-  expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['General', 'Metrics', 'Checkup']);
+  expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['General', 'Metrics', 'Checkup', 'Schedules']);
   expect(run).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('tab', { name: 'Checkup' }));
   expect(run).toHaveBeenCalledTimes(1);
@@ -78,4 +81,11 @@ test('every tab points at an existing panel', () => {
 test('the default date range says it applies only to the member', () => {
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} />);
   expect(screen.getByLabelText('Default date range').closest('.gy-field')?.textContent).toContain('Only for you');
+});
+
+test('the Schedules tab follows Checkup and renders the schedules tab', () => {
+  const schedules = { schedules: undefined, model: null, settings: DEFAULT_SETTINGS };
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} schedules={schedules} />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Schedules' }));
+  expect(screen.getByText(/need a newer version/)).toBeInTheDocument();
 });
