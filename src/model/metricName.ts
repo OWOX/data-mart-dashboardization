@@ -9,10 +9,10 @@ export function fieldLabel(alias: string | undefined, path: string): string {
 
 /**
  * A metric's display name. The live field's alias, else its name; the stored alias only when the
- * live field can't be read (schema not loaded, field deleted). A unique count keeps its class title.
+ * live field can't be read (schema not loaded, field deleted). A unique count keeps its class title, or "Count" without one.
  */
 export function metricName(metric: MetricDef, detail: MartDetail | undefined): string {
-  if (metric.isUniqueCount) return metric.alias;
+  if (metric.isUniqueCount) return metric.alias.trim() || 'Count';
   const field = detail ? fieldAt(detail, metric.measure.field) : undefined;
   return field ? fieldLabel(field.alias, metric.measure.field) : metric.alias;
 }
