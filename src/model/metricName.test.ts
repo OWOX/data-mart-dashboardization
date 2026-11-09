@@ -17,4 +17,5 @@ describe('metricName', () => {
     expect(metricName(metric({ measure: { field: 'gone', fn: 'SUM' } }), detail('ARR'))).toBe('Stored');
   });
   it('keeps the unique count label', () => expect(metricName(metric({ isUniqueCount: true, alias: 'Customers' }), detail('ARR'))).toBe('Customers'));
+  it('names an untitled unique count Count', () => expect(metricName(metric({ isUniqueCount: true, alias: ' ' }), undefined)).toBe('Count'));
 });
