@@ -5,7 +5,7 @@ import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources';
 import { uncomputable } from '../model/aggregations';
-import { applyChanges, diffModels, type Change } from '../model/diff';
+import { applyChanges, diffModels, linksDiffer, relink, type Change } from '../model/diff';
 import { deriveKeys } from '../model/shown';
 import { metricName } from '../model/metricName';
 import type { BuildStep } from '../model/build';
@@ -30,7 +30,7 @@ type DetailStatus = 'ok' | 'loading' | 'unreadable' | 'gone';
 type Rebuild =
   | { phase: 'idle' }
   | { phase: 'building'; steps: BuildStep[] }
-  | { phase: 'proposal'; candidate: Model; changes: Change[] }
+  | { phase: 'proposal'; candidate: Model; changes: Change[]; relinks: boolean }
   | { phase: 'blocked'; blocked: BlockedInfo }
   | { phase: 'error'; message: string };
 
@@ -306,7 +306,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     setRebuild({ phase: 'building', steps: [] });
     try {
       const result = await onRebuild((step) => setRebuild((r) => (r.phase === 'building' ? { phase: 'building', steps: [...r.steps, step] } : r)));
-      setRebuild(result.ok ? { phase: 'proposal', candidate: result.model, changes: diffModels(model, result.model) } : { phase: 'blocked', blocked: result.blocked });
+      setRebuild(result.ok ? { phase: 'proposal', candidate: result.model, changes: diffModels(model, result.model), relinks: linksDiffer(model, relink(model, result.model)) } : { phase: 'blocked', blocked: result.blocked });
     } catch (e) {
       setRebuild({ phase: 'error', message: describeError(e) });
     }
@@ -323,13 +323,16 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
       setSaving(false);
     }
   };
-  // no differences: the model is current, so remember the new input hash without calling it an edit
-  const closeMatching = async () => {
+  // no differences to pick: remember the new input hash, and the lines if the refs between classes moved, without calling it an edit
+  const closeMatching = async (candidate: Model) => {
     setSaving(true);
     try {
+      const relinked = relink(model, candidate);
+      const moved = linksDiffer(model, relinked);
       const hash = await hashOf?.(model);
-      if (!hash || hash === model.inputHash) { setSaving(false); closeRebuild(); return; }
-      await onSave({ ...model, inputHash: hash });
+      if (!moved && (!hash || hash === model.inputHash)) { setSaving(false); closeRebuild(); return; }
+      // lines don't feed the numbers, so editedAt stays and the cache with it
+      await onSave({ ...(moved ? relinked : model), inputHash: hash ?? model.inputHash });
     } catch (e) {
       setError(`Couldn't save the model: ${describeError(e)}`);
       setSaving(false);
@@ -384,12 +387,12 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
       )}
       {rebuild.phase === 'proposal' && (
         <RebuildProposal
-          changes={rebuild.changes} busy={saving} error={error}
+          changes={rebuild.changes} relinks={rebuild.relinks} busy={saving} error={error}
           titleOf={(id) => model.classes.find((c) => c.id === id)?.title ?? rebuild.candidate.classes.find((c) => c.id === id)?.title ?? id}
           nameOf={(id) => { const m = model.metrics.find((x) => x.id === id); return m ? nameOf(m) : id; }}
           needs={(c) => (c.kind === 'class_removed' && c.classId === model.goal.classId
             ? rebuild.changes.find((x) => x.kind === 'class_added' && x.classId === rebuild.candidate.goal.classId) ?? null : null)}
-          onApply={(picked) => void applyProposal(rebuild.candidate, picked)} onDiscard={() => { onDismiss?.(); closeRebuild(); }} onClose={() => void closeMatching()}
+          onApply={(picked) => void applyProposal(rebuild.candidate, picked)} onDiscard={() => { onDismiss?.(); closeRebuild(); }} onClose={() => void closeMatching(rebuild.candidate)}
         />
       )}
 

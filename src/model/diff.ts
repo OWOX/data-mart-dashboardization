@@ -1,4 +1,5 @@
 import type { ClassNode, Edge, Measure, MetricDef, Model, PlanDef } from '../types';
+import { classDepths } from './graph';
 
 export type MetricField = 'measure' | 'dateField' | 'plan' | 'kind' | 'format';
 
@@ -88,9 +89,10 @@ export function diffModels(current: Model, candidate: Model): Change[] {
 
 const firstShown = (metricIds: string[], metrics: MetricDef[]): string | null => metricIds.find((id) => metrics.find((m) => m.id === id)?.shown !== false) ?? null;
 
-/** The picked changes laid over the current model. `shown` flags and forecast sources are never touched; `now` stamps editedAt when anything applies. */
+/** The picked changes laid over the current model. `shown` flags and forecast sources are never touched; `now` stamps editedAt when a picked change applies. */
 export function applyChanges(current: Model, candidate: Model, picked: Change[], now: string): Model {
-  if (picked.length === 0) return current;
+  // nothing picked still redraws the lines; they don't feed the numbers, so editedAt stays and the cache with it
+  if (picked.length === 0) return relink(current, candidate);
   const pairs = pairMetrics(current, candidate);
   // the current metric a candidate one stands for, under its current id
   const idFor = (candidateId: string): string => pairs.get(candidateId)?.id ?? candidateId;
@@ -99,7 +101,6 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
 
   let classes: ClassNode[] = current.classes.map((c) => ({ ...c, metricIds: [...c.metricIds] }));
   let metrics: MetricDef[] = current.metrics.map((m) => ({ ...m }));
-  const touched = new Set<string>(); // classes added or removed
   let goalRemoved = false;
 
   // a goal class goes only if the candidate names another one that will exist
@@ -115,14 +116,12 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
       classes = classes.filter((c) => c.id !== p.classId);
       if (p.classId === current.goal.classId) goalRemoved = true;
       metrics = metrics.filter((m) => !ids.has(m.id));
-      touched.add(p.classId);
     } else if (p.kind === 'class_added') {
       const c = candClass.get(p.classId);
       if (!c || classes.some((x) => x.id === c.id)) continue;
       const own = c.metricIds.flatMap((id) => { const m = candById.get(id); return m && !pairs.has(id) && !metrics.some((x) => x.id === id) ? [{ ...m, shown: true, forecast: null }] : []; });
       metrics = [...metrics, ...own];
       classes = [...classes, { ...c, shown: true, metricIds: own.map((m) => m.id), keyMetricId: null }];
-      touched.add(p.classId);
     }
   }
 
@@ -157,16 +156,53 @@ export function applyChanges(current: Model, candidate: Model, picked: Change[],
   classes = classes.map((c) => ({ ...c, keyMetricId: firstShown(c.metricIds, metrics) }));
 
   const ids = new Set(classes.map((c) => c.id));
-  let edges: Edge[] = current.edges.filter((e) => ids.has(e.from) && ids.has(e.to));
   let goal = current.goal;
-  if (touched.size > 0) {
-    // edges touching an added or removed class, and the goal, follow the candidate
-    const meets = (e: Edge) => touched.has(e.from) || touched.has(e.to);
-    edges = [...edges.filter((e) => !meets(e)), ...candidate.edges.filter((e) => meets(e) && ids.has(e.from) && ids.has(e.to))];
-    // the goal follows the candidate only when the current goal class is gone
-    if (goalRemoved && ids.has(candidate.goal.classId)) goal = { ...candidate.goal, metricId: candidate.goal.metricId ? idFor(candidate.goal.metricId) : null };
-  }
+  // the goal follows the candidate only when the current goal class is gone
+  if (goalRemoved && ids.has(candidate.goal.classId)) goal = { ...candidate.goal, metricId: candidate.goal.metricId ? idFor(candidate.goal.metricId) : null };
   if (goal.metricId && !metrics.some((m) => m.id === goal.metricId)) goal = { ...goal, metricId: null };
 
-  return { ...current, classes, metrics, edges, goal, inputHash: candidate.inputHash, editedAt: now };
+  return relink({ ...current, classes, metrics, goal, inputHash: candidate.inputHash, editedAt: now }, candidate);
 }
+
+/**
+ * Edges come from the Data Marts' refs and are never edited, so between two classes the candidate knows they follow it,
+ * and the depths that order the cards are walked again from them. A class only the current model keeps (a kept goal, a declined removal) keeps its own.
+ * A candidate class the model lacks (a declined add) stays in the edges as a bridge when it links two classes, so the canvas draws a dashed line through it.
+ */
+export function relink(model: Model, candidate: Model): Model {
+  const ids = new Set(model.classes.map((c) => c.id));
+  const known = new Set(candidate.classes.map((c) => c.id));
+  const within = (e: Edge) => ids.has(e.from) && ids.has(e.to);
+  const both = (e: Edge) => known.has(e.from) && known.has(e.to);
+  // bridges: candidate classes outside the model that a class reaches and that reach a class, walking only through bridges
+  const reach = (from: 'from' | 'to', to: 'from' | 'to'): Set<string> => {
+    const seen = new Set<string>();
+    const queue = [...ids];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      for (const e of candidate.edges) {
+        const n = e[to];
+        if (e[from] !== cur || ids.has(n) || !known.has(n) || seen.has(n)) continue;
+        seen.add(n);
+        queue.push(n);
+      }
+    }
+    return seen;
+  };
+  const back = reach('to', 'from');
+  const bridges = new Set([...reach('from', 'to')].filter((id) => back.has(id)));
+  const on = (id: string) => ids.has(id) || bridges.has(id);
+  const edges = [
+    ...model.edges.filter((e) => within(e) && !both(e)),
+    ...candidate.edges.filter((e) => both(e) && on(e.from) && on(e.to)),
+  ];
+  const depths = classDepths(model.goal.classId, edges, new Set([...ids, ...bridges]));
+  return { ...model, edges, classes: model.classes.map((c) => ({ ...c, depth: depths.get(c.id) ?? c.depth })) };
+}
+
+const edgeKey = (e: Edge): string => `${e.from}\u0000${e.to}\u0000${[...(e.fields ?? [])].sort().join('\u0001')}`;
+const depthKey = (c: ClassNode): string => `${c.id}\u0000${c.depth}`;
+const sameSet = (a: string[], b: string[]): boolean => a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
+
+/** Whether the lines or the card order differ; the order the edges are stored in is no difference. */
+export const linksDiffer = (a: Model, b: Model): boolean => !sameSet(a.edges.map(edgeKey), b.edges.map(edgeKey)) || !sameSet(a.classes.map(depthKey), b.classes.map(depthKey));

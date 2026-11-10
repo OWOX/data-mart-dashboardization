@@ -104,6 +104,35 @@ test('Rebuild with nothing new says the model matches and saves nothing', async 
   expect(await loadOntology(store)).toEqual(before);
 });
 
+test('Rebuild with nothing new still draws a ref the stored model is missing when closed', async () => {
+  const { deps, store } = await setup({ withCustomers: true });
+  const built = (await loadOntology(store))!;
+  expect(built.edges).toContainEqual(expect.objectContaining({ from: GID, to: CID }));
+  await saveOntology(store, { ...built, edges: [], classes: built.classes.map((c) => (c.id === CID ? { ...c, depth: 5 } : c)) });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await openOntology();
+  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
+  expect(await screen.findByText('The model already matches the descriptions.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  await waitFor(async () => expect((await loadOntology(store))?.edges).toEqual(built.edges));
+  const saved = (await loadOntology(store))!;
+  expect(saved.classes.find((c) => c.id === CID)?.depth).toBe(1);
+  expect(saved.editedAt).toBe(built.editedAt);
+});
+
+test('a declined row does not keep a moved ref off the canvas: Apply with nothing selected draws it', async () => {
+  const { deps, store } = await setup({ withCustomers: true });
+  const built = (await loadOntology(store))!;
+  await saveOntology(store, { ...built, edges: [] });
+  render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => changedAi }} />);
+  await openOntology();
+  fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Revenue: kind' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
+  await waitFor(async () => expect((await loadOntology(store))?.edges).toEqual(built.edges));
+  expect((await loadOntology(store))?.metrics.find((m) => m.alias === 'Revenue')?.kind).toBe('flow');
+});
+
 test('Rebuild from Settings shows the build progress', async () => {
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });

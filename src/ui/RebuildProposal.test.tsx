@@ -47,3 +47,19 @@ test('changes are grouped under their Data Mart, the class row first', () => {
   const [orders] = screen.getAllByRole('list');
   expect([...orders!.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['Remove class Orders', 'm: kindflow → level']);
 });
+
+test('moved connections keep Apply on with nothing selected, and say so', () => {
+  const p = props([added], { relinks: true });
+  render(<RebuildProposal {...p} />);
+  fireEvent.click(screen.getByRole('checkbox'));
+  expect(screen.getByText(/connections between cards changed too/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
+  expect(p.onApply).toHaveBeenCalledWith([]);
+});
+
+test('without moved connections Apply is off with nothing selected', () => {
+  render(<RebuildProposal {...props([added])} />);
+  fireEvent.click(screen.getByRole('checkbox'));
+  expect(screen.queryByText(/connections between cards changed too/)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Apply selected' })).toBeDisabled();
+});
