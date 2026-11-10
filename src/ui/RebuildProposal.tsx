@@ -24,12 +24,14 @@ function groups(changes: Change[]): [string, number[]][] {
 }
 
 /** What a rebuild would change, grouped by Data Mart, one row per change, all picked. Nothing is saved until Apply selected. */
-export function RebuildProposal({ changes, titleOf, nameOf, busy, error, needs, onApply, onDiscard, onClose }: {
+export function RebuildProposal({ changes, titleOf, nameOf, busy, error, needs, relinks = false, onApply, onDiscard, onClose }: {
   changes: Change[];
   titleOf: (classId: string) => string;
   nameOf: (metricId: string) => string;
   /** The change a row cannot go ahead without, if any. */
   needs?: (c: Change) => Change | null;
+  /** The connections between cards differ too: Apply redraws them, even with nothing picked. */
+  relinks?: boolean;
   busy: boolean;
   error: string | null;
   onApply: (picked: Change[]) => void;
@@ -80,9 +82,10 @@ export function RebuildProposal({ changes, titleOf, nameOf, busy, error, needs, 
           </ul>
         </div>
       ))}
+      {relinks && <p className="dm-muted gy-onto-note">The connections between cards changed too. Apply redraws them, even with nothing selected.</p>}
       {error && <p role="alert" className="gy-form-error">{error}</p>}
       <div className="gy-form-actions">
-        <button type="button" className="gy-btn gy-btn-primary" onClick={() => onApply(picked)} disabled={busy || picked.length === 0}>Apply selected</button>
+        <button type="button" className="gy-btn gy-btn-primary" onClick={() => onApply(picked)} disabled={busy || (picked.length === 0 && !relinks)}>Apply selected</button>
         <button type="button" className="gy-btn" onClick={onDiscard} disabled={busy}>Discard</button>
       </div>
     </section>

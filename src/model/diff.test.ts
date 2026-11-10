@@ -1,4 +1,4 @@
-import { applyChanges, diffModels } from './diff';
+import { applyChanges, diffModels, linksDiffer, relink } from './diff';
 import type { ClassNode, MetricDef, Model } from '../types';
 
 const metric = (id: string, martId: string, alias: string, f: string, extra: Partial<MetricDef> = {}): MetricDef => ({
@@ -201,4 +201,67 @@ test('a rebuild keeps the member\'s order, appends new metrics, and the key is t
   const next = applyChanges(cur, cand, diffModels(cur, cand), 'now');
   expect(next.classes[0]!.metricIds).toEqual(['a:qty:SUM', 'a:rev:SUM', 'a:new:SUM']);
   expect(next.classes[0]!.keyMetricId).toBe('a:qty:SUM');
+});
+
+test('a new ref between two classes already in the model is drawn and reorders the cards on apply', () => {
+  const cur = base();
+  cur.classes.push(cls('d', 'Deals', 1, ['d:v:SUM']));
+  cur.metrics.push(metric('d:v:SUM', 'd', 'Value', 'v'));
+  cur.edges.push({ from: 'a', to: 'd' });
+  const cand = copy(cur);
+  cand.edges = [{ from: 'a', to: 'd', fields: ['rate'] }, { from: 'd', to: 'c' }];
+  cand.metrics.push(metric('a:new:SUM', 'a', 'New', 'new'));
+  cand.classes[0]!.metricIds.push('a:new:SUM');
+  const next = applyChanges(cur, cand, diffModels(cur, cand), 'now');
+  expect(next.edges).toEqual([{ from: 'a', to: 'd', fields: ['rate'] }, { from: 'd', to: 'c' }]);
+  expect(next.classes.map((c) => [c.id, c.depth])).toEqual([['a', 0], ['c', 2], ['d', 1]]);
+});
+
+test('a class the member kept but the candidate lacks keeps its edges', () => {
+  const cur = base();
+  const cand = copy(cur);
+  cand.classes = cand.classes.filter((c) => c.id !== 'c');
+  cand.metrics = cand.metrics.filter((m) => m.id !== 'c:n:SUM');
+  cand.edges = [];
+  cand.metrics.push(metric('a:new:SUM', 'a', 'New', 'new'));
+  cand.classes[0]!.metricIds.push('a:new:SUM');
+  const picked = diffModels(cur, cand).filter((c) => c.kind !== 'class_removed');
+  expect(applyChanges(cur, cand, picked, 'now').edges).toEqual([{ from: 'a', to: 'c' }]);
+});
+
+test('relink: edges between known classes follow the candidate, and linksDiffer sees it', () => {
+  const cur = base();
+  const cand = copy(cur);
+  cand.edges = [{ from: 'a', to: 'c' }, { from: 'c', to: 'a' }];
+  const next = relink(cur, cand);
+  expect(next.edges).toEqual(cand.edges);
+  expect(linksDiffer(cur, next)).toBe(true);
+  expect(linksDiffer(cur, relink(cur, copy(cur)))).toBe(false);
+  // order alone is no difference
+  expect(linksDiffer({ ...cur, edges: [{ from: 'x', to: 'y' }, { from: 'a', to: 'c' }] }, { ...cur, edges: [{ from: 'a', to: 'c' }, { from: 'x', to: 'y' }] })).toBe(false);
+});
+
+test('nothing picked still redraws lines that moved, and keeps editedAt so the cache stays', () => {
+  const cur = base();
+  const cand = copy(cur);
+  cand.edges = [{ from: 'a', to: 'c', fields: ['rate'] }];
+  const next = applyChanges(cur, cand, [], 'now');
+  expect(next.edges).toEqual([{ from: 'a', to: 'c', fields: ['rate'] }]);
+  expect(next.editedAt).toBeNull();
+  expect(next.metrics).toEqual(cur.metrics);
+});
+
+test('a class the member declined bridges the two classes it links, so their line stays (dashed on the canvas)', () => {
+  const cur = base(); // a -> c
+  const cand = copy(cur);
+  cand.classes.push(cls('b', 'Bridge', 1, ['b:v:SUM']));
+  cand.metrics.push(metric('b:v:SUM', 'b', 'V', 'v'));
+  cand.edges = [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }, { from: 'b', to: 'x' }];
+  cand.classes.push(cls('x', 'Leaf', 2, []));
+  const next = applyChanges(cur, cand, [], 'now');
+  expect(next.edges).toEqual([{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }]);
+  expect(next.classes.map((c) => [c.id, c.depth])).toEqual([['a', 0], ['c', 2]]);
+  // once the class is added, its edges are ordinary ones
+  const added = applyChanges(cur, cand, diffModels(cur, cand).filter((c) => c.kind === 'class_added' && c.classId === 'b'), 'now');
+  expect(added.edges).toEqual([{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }]);
 });
