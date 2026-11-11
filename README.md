@@ -1,6 +1,11 @@
 # Gyroscope
 
-Gyroscope is an OWOX Data Marts plugin that answers one question first: are we on track for the goal in the project description? It draws a canvas of business classes. The class that owns the goal sits on top, and below it sit the classes it depends on. Each card shows one key metric against plan, with a trend, and with a forecast when the date range ends in the future.
+Gyroscope is an OWOX Data Marts plugin that answers one question first: are we on track for the goal in the project description? It draws the project's ontology: one model of business classes, the same for every member of the project.
+
+1. With no date range, the default, the canvas is the ontology view. The class that owns the goal sits in the center, with 3 to 5 core dictionary classes (Customers, Users, Products) around it. Cards show class names only.
+2. With a date range, the canvas is the flow view. Each card shows one key metric against plan, with a trend, and with a forecast when the range ends in the future. Classes connected to the core ones appear below them.
+
+The [shared ontology spec](docs/superpowers/specs/2026-11-11-shared-ontology-design.md) describes both views.
 
 ## Requirements in OWOX
 

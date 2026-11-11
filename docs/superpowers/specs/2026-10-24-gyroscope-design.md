@@ -3,6 +3,7 @@
 **Date:** 2026-10-24
 **Status:** approved in conversation, implementation started the same day
 **Replaces:** the Data Mart Dashboards plugin in this repository
+**Superseded in part by:** [Shared ontology](2026-11-11-shared-ontology-design.md), for the main class, visibility, the default range and the canvas layout
 
 ## 1. Problem and goal
 

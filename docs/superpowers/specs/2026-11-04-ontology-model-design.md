@@ -1,6 +1,6 @@
 # Ontology Model: design
 
-Date: 2026-11-04. Status: approved with the answers below (2026-11-04).
+Date: 2026-11-04. Status: approved with the answers below (2026-11-04). Storage per member is superseded by [Shared ontology](2026-11-11-shared-ontology-design.md): the model is one per project.
 
 ## What the user asked for
 
