@@ -1,4 +1,4 @@
-import type { BuildResult, ClassNode, MetricDef } from '../types';
+import type { BuildResult, ClassNode, CoreClass, Industry, MetricDef } from '../types';
 import { extractLinks } from '../lib/links';
 import type { MartLink } from '../lib/links';
 import { hashString } from '../lib/hash';
@@ -6,11 +6,12 @@ import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields } from '../owox/sources';
 import type { Blendable, Inputs, MartDetail, OwoxLike } from '../owox/sources';
-import { buildEdges, chooseMain, classDepths, hasPrimaryKey, primaryKeyPaths } from './graph';
+import { buildEdges, classDepths, hasPrimaryKey, primaryKeyPaths } from './graph';
 import type { MartNode } from './graph';
 import { interpret } from './interpret';
 import type { AiMetric, Generate } from './interpret';
 import { uniqueCountMetric, validate } from './validate';
+import { INDUSTRIES, applyCore, inboundCounts, mergeCore, rankCore, singleKey } from './core';
 
 export interface HashMart { id: string; detail: MartDetail; blendable: Blendable }
 
@@ -77,7 +78,7 @@ const READING_ERRORS = new Set(['AI_NoObjectGeneratedError', 'AI_TypeValidationE
 /** A model that answered unreadably, as against a call that never got an answer (timeout, bad key, wrong model). */
 export const isReadingError = (e: unknown): boolean =>
   e instanceof Error && (READING_ERRORS.has(e.name) || e.message.startsWith('AI_INVALID:'));
-const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'AI_REQUEST_FAILED' | 'GOAL_NOT_CONNECTED', detail: string, mismatches: string[] = []): BuildResult =>
+const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'AI_REQUEST_FAILED' | 'GOAL_NOT_CONNECTED' | 'GOAL_NO_ACCESS', detail: string, mismatches: string[] = []): BuildResult =>
   ({ ok: false, blocked: { code, detail, mismatches } });
 
 /** What the build is doing, for the progress page. Mart counts run over both detail-loading phases against all visible marts. */
@@ -95,7 +96,11 @@ export type CheckState = 'pending' | 'running' | 'done' | 'missing' | 'failed';
 
 const hasText = (t: string | null) => !!t && t.trim() !== '';
 
-export async function buildModel(args: { owox: OwoxLike; generate: Generate | null; userId: string; now: Date; onStep?: (s: BuildStep) => void }): Promise<BuildResult> {
+export async function buildModel(args: {
+  owox: OwoxLike; generate: Generate | null; userId: string; now: Date; onStep?: (s: BuildStep) => void;
+  /** The project's stored core classes; they stay in the result. Null on a first build. */
+  existingCore: CoreClass[] | null; industry: Industry | null;
+}): Promise<BuildResult> {
   const { owox, generate, userId, now } = args;
   const step = args.onStep ?? (() => undefined);
   const check = (id: CheckId, state: CheckState, detail?: string) => step(detail === undefined ? { kind: 'check', id, state } : { kind: 'check', id, state, detail });
@@ -155,7 +160,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   check('ai', 'running');
   for (const id of ['project.fact', 'project.plan', 'project.forecast'] as const) check(id, 'running');
   try {
-    ai = await interpret(generate, { projectDescription: inputs.projectDescription, contexts: inputs.contexts, links, dateFields });
+    ai = await interpret(generate, { projectDescription: inputs.projectDescription, contexts: inputs.contexts, links, dateFields, marts: inputs.marts.map((m) => ({ id: m.id, title: m.title, description: m.description })) });
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') throw e;
     if (!isReadingError(e)) return block(fail('AI_REQUEST_FAILED', "The request to the AI provider failed or timed out.", [describeError(e)]));
@@ -182,6 +187,7 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
 
   const v = validate({ ai, links, details, visible });
   if (!v.ok) return block(v);
+  if (!visible.has(v.goal.martId)) return block(fail('GOAL_NO_ACCESS', "You can't access the Data Mart that owns the critical number. Ask a project admin with access to build the model."));
   step({ kind: 'read', what: 'ai', done: 1, total: 1, finished: true });
   step({ kind: 'found', goal: `${goalMetric?.alias ?? v.goal.field} (${titleOf(v.goal.martId)})`, classes: [], metrics: 0 });
 
@@ -200,16 +206,27 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   const nodes = loaded.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
   loaded.forEach((r, i) => { if (r.status === 'rejected') failures.set(inputs.marts[i]!.id, r.reason); });
 
-  const goalLink = links.find((l) => l.martId === v.goal.martId && l.field === v.goal.field);
-  const main = chooseMain({ goalMartId: v.goal.martId, goalField: v.goal.field, nodes, visible });
-  if (!main) return block(fail('GOAL_NOT_CONNECTED', `None of the Data Marts you can see reference ${goalLink?.text ?? v.goal.field} through a calculated field.`));
-
+  const main = { id: v.goal.martId };
   if (!nodes.some((n) => n.id === main.id)) throw buildFailed(main.id, failures.get(main.id));
 
   const edges = buildEdges(nodes, visible);
   // a Data Mart without a primary key is neither drawn nor walked through
   const classable = new Set(nodes.filter((n) => hasPrimaryKey(n.detail)).map((n) => n.id));
   const depths = classDepths(main.id, edges, classable);
+
+  const inbound = inboundCounts(edges);
+  const keyed = new Set(nodes.filter((n) => singleKey(n.detail)).map((n) => n.id));
+  const ranked = rankCore({ goalId: main.id, nodes: nodes.map((n) => ({ id: n.id, title: n.title, singleKey: keyed.has(n.id) })), edges });
+  // picks the AI named that can't be core (not loaded, no single-column key, the goal) are dropped; a repeat collapses to the first
+  const picks: CoreClass[] = [];
+  for (const p of ai.coreClasses) if (keyed.has(p.martId) && p.martId !== main.id && !picks.some((x) => x.martId === p.martId)) picks.push(p);
+  const count = INDUSTRIES.find((i) => i.id === (args.industry ?? 'other'))!.count;
+  const core = mergeCore(args.existingCore, picks, ranked, count);
+  // a core class the walk didn't reach is still drawn when it connects to the goal
+  for (const c of core) {
+    if (depths.has(c.martId) || !classable.has(c.martId)) continue;
+    if (edges.some((e) => (e.from === main.id && e.to === c.martId) || (e.from === c.martId && e.to === main.id))) depths.set(c.martId, 1);
+  }
 
   const rank = (m: MetricDef) => (m.role === 'critical' ? (m.source === 'project' ? 0 : 1) : m.role === 'leading' ? 2 : m.role === 'lagging' ? 3 : 4);
   const metrics: MetricDef[] = [];
@@ -239,19 +256,18 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
     metrics: metrics.length,
   });
 
-  return {
-    ok: true,
-    model: {
+  const model = applyCore({
+
       version: 3,
       inputHash: inputHash(inputs, nodes.filter((n) => depths.has(n.id))),
       builtAt: now.toISOString(),
       builtBy: userId,
       editedAt: null,
       editedBy: null,
-      goal: { classId: main.id, metricId: main.viaFallback ? null : v.goal.metricId, goalMartId: v.goal.martId, viaFallback: main.viaFallback },
+      goal: { classId: main.id, metricId: v.goal.metricId, goalMartId: v.goal.martId, viaFallback: false },
       classes,
       edges: edges.filter((e) => depths.has(e.from) && depths.has(e.to)).map((e) => ({ from: e.from, to: e.to, fields: e.fields })),
       metrics,
-    },
-  };
+  }, core, inbound);
+  return { ok: true, model, core: { classes: core, fromDescription: picks.length > 0 } };
 }

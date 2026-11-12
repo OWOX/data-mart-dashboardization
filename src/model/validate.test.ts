@@ -13,6 +13,7 @@ const links = [
 const ai = (over: Partial<AiOutput['metrics'][number]> = {}, goal: Partial<AiOutput['goal']> = {}): AiOutput => ({
   goal: { status: 'ok', metricRef: 'm1', note: '', ...goal },
   metrics: [{ ref: 'm1', role: 'critical', source: 'project', alias: 'ARR', factLink: 0, planLink: null, kind: 'level', planShape: null, factDateField: 'date', planDateField: null, aggregation: null, format: 'number', currency: null, ...over }],
+  coreClasses: [],
 });
 const details = new Map([['m1', arrMart]]);
 const visible = new Set(['m1']);

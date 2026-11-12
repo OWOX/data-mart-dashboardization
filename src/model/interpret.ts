@@ -27,6 +27,7 @@ export const AiOutputSchema = z.object({
     format: FORMAT.catch('number'),
     currency: z.string().nullable().catch(null),
   })),
+  coreClasses: z.array(z.object({ martId: z.string(), why: z.string() })).catch([]),
 });
 
 export type AiOutput = z.infer<typeof AiOutputSchema>;
@@ -37,6 +38,7 @@ export interface InterpretInput {
   contexts: { id: string; name: string; description: string | null }[];
   links: MartLink[];
   dateFields: Record<string, string[]>;
+  marts: { id: string; title: string; description: string | null }[];
 }
 
 export type Generate = (prompt: string) => Promise<unknown>;
@@ -52,6 +54,7 @@ const RULES = [
   '7. aggregation is null unless the text says how to aggregate.',
   '8. format is "percent" for rates, shares and ratios stored as fractions (0.04 = 4%), "currency" for money, otherwise "number". currency is the ISO 4217 code when the description or the field names one, else null.',
   '9. ref values are "m1", "m2", ... in reading order. goal.metricRef is the goal row\'s ref.',
+  '10. coreClasses lists the Data Marts, by id from DATA MARTS, for the business entities the PROJECT DESCRIPTION describes as its business model: who buys, what is sold, where visitors come from. At most 7. Empty when the description doesn\'t describe the business model.',
 ].join('\n');
 
 export function buildPrompt(input: InterpretInput): string {
@@ -61,6 +64,7 @@ export function buildPrompt(input: InterpretInput): string {
     ...input.contexts.filter((c) => c.description !== null).map((c) => `CONTEXT ${c.id} (${c.name}):\n${c.description}`),
     `LINKS:\n${input.links.map((l) => `${l.index}: [${l.text}] mart=${l.martId ?? 'PLACEHOLDER'} field=${l.field ?? 'none'} source=${l.source}`).join('\n')}`,
     `DATE FIELDS:\n${Object.entries(input.dateFields).map(([id, f]) => `${id}: ${f.join(', ')}`).join('\n')}`,
+    `DATA MARTS:\n${input.marts.map((m) => `${m.id}: ${m.title} - ${(m.description ?? '').trim().split('\n')[0]}`).join('\n')}`,
     RULES,
   ];
   return parts.join('\n\n');

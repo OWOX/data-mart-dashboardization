@@ -5,6 +5,7 @@ const input = {
   contexts: [{ id: 'c1', name: 'Growth', description: 'Visitors are unique per period.' }, { id: 'c2', name: 'HR', description: null }],
   links: [{ index: 0, source: 'project', text: 'ARR', url: 'u', martId: 'm1', field: 'arr', placeholder: false }],
   dateFields: { m1: ['date'] },
+  marts: [{ id: 'm1', title: 'Orders', description: 'All orders\nmore' }, { id: 'm2', title: 'Customers', description: null }],
 };
 
 test('prompt lists links, date fields and skips empty contexts', () => {
@@ -17,7 +18,7 @@ test('prompt lists links, date fields and skips empty contexts', () => {
 
 test('valid output passes, invalid output throws AI_INVALID', async () => {
   const good = { goal: { status: 'ok', metricRef: 'm1', note: '' }, metrics: [{ ref: 'm1', role: 'critical', source: 'project', alias: 'ARR', factLink: 0, planLink: null, kind: 'level', planShape: null, factDateField: 'date', planDateField: null, aggregation: null }] };
-  await expect(interpret(async () => good, input)).resolves.toEqual({ ...good, metrics: [{ ...good.metrics[0], format: 'number', currency: null }] });
+  await expect(interpret(async () => good, input)).resolves.toEqual({ ...good, coreClasses: [], metrics: [{ ...good.metrics[0], format: 'number', currency: null }] });
   await expect(interpret(async () => ({ goal: {} }), input)).rejects.toThrow(/^AI_INVALID/);
 });
 
@@ -31,4 +32,20 @@ test('format parses leniently: missing or unknown is number, a bad currency code
   expect(await read({ format: 'currency', currency: 'dollars' })).toMatchObject({ format: 'currency', currency: null });
   expect(await read({ format: 'currency', currency: 5 })).toMatchObject({ format: 'currency', currency: null });
   expect(buildPrompt(input)).toContain('"percent" for rates');
+});
+
+test('prompt lists the Data Marts with the first line of each description', () => {
+  const p = buildPrompt(input);
+  expect(p).toContain('DATA MARTS:');
+  expect(p).toContain('m1: Orders - All orders');
+  expect(p).not.toContain('more');
+  expect(p).toContain('m2: Customers');
+  expect(p).toContain('10. coreClasses lists the Data Marts');
+});
+
+test('coreClasses parses, and a missing or malformed list is empty', async () => {
+  const base = { goal: { status: 'ok', metricRef: 'm1', note: '' }, metrics: [] };
+  expect((await interpret(async () => ({ ...base, coreClasses: [{ martId: 'm1', why: 'Who buys' }] }), input)).coreClasses).toEqual([{ martId: 'm1', why: 'Who buys' }]);
+  expect((await interpret(async () => base, input)).coreClasses).toEqual([]);
+  expect((await interpret(async () => ({ ...base, coreClasses: 'x' }), input)).coreClasses).toEqual([]);
 });

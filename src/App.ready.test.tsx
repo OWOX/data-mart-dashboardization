@@ -36,7 +36,7 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
   }
   const owox = fakeOwox(d);
   const store = opts.store ?? memoryCollections();
-  const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW });
+  const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW, existingCore: null, industry: null });
   if (!built.ok) throw new Error('fixture');
   const model: Model = { ...built.model, inputHash: opts.inputHash ?? built.model.inputHash };
   await seedShared(store, model);

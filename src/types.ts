@@ -92,11 +92,11 @@ export interface Model {
 
 export type BlockCode =
   | 'NO_GOAL' | 'GOAL_PLACEHOLDER' | 'GOAL_FIELD_NOT_FOUND' | 'GOAL_NO_PRIMARY_KEY'
-  | 'GOAL_NOT_CONNECTED' | 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'AI_REQUEST_FAILED';
+  | 'GOAL_NOT_CONNECTED' | 'GOAL_NO_ACCESS' | 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'AI_REQUEST_FAILED';
 
 export interface Blocked { code: BlockCode; detail: string; mismatches: string[] }
 
-export type BuildResult = { ok: true; model: Model } | { ok: false; blocked: Blocked };
+export type BuildResult = { ok: true; model: Model; core: { classes: CoreClass[]; fromDescription: boolean } } | { ok: false; blocked: Blocked };
 
 export type Status = 'neutral' | 'above' | 'near' | 'below';
 export type Trend = 'up' | 'down' | 'flat';

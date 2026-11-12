@@ -23,7 +23,7 @@ const data = (): FakeOwoxData => ({
 async function setup() {
   const owox = fakeOwox(data());
   const store = memoryCollections();
-  const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW });
+  const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW, existingCore: null, industry: null });
   if (!built.ok) throw new Error('fixture');
   const deps: AppDeps = { owox, store, generate: async () => goalAi, userId: 'u1', now: () => NOW };
   return { deps, store, model: built.model };

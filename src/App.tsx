@@ -179,7 +179,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     setView({ name: 'building' });
     setOutdated(null);
     try {
-      const result = await buildModel({ owox, generate, userId, now: now(), onStep: (s) => setSteps((p) => [...p, s]) });
+      const result = await buildModel({ owox, generate, userId, now: now(), existingCore: settings.coreClasses, industry: settings.industry, onStep: (s) => setSteps((p) => [...p, s]) });
       if (!result.ok) { setView({ name: 'blocked', blocked: result.blocked }); return; }
       await saveShared(store, modelNow.current, result.model);
       setSeedNote(null);
@@ -370,7 +370,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           noModel={!model}
           checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
           onBack={leaveSettings}
-          onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), onStep })}
+          onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), existingCore: settings.coreClasses, industry: settings.industry, onStep })}
           projectId={ctx.projectId}
           onDismiss={() => setDismissedHash(outdated)}
           onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}

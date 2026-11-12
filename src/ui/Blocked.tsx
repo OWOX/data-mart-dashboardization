@@ -32,6 +32,10 @@ const STEPS: Record<BlockCode, string[]> = {
     'add a calculated field to a Data Mart you can see that references the goal\'s Data Mart, then',
     'Retry.',
   ],
+  GOAL_NO_ACCESS: [
+    'Ask a project admin with access to the goal Data Mart',
+    'to build the model, then Retry.',
+  ],
   AI_NOT_CONFIGURED: [
     'Ask a project admin to open [plugins], select Gyroscope and map an AI Credential.',
     'Retry.',
