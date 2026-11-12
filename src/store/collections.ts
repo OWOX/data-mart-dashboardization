@@ -19,18 +19,23 @@ export class ModelConflict extends Error {
     this.name = 'ModelConflict';
   }
 }
+/** A model is stored but this version can't read it. Nothing is written over it. */
+export class ModelUnreadable extends Error {
+  constructor() {
+    super("The stored model can't be read by this version of Gyroscope.");
+    this.name = 'ModelUnreadable';
+  }
+}
 /** Writes `next` only when the stored doc still has `base`'s builtAt and editedAt; else throws ModelConflict. base null: only when nothing is stored. */
 export async function saveShared(ctx: CollectionsLike, base: Model | null, next: Model): Promise<void> {
   const col = ctx.collections<unknown>('ontology_project');
   const raw = (await col.get('current'))?.document;
   if (raw !== undefined && raw !== null) {
     const stored = upgradeModel(raw);
-    const same = !!base && !!stored && stored.builtAt === base.builtAt && (stored.editedAt ?? null) === (base.editedAt ?? null);
+    if (!stored) throw new ModelUnreadable();
+    const same = !!base && stored.builtAt === base.builtAt && (stored.editedAt ?? null) === (base.editedAt ?? null);
     if (!same) {
-      const r = raw as Record<string, unknown>;
-      const by = stored ? (stored.editedBy ?? stored.builtBy) : typeof r.builtBy === 'string' ? r.builtBy : null;
-      const at = stored ? (stored.editedAt ?? stored.builtAt) : typeof r.builtAt === 'string' ? r.builtAt : '';
-      throw new ModelConflict(by ?? null, at);
+      throw new ModelConflict(stored.editedBy ?? stored.builtBy ?? null, stored.editedAt ?? stored.builtAt);
     }
   }
   await col.put('current', next);

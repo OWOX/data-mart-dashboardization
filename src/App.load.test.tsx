@@ -170,3 +170,14 @@ test('a member never writes the reconciled model', async () => {
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
   expect((await loadShared(store))!.classes.find((c) => c.martId === GID)!.core).toBe(false);
 });
+
+test('an admin build over an unreadable stored model shows why, with no Reload, and leaves the doc', async () => {
+  const { deps, store } = await setup();
+  const bad = { version: 99, builtAt: 't1', builtBy: 'u1' };
+  await store.collections<unknown>('ontology_project').put('current', bad);
+  render(<App ctx={ctx} deps={deps} />);
+  expect(await screen.findByText("The stored model can't be read by this version of Gyroscope.")).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Reload|Retry/ })).toBeNull();
+  expect(screen.queryByText(/Another admin changed/)).toBeNull();
+  expect((await store.collections<unknown>('ontology_project').get('current'))!.document).toEqual(bad);
+});

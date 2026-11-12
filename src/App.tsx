@@ -15,7 +15,7 @@ import { fetchQuality, type QualitySummary } from './owox/quality';
 import { fetchInputs, type Inputs, type MartDetail, type OwoxLike } from './owox/sources';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
-  isStale, loadCache, loadPreferences, loadProjectModel, loadProjectSettings, loadSettings, loadShared, ModelConflict, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings, type CollectionsLike,
+  isStale, loadCache, loadPreferences, loadProjectModel, loadProjectSettings, loadSettings, loadShared, ModelConflict, ModelUnreadable, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings, type CollectionsLike,
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { BuildProgress } from './ui/BuildProgress';
@@ -45,7 +45,7 @@ type View =
   | { name: 'loading' }
   | { name: 'building' }
   | { name: 'blocked'; blocked: BlockedInfo }
-  | { name: 'error'; message: string; retry: 'load' | 'build' | 'reload' }
+  | { name: 'error'; message: string; retry: 'load' | 'build' | 'reload' | 'none' }
   | { name: 'not_set_up' }
   | { name: 'ready' }
   | { name: 'settings'; tab: SettingsTab; section?: GroupId };
@@ -236,7 +236,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       else if (member.isAdmin) void buildRef.current();
       else setView({ name: 'not_set_up' });
     } catch (e) {
-      setView({ name: 'error', message: describeError(e), retry: 'load' });
+      setView({ name: 'error', message: describeError(e), retry: e instanceof ModelUnreadable ? 'none' : 'load' });
     }
   }, [store, owox, userId, now]);
 
@@ -288,7 +288,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setCache(null);
       setView({ name: 'ready' });
     } catch (e) {
-      setView(e instanceof ModelConflict ? { name: 'error', message: conflictMessage(e), retry: 'reload' } : { name: 'error', message: describeError(e), retry: 'build' });
+      setView(e instanceof ModelConflict ? { name: 'error', message: conflictMessage(e), retry: 'reload' } : { name: 'error', message: describeError(e), retry: e instanceof ModelUnreadable ? 'none' : 'build' });
     }
   }, [owox, generate, userId, now, store, commit]);
 
@@ -518,7 +518,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <main className="gy-main">
           <h1>Something went wrong</h1>
           <p>{view.message}</p>
-          <button type="button" className="gy-btn gy-btn-primary" onClick={() => void (view.retry === 'build' ? build() : load())}>{view.retry === 'reload' ? 'Reload' : 'Retry'}</button>
+          {view.retry !== 'none' && <button type="button" className="gy-btn gy-btn-primary" onClick={() => void (view.retry === 'build' ? build() : load())}>{view.retry === 'reload' ? 'Reload' : 'Retry'}</button>}
           {backToCanvas && <>{' '}<button type="button" className="gy-btn" onClick={backToCanvas}>Back to canvas</button></>}
         </main>
       );

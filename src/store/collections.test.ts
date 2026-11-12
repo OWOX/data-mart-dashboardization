@@ -1,4 +1,4 @@
-import { isStale, loadCache, loadPreferences, loadProjectModel, loadProjectSettings, loadSettings, loadShared, loadViewSettings, memoryCollections, ModelConflict, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings } from './collections';
+import { isStale, loadCache, loadPreferences, loadProjectModel, loadProjectSettings, loadSettings, loadShared, loadViewSettings, memoryCollections, ModelConflict, ModelUnreadable, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings } from './collections';
 import { model } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type CacheDoc, type Model } from '../types';
 
@@ -37,6 +37,16 @@ test('saveShared writes when nothing is stored, even with a base (a failed seed 
   const store = memoryCollections();
   await saveShared(store, mk({ builtAt: 't1' }), mk({ builtAt: 't2' }));
   expect((await loadShared(store))!.builtAt).toBe('t2');
+});
+test('saveShared throws ModelUnreadable for a stored doc this version cannot read, and leaves it', async () => {
+  const store = memoryCollections();
+  const bad = { version: 99, builtAt: 't1', builtBy: 'u1' };
+  await store.collections<unknown>('ontology_project').put('current', bad);
+  const err = await saveShared(store, null, mk()).catch((e) => e);
+  expect(err).toBeInstanceOf(ModelUnreadable);
+  expect(err).not.toBeInstanceOf(ModelConflict);
+  expect(err.message).toBe("The stored model can't be read by this version of Gyroscope.");
+  expect((await store.collections<unknown>('ontology_project').get('current'))!.document).toEqual(bad);
 });
 test('a conflict names the builder when the doc was never edited', async () => {
   const store = memoryCollections();
