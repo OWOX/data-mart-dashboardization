@@ -322,3 +322,65 @@ test('a core Apply waits for unsaved Metrics edits', async () => {
   expect(within(section).getByRole('button', { name: 'Apply' })).toBeDisabled();
   expect(within(section).getByText('Save or discard your Metrics edits first')).toBeInTheDocument();
 });
+
+/** An owox whose second Data Mart list waits for `release`: the first is the Checkup's, the second the app's own read of the inputs. */
+function gated(base: AppDeps['owox']) {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let n = 0;
+  const list = base.dataMarts.list.bind(base.dataMarts);
+  const owox = { ...base, dataMarts: { ...base.dataMarts, list: async () => { if (n++ === 1) await gate; return list(); } } } as AppDeps['owox'];
+  return { owox, release };
+}
+
+test('a core Apply before the Data Marts have loaded still ends with the Metrics editor and a refresh', async () => {
+  const { deps, store } = await coreSetup();
+  const { owox, release } = gated(deps.owox);
+  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={{ ...deps, owox }} />);
+  await screen.findByText(/^Checked /);
+  const section = screen.getByRole('group', { name: 'Core classes' });
+  expect(screen.getByText('Reading Data Marts…')).toBeInTheDocument();
+  fireEvent.click(await within(section).findByRole('button', { name: 'Apply' }));
+  await waitFor(async () => expect((await loadShared(store))!.classes.some((c) => c.core)).toBe(true));
+  // the saved model is read again without waiting for the slow read of the old one
+  expect(await screen.findByRole('checkbox', { name: 'Customers' })).toBeInTheDocument();
+  await act(async () => { release(); });
+  expect(screen.getByRole('checkbox', { name: 'Customers' })).toBeInTheDocument();
+  expect(screen.queryByText('Reading Data Marts…')).toBeNull();
+});
+
+async function staleSetup(over: Partial<AppDeps> = {}) {
+  const { deps, store, model } = await setup();
+  await seedShared(store, { ...model, inputHash: 'stale' });
+  return { deps: { ...deps, ...over }, store };
+}
+const applyRebuild = async () => {
+  await screen.findByText(/^Checked /);
+  const section = screen.getByRole('group', { name: 'Metrics' });
+  fireEvent.click(await within(section).findByRole('button', { name: 'Apply' }));
+};
+
+test('a rebuild answer without an AI credential says to map one', async () => {
+  const { deps } = await staleSetup({ generate: null });
+  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
+  await screen.findByRole('checkbox', { name: 'Customers' });
+  await applyRebuild();
+  expect(await screen.findByText('Map an AI credential to rebuild')).toBeInTheDocument();
+});
+
+test('a rebuild answer with unsaved Metrics edits says to save or discard them', async () => {
+  const { deps } = await staleSetup();
+  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
+  await applyRebuild();
+  expect(await screen.findByText('Save or discard your Metrics edits first')).toBeInTheDocument();
+});
+
+test('a rebuild answer before the editor has loaded says it is still loading', async () => {
+  const { deps } = await staleSetup();
+  const { owox, release } = gated(deps.owox);
+  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={{ ...deps, owox }} />);
+  await applyRebuild();
+  expect(await screen.findByText('The Metrics editor is still loading. Try again in a moment.')).toBeInTheDocument();
+  await act(async () => { release(); });
+});

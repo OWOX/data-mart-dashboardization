@@ -29,7 +29,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
   /** A proposal was discarded: the canvas stops calling the model out of date against the hash it checked. */
   onDismiss?: () => void; error?: string | null;
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
-  /** What the Checkup tab runs; the tab is mounted only while selected, so each visit starts a run. */
+  /** What the Checkup tab runs; the tab stays mounted, and each time it becomes active it starts a run. */
   checkup?: Omit<CheckupProps, 'metrics' | 'isAdmin' | 'noModel' | 'openSection' | 'active' | 'metricsDirty'> | null;
   /** The Checkup section that opens on arrival, e.g. 'metrics' for the old /settings/ontology route. */
   openSection?: GroupId;

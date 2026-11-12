@@ -148,6 +148,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   healthNow.current = health;
   const refreshId = useRef(0);
   const fetchedFor = useRef<Model | null>(null);
+  const inputsNow = useRef<typeof inputs>(null);
   const [quality, setQuality] = useState<{ model: Model; data: Map<string, QualitySummary> | null } | null>(null);
   const qualityFor = useRef<Model | null>(null);
   const checkedFor = useRef<object | null>(null);
@@ -156,6 +157,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const settingsNow = useRef<Settings>(DEFAULT_SETTINGS);
   settingsNow.current = settings;
   modelNow.current = model;
+  inputsNow.current = inputs;
   // the latest Checkup run's facts, which an AI suggestion reads; and the Metrics editor's Rebuild trigger
   const checkupCtx = useRef<SuggestContext | null>(null);
   const rebuildRef = useRef<(() => void) | null>(null);
@@ -219,7 +221,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     // the model is saved: hold it now, so a failure below never leaves a stale base behind
     // a core-only change keeps the Data Mart reads: the open Metrics editor stays, with its schemas
     const before = modelNow.current;
-    if (sameBesideCore(before, saved) && fetchedFor.current === before) {
+    if (sameBesideCore(before, saved) && fetchedFor.current === before && inputsNow.current?.model === before) {
       fetchedFor.current = saved;
       setInputs((i) => (i && i.model === before ? { ...i, model: saved } : i));
       setHealth((h) => (h && h.model === before ? { ...h, model: saved } : h));
@@ -346,6 +348,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     fetchInputs(owox).catch(() => null).then(async (data) => {
       // the check lands before the inputs, so the first refresh already knows what is broken
       const checked = data ? await checkHealth(owox, model, new Set(data.marts.map((m) => m.id))).catch(() => null) : null;
+      // a newer model took over while this read was in flight
+      if (fetchedFor.current !== model) return;
       if (checked) setHealth({ model, ...checked });
       setInputs({ model, data });
     });
@@ -430,7 +434,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const applyAnswer = async (t: ApplyTarget): Promise<ApplyResult> => {
     if (!isAdmin) return { ok: false, refused: false, error: 'Only a project admin can change this' };
     if (t.kind === 'model' && t.action === 'rebuild' && !rebuildRef.current) {
-      return { ok: false, refused: false, error: generate ? 'Save or discard your Metrics edits first' : 'Map an AI credential to rebuild' };
+      return { ok: false, refused: false, error: !ontologyProps ? 'The Metrics editor is still loading. Try again in a moment.' : generate ? 'Save or discard your Metrics edits first' : 'Map an AI credential to rebuild' };
     }
     const { thresholdPct, industry, coreClasses } = settingsNow.current;
     const r = await applyTarget(t, {

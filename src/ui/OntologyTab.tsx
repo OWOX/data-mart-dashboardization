@@ -130,7 +130,12 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   const [saving, setSaving] = useState(false);
   const [rebuild, setRebuild] = useState<Rebuild>({ phase: 'idle' });
   // a proposal is judged against the saved model, so unsaved edits can't be kept alongside it
-  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(model), [draft, model]);
+  const prevModel = useRef(model);
+  // a model that changed under a clean draft is adopted by the effect below; until then the draft isn't an edit
+  const dirty = useMemo(() => {
+    const d = JSON.stringify(draft);
+    return d !== JSON.stringify(model) && !(prevModel.current !== model && d === JSON.stringify(prevModel.current));
+  }, [draft, model]);
   // schemas fetched here; null: the fetch failed
   const [extra, setExtra] = useState<ReadonlyMap<string, MartDetail | null>>(new Map());
   const requested = useRef(new Set<string>());
@@ -140,13 +145,15 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
   const toggleOpen = (id: string) => setOpenIds((p) => { const n = new Set(p); if (!n.delete(id)) n.add(id); return n; });
   // a model that changed under a clean draft (a core list applied from Checkup) replaces it; edits are kept
-  const prevModel = useRef(model);
   useEffect(() => {
     const prev = prevModel.current;
     prevModel.current = model;
     if (prev !== model) setDraft((d) => (JSON.stringify(d) === JSON.stringify(prev) ? model : d));
   }, [model]);
   useEffect(() => { onDirty?.(dirty); }, [dirty, onDirty]);
+  const onDirtyNow = useRef(onDirty);
+  onDirtyNow.current = onDirty;
+  useEffect(() => () => onDirtyNow.current?.(false), []);
   const original = useMemo(() => new Map(model.metrics.map((m) => [m.id, m])), [model]);
   // a forecast list was opened: every accessible Data Mart's schema is read to fill it
   const [browseAll, setBrowseAll] = useState(false);
