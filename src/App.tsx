@@ -191,6 +191,20 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           }
         }
       }
+      // an admin brings a model whose core flags lag the settings list in step with it; flags only, so the edit history and caches stay
+      if (m && own && member.isAdmin && s.coreClasses) {
+        const inList = new Set(s.coreClasses.map((c) => c.martId));
+        if (m.classes.some((c) => c.core !== inList.has(c.martId))) {
+          try {
+            const synced = applyCore(m, s.coreClasses, inboundCounts(m.edges));
+            await saveShared(store, m, synced);
+            m = synced;
+          } catch (e) {
+            // another admin saved first: read theirs; any other failure leaves the model as it is
+            if (e instanceof ModelConflict) m = await loadShared(store);
+          }
+        }
+      }
       settingsNow.current = s;
       setSettings(s);
       // a remembered null is a member who cleared the range
@@ -437,6 +451,15 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     if (t.kind === 'model' && t.action === 'rebuild' && !rebuildRef.current) {
       return { ok: false, refused: false, error: !ontologyProps ? 'The Metrics editor is still loading. Try again in a moment.' : generate ? 'Save or discard your Metrics edits first' : 'Map an AI credential to rebuild' };
     }
+    // a core list goes to the shared model first: on a conflict nothing is written, so settings and model never disagree
+    const base = modelNow.current;
+    if (t.kind === 'settings' && t.patch.coreClasses && base) {
+      try {
+        await commit(base, t.patch.coreClasses, true);
+      } catch (e) {
+        return { ok: false, refused: false, error: e instanceof ModelConflict ? conflictMessage(e) : `Couldn't update the model: ${describeError(e)}` };
+      }
+    }
     const { thresholdPct, industry, coreClasses } = settingsNow.current;
     const r = await applyTarget(t, {
       owox, store, settings: { thresholdPct, industry, coreClasses },
@@ -450,10 +473,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       const stored = await loadProjectSettings(store);
       settingsNow.current = { ...settingsNow.current, ...stored };
       setSettings(settingsNow.current);
-      const base = modelNow.current;
-      if (t.patch.coreClasses && stored.coreClasses && isAdmin && base) await commit(base, stored.coreClasses, true);
     } catch (e) {
-      return { ok: false, refused: false, error: e instanceof ModelConflict ? conflictMessage(e) : `Saved, but the model wasn't updated: ${describeError(e)}` };
+      return { ok: false, refused: false, error: `Saved, but the settings weren't re-read: ${describeError(e)}` };
     }
     return r;
   };

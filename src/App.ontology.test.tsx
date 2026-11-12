@@ -313,6 +313,20 @@ test('a core Apply keeps a clean Metrics editor mounted, with no loading placeho
   expect(screen.getByRole('checkbox', { name: 'Customers' })).toBe(box);
 });
 
+test('a core Apply over a newer shared model writes nothing: the settings keep their old list', async () => {
+  const { deps, store } = await coreSetup();
+  render(<App ctx={ctxWith('/settings/checkup').ctx} deps={deps} />);
+  const section = await screen.findByRole('group', { name: 'Core classes' });
+  await screen.findByText(/^Checked /);
+  // another admin saves between the load and the click
+  await seedShared(store, { ...(await loadShared(store))!, editedAt: '2026-10-24T11:30:00Z', editedBy: 'Anna' });
+  fireEvent.click(await within(section).findByRole('button', { name: 'Apply' }));
+  expect(await screen.findByText(/Anna changed the model at/)).toBeInTheDocument();
+  const stored = (await store.collections<{ coreClasses: unknown }>('settings').get('project'))?.document.coreClasses ?? null;
+  expect(stored).toBeNull();
+  expect((await loadShared(store))!.classes.some((c) => c.core)).toBe(false);
+});
+
 test('a core Apply waits for unsaved Metrics edits', async () => {
   const { deps } = await coreSetup();
   render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);

@@ -138,3 +138,24 @@ test('a first-open build starts from the stored core classes', async () => {
   // the AI named no core class, so the flag can only come from the stored list
   expect(saved.classes.find((c) => c.id === 'c')!.core).toBe(true);
 });
+
+test('an admin opening a model whose core flags differ from the settings list reconciles the model once', async () => {
+  const { deps, store, model } = await setup();
+  await seedShared(store, { ...model, classes: model.classes.map((c) => ({ ...c, core: false })) });
+  await store.collections<unknown>('settings').put('project', { thresholdPct: 20, industry: 'saas', coreClasses: [{ martId: GID, why: 'Revenue' }] });
+  render(<App ctx={ctx} deps={deps} />);
+  expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
+  await waitFor(async () => expect((await loadShared(store))!.classes.find((c) => c.martId === GID)!.core).toBe(true));
+  // the edit history and the cache key are untouched
+  expect((await loadShared(store))!.editedAt).toBe(model.editedAt);
+});
+
+test('a member never writes the reconciled model', async () => {
+  const { deps, store, model } = await setup();
+  await seedShared(store, { ...model, classes: model.classes.map((c) => ({ ...c, core: false })) });
+  await store.collections<unknown>('settings').put('project', { thresholdPct: 20, industry: 'saas', coreClasses: [{ martId: GID, why: 'Revenue' }] });
+  const owox = fakeOwox({ ...data(), roles: ['viewer'] });
+  render(<App ctx={ctx} deps={{ ...deps, owox }} />);
+  expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
+  expect((await loadShared(store))!.classes.find((c) => c.martId === GID)!.core).toBe(false);
+});
