@@ -1,4 +1,4 @@
-import { contextsOf, layoutFor } from './layout';
+import { contextsOf, layoutFor, ontologyLayout } from './layout';
 import type { ClassNode, Model } from '../types';
 
 const c = (id: string, depth: number, ctx: string[] = []): ClassNode => ({ id, martId: id, title: id.toUpperCase(), depth, keyMetricId: null, metricIds: [], shown: true, core: false, inbound: 0, contexts: ctx.map((x) => ({ id: x, name: x })) });
@@ -63,4 +63,31 @@ test('a direct line carries the calculated fields it stands for; a bridged one c
   } as unknown as Model;
   expect(layoutFor(m4, new Set()).connectors.map((x) => x.fields)).toEqual([['cac'], ['ltv']]);
   expect(layoutFor(m4, new Set(['y'])).connectors).toEqual([{ from: 'm', to: 'a', dashed: true, join: false, fields: [] }]);
+});
+
+const oc = (id: string, over: Partial<ClassNode> = {}): ClassNode => ({ ...c(id, 1), ...over });
+
+test('ontology layout has the goal, the core classes by inbound, and lines among them only', () => {
+  const m = {
+    goal: { classId: 'g' },
+    classes: [oc('g', { depth: 0 }), oc('a', { core: true, inbound: 1 }), oc('b', { core: true, inbound: 5 }), oc('x')],
+    edges: [{ from: 'g', to: 'a' }, { from: 'g', to: 'b' }, { from: 'a', to: 'b' }, { from: 'g', to: 'x' }],
+  } as unknown as Model;
+  const l = ontologyLayout(m, new Set());
+  expect(l.goal?.id).toBe('g');
+  expect(l.core.map((x) => x.id)).toEqual(['b', 'a']);
+  expect(l.connectors.map((x) => `${x.from}>${x.to}`).sort()).toEqual(['a>b', 'g>a', 'g>b']);
+  expect(l.connectors.every((x) => !x.dashed)).toBe(true);
+});
+
+test('ontology ties on inbound break by title; chips filter core classes but the goal stays', () => {
+  const m = {
+    goal: { classId: 'g' },
+    classes: [oc('g', { depth: 0 }), oc('b', { core: true, contexts: [{ id: 's', name: 's' }] }), oc('a', { core: true })],
+    edges: [],
+  } as unknown as Model;
+  expect(ontologyLayout(m, new Set()).core.map((x) => x.id)).toEqual(['a', 'b']);
+  const l = ontologyLayout(m, new Set(['s']));
+  expect(l.goal?.id).toBe('g');
+  expect(l.core.map((x) => x.id)).toEqual(['b']);
 });

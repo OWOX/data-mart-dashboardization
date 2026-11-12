@@ -69,6 +69,21 @@ h2 { margin: 0; }
 .gy-band-main { display: flex; justify-content: center; }
 .gy-band-grid { display: grid; gap: 3.75rem; grid-template-columns: repeat(auto-fill, 22rem); justify-content: center; }
 .gy-empty { margin: 0; font-size: 0.8125rem; }
+/* The ontology view: the goal in the middle of a 3x3 grid, its core classes around it. */
+.gy-orbit { display: grid; gap: 48px; grid-template-columns: repeat(3, minmax(0, 14rem)); justify-content: center; padding: 1rem 0; }
+.gy-orbit-cell { position: relative; z-index: 2; display: flex; }
+.gy-orbit-empty { grid-column: 1 / -1; grid-row: 3; text-align: center; }
+.gy-ocard {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: 7rem; padding: 1rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card);
+}
+.gy-ocard[data-goal='true'] { min-height: 9rem; border: 2px solid #459ce9; }
+.gy-ocard-title { font-size: 22px; font-weight: 600; text-align: center; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .gy-orbit { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+  .gy-orbit-cell { grid-column: 1 !important; grid-row: auto !important; }
+  .gy-orbit-empty { grid-row: auto; }
+}
 .gy-bands { display: grid; gap: 1rem; }
 .gy-slot { position: relative; z-index: 2; display: flex; }
 /* Above its neighbours while hovered, so the info bubble opens over them. */

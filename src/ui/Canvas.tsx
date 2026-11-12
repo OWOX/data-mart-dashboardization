@@ -7,9 +7,15 @@ import type { MarkdownHtml } from '../lib/markdown';
 import { shownModel } from '../model/shown';
 import { Card, type MartInfo } from './Card';
 import { LoadingBar, type LoadingProgress } from './LoadingBar';
-import { contextsOf, layoutFor, type Connector } from './layout';
+import { OntologyCard } from './OntologyCard';
+import { contextsOf, layoutFor, ontologyLayout, type Connector } from './layout';
+
+/** Where each core card sits on the 3x3 grid (column, row; the goal is 2,2): top, right, bottom, left, then the corners. */
+const SPOTS: ReadonlyArray<readonly [number, number]> = [[2, 1], [3, 2], [2, 3], [1, 2], [3, 1], [3, 3], [1, 3], [1, 1]];
 
 interface Props {
+  /** 'ontology' draws names only (goal and core classes); 'flow' draws the numbers. */
+  mode: 'ontology' | 'flow';
   model: Model;
   cache: CacheDoc | null;
   comparisonOn: boolean;
@@ -84,7 +90,7 @@ export function curve(a: Box, b: Box): string {
   return `M${x1} ${y1} C${right ? x1 + pull : x1 - pull} ${y1} ${right ? x2 - pull : x2 + pull} ${y2} ${x2} ${y2}`;
 }
 
-export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleIds = null, details, missingIds, marts, compareLabel, tools, progress = null, quality, projectId, markdown, onOpen, weekStart, onRetry }: Props) {
+export function Canvas({ mode, model: full, cache, comparisonOn, refreshing, visibleIds = null, details, missingIds, marts, compareLabel, tools, progress = null, quality, projectId, markdown, onOpen, weekStart, onRetry }: Props) {
   const [picked, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lines, setLines] = useState<Line[]>([]);
   const [hover, setHover] = useState<string | null>(null);
@@ -98,7 +104,9 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
     const valid = new Set(contexts.map((x) => x.id));
     return new Set([...picked].filter((id) => valid.has(id)));
   }, [picked, contexts]);
-  const layout = useMemo(() => layoutFor(model, selected), [model, selected]);
+  const flow = useMemo(() => layoutFor(model, selected), [model, selected]);
+  const onto = useMemo(() => ontologyLayout(model, selected), [model, selected]);
+  const layout = mode === 'ontology' ? onto : flow;
   const metricsById = useMemo(() => new Map(model.metrics.map((m) => [m.id, m])), [model]);
 
   const toggle = (id: string) => {
@@ -125,7 +133,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         // Drawn the way data flows: from the referenced class into the one whose formula uses it.
         const a = boxes.get(c.to);
         const b = boxes.get(c.from);
-        if (a && b) next.push({ ...c, d: curve(a, b), tone: lineTone(c, model, cache) });
+        if (a && b) next.push({ ...c, d: curve(a, b), tone: mode === 'ontology' ? 'none' : lineTone(c, model, cache) });
       }
       setLines(next);
     };
@@ -135,7 +143,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
     ro.observe(root);
     root.querySelectorAll('[data-class-id]').forEach((el) => ro.observe(el));
     return () => ro.disconnect();
-  }, [layout, model, cache]);
+  }, [layout, model, cache, mode]);
 
   const card = (cls: ClassNode) => (
     <div key={cls.id} className="gy-slot" onPointerEnter={() => setHover(cls.id)} onPointerLeave={() => setHover(null)}>
@@ -175,7 +183,7 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
         {tools && <div className="gy-toolbar-end">{tools}</div>}
       </div>
       <div className="gy-canvas" ref={ref} data-hover={hover ?? undefined}>
-        {refreshing && <LoadingBar progress={progress} />}
+        {mode === 'flow' && refreshing && <LoadingBar progress={progress} />}
         <svg className="gy-wires" aria-hidden="true">
           <defs>
             {/* One marker per line colour: a marker does not inherit the stroke of the path it ends. */}
@@ -197,24 +205,40 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
             />
           ))}
         </svg>
+        {mode === 'ontology' ? (
+          <div className="gy-orbit" data-count={onto.core.length}>
+            {onto.goal && (
+              <div className="gy-orbit-cell" style={{ gridColumn: 2, gridRow: 2 }}>
+                <OntologyCard cls={onto.goal} mart={marts?.get(onto.goal.id)} goal />
+              </div>
+            )}
+            {onto.core.slice(0, SPOTS.length).map((c, i) => (
+              <div key={c.id} className="gy-orbit-cell" style={{ gridColumn: SPOTS[i]![0], gridRow: SPOTS[i]![1] }}>
+                <OntologyCard cls={c} mart={marts?.get(c.id)} goal={false} />
+              </div>
+            ))}
+            {onto.core.length === 0 && <p className="gy-muted gy-empty gy-orbit-empty">No core classes yet. An admin can set them in Settings, Checkup.</p>}
+          </div>
+        ) : (
         <div className="gy-bands">
           <section className="gy-band">
             <header className="gy-band-head">
               <span className="gy-band-icon"><Target size={16} /></span>
               <h2 className="gy-band-title">Goal</h2>
             </header>
-            <div className="gy-band-main">{layout.main && card(layout.main)}</div>
+            <div className="gy-band-main">{flow.main && card(flow.main)}</div>
           </section>
           <section className="gy-band">
             <header className="gy-band-head">
               <span className="gy-band-icon"><Network size={16} /></span>
               <h2 className="gy-band-title">Drivers</h2>
             </header>
-            {layout.drivers.length > 0
-              ? <div className="gy-band-grid">{layout.drivers.map(card)}</div>
+            {flow.drivers.length > 0
+              ? <div className="gy-band-grid">{flow.drivers.map(card)}</div>
               : <p className="gy-muted gy-empty">No class feeds the goal in this filter.</p>}
           </section>
         </div>
+        )}
       </div>
     </div>
   );

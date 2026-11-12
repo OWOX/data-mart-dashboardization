@@ -455,6 +455,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           {coreNote && <p className="gy-muted">{coreNote}</p>}
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
           <Canvas
+            mode="flow"
             tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}
             model={model} cache={cache} visibleIds={visible} details={detailsNow} missingIds={missingIds} marts={marts}
             compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}

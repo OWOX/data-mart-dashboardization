@@ -63,3 +63,25 @@ export function contextsOf(model: Model): ContextRef[] {
   for (const c of model.classes) for (const x of c.contexts) if (!byId.has(x.id)) byId.set(x.id, x);
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/** The goal and its core classes, in rank order; connectors only between those classes. */
+export interface OntologyLayout { goal: ClassNode | null; core: ClassNode[]; connectors: Connector[] }
+
+/** selected empty means All; chips filter core classes as they filter drivers, and the goal always shows. */
+export function ontologyLayout(model: Model, selected: ReadonlySet<string>): OntologyLayout {
+  const goalId = model.goal.classId;
+  const goal = model.classes.find((c) => c.id === goalId) ?? null;
+  const core = model.classes
+    .filter((c) => c.core && c.id !== goalId && (selected.size === 0 || c.contexts.some((x) => selected.has(x.id))))
+    .sort((a, b) => b.inbound - a.inbound || a.title.localeCompare(b.title));
+  const drawn = new Set([...(goal ? [goal.id] : []), ...core.map((c) => c.id)]);
+  const found = new Map<string, Connector>();
+  for (const e of model.edges) {
+    if (e.from === e.to || !drawn.has(e.from) || !drawn.has(e.to)) continue;
+    // A pair linked both ways is one line: the first direction found keeps it.
+    const key = e.from < e.to ? `${e.from}\u0000${e.to}` : `${e.to}\u0000${e.from}`;
+    if (!found.has(key)) found.set(key, { from: e.from, to: e.to, dashed: false, join: e.from !== goalId && e.to !== goalId, fields: e.fields ?? [] });
+  }
+  const connectors = [...found.values()].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+  return { goal, core, connectors };
+}
