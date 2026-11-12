@@ -2,6 +2,7 @@ import type { ClassNode, CoreClass, Edge, Industry, Model } from '../types';
 import { primaryKeyPaths } from './graph';
 import type { MartDetail } from '../owox/sources';
 
+const MIN_CORE = 3;
 const MAX_CORE = 7;
 
 export const INDUSTRIES: { id: Industry; label: string; count: number; typical: string[] }[] = [
@@ -32,17 +33,18 @@ export function rankCore(args: { goalId: string; nodes: { id: string; title: str
   const connected = (id: string) => edges.some((e) => (e.from === goalId && e.to === id) || (e.from === id && e.to === goalId));
   const cands = nodes.filter((n) => n.singleKey && n.id !== goalId && connected(n.id) && (inbound.get(n.id) ?? 0) > 0);
   const ids = new Set(cands.map((n) => n.id));
-  const links = (id: string) => edges.filter((e) => (e.from === id && ids.has(e.to)) || (e.to === id && ids.has(e.from))).length;
+  const links = (id: string) => new Set(edges.flatMap((e) => (e.from === id && ids.has(e.to) ? [e.to] : e.to === id && ids.has(e.from) ? [e.from] : []))).size;
   return cands
     .sort((a, b) => (inbound.get(b.id) ?? 0) - (inbound.get(a.id) ?? 0) || links(b.id) - links(a.id) || a.title.localeCompare(b.title))
     .map((n) => n.id);
 }
 
-/** Existing core classes stay; new picks are added in order until 7. null existing: the picks, or the ranked top `count`. */
+/** Existing core classes stay; new picks are added in order until 7. A first list under 3 is topped up from the ranking; null existing with no picks: the ranked top `count`. */
 export function mergeCore(existing: CoreClass[] | null, picks: CoreClass[], ranked: string[], count: number): CoreClass[] {
-  if (existing === null && !picks.length) return ranked.slice(0, count).map((martId) => ({ martId, why: '' }));
+  if (existing === null && !picks.length) return ranked.slice(0, Math.min(count, MAX_CORE)).map((martId) => ({ martId, why: '' }));
   const out = [...(existing ?? [])];
   for (const p of picks) if (out.length < MAX_CORE && !out.some((c) => c.martId === p.martId)) out.push(p);
+  if (existing === null) for (const martId of ranked) if (out.length < MIN_CORE && !out.some((c) => c.martId === martId)) out.push({ martId, why: '' });
   return out;
 }
 

@@ -61,6 +61,18 @@ test('a Data Mart without a primary key is not a class, and the walk stops there
   expect(r.model.metrics.some((m) => m.martId === 'c' || m.martId === 'p')).toBe(false);
 });
 
+test('a Data Mart with a primary key and no date field is a class with an undated unique count', async () => {
+  const d = data();
+  d.details.c = { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }] };
+  const r = await buildModel({ owox: fakeOwox(d), generate: async () => goalAi, userId: 'u1', now });
+  expect(r.ok).toBe(true);
+  if (!r.ok) return;
+  expect(r.model.classes.map((c) => c.title)).toEqual(['Orders', 'Customers']);
+  const customers = r.model.classes[1]!;
+  expect(customers.metricIds).toHaveLength(1);
+  expect(r.model.metrics.find((m) => m.id === customers.metricIds[0])).toMatchObject({ isUniqueCount: true, dateField: null });
+});
+
 test('no AI handle blocks', async () => {
   const r = await buildModel({ owox: fakeOwox(data()), generate: null, userId: 'u1', now });
   expect(r).toMatchObject({ ok: false, blocked: { code: 'AI_NOT_CONFIGURED' } });

@@ -36,3 +36,8 @@ test('withoutUndated drops classes without a primary key; the goal class and cla
   expect(s.metrics.map((x) => x.martId)).toEqual(['g', 'b']);
   expect(withoutUndated(project, new Map([['a', schema('a', true)]]))).toBe(project);
 });
+
+test('withoutUndated keeps a class with a primary key and no date field', () => {
+  const undated: MartDetail = { id: 'a', title: 'a', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }] };
+  expect(withoutUndated(project, new Map([['a', undated]]))).toBe(project);
+});
