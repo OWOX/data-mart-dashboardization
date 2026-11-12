@@ -96,7 +96,8 @@ export type BlockCode =
 
 export interface Blocked { code: BlockCode; detail: string; mismatches: string[] }
 
-export type BuildResult = { ok: true; model: Model; core: { classes: CoreClass[]; fromDescription: boolean } } | { ok: false; blocked: Blocked };
+/** `visible` are the Data Mart ids the builder could read; a rebuild proposal removes nothing outside them. */
+export type BuildResult = { ok: true; model: Model; visible: string[]; core: { classes: CoreClass[]; fromDescription: boolean } } | { ok: false; blocked: Blocked };
 
 export type Status = 'neutral' | 'above' | 'near' | 'below';
 export type Trend = 'up' | 'down' | 'flat';

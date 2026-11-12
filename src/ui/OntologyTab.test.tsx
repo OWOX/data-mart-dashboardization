@@ -728,3 +728,14 @@ test("a read-only tab says the changes are the project's, lets a member unfold a
   // the source picker is a real input
   for (const p of screen.getAllByRole('combobox', { name: /Fact source|Plan source/ })) expect(p).toBeDisabled();
 });
+
+test("a rebuild proposal keeps classes outside the builder's visible set, even with no access list", async () => {
+  const m = model();
+  const candidate: Model = { ...m, classes: m.classes.filter((c) => c.id === 'a'), metrics: m.metrics.filter((x) => x.martId === 'a') };
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
+  const onRebuild = vi.fn(async () => ({ ok: true as const, model: candidate, visible: ['a'], core: { classes: [], fromDescription: false } }));
+  render(<OntologyTab model={m} details={DETAILS} marts={null} owox={owox} now={() => new Date()} onSave={vi.fn()} onCancel={vi.fn()} onRebuild={onRebuild} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Rebuild model' }));
+  expect(await screen.findByText("Kept: you can't access Customers")).toBeInTheDocument();
+  expect(screen.queryByText(/Remove class/)).toBeNull();
+});

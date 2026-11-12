@@ -265,5 +265,5 @@ export async function buildModel(args: {
     edges: edges.filter((e) => depths.has(e.from) && depths.has(e.to)).map((e) => ({ from: e.from, to: e.to, fields: e.fields })),
     metrics,
   }, core, inbound);
-  return { ok: true, model, core: { classes: core, fromDescription: picks.length > 0 } };
+  return { ok: true, model, visible: [...visible], core: { classes: core, fromDescription: picks.length > 0 } };
 }
