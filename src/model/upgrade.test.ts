@@ -1,5 +1,9 @@
 import { upgradeModel } from './upgrade';
-import { model as v2 } from '../test/fixtures';
+import { model as v3 } from '../test/fixtures';
+
+// a real v2 doc: the v3 fixture without core, inbound and editedBy
+const { editedBy: _editedBy, ...v3Rest } = v3;
+const v2 = { ...v3Rest, version: 2, classes: v3.classes.map(({ core: _c, inbound: _i, ...c }) => c) };
 
 const v1 = {
   version: 1, inputHash: 'h', builtAt: 'b', builtBy: 'u',
@@ -19,12 +23,16 @@ test('v1 becomes v3 with everything shown, no forecast, never edited', () => {
   expect(m.metrics[0]!.alias).toBe('A');
 });
 
-test('a valid v2 passes through', () => {
-  expect(upgradeModel(v2)).toEqual(v2);
+test('a valid v2 upgrades to the v3 fixture', () => {
+  expect(upgradeModel(v2)).toEqual(v3);
+});
+
+test('a valid v3 passes through', () => {
+  expect(upgradeModel(v3)).toEqual(v3);
 });
 
 test('junk is rejected', () => {
-  for (const junk of [null, undefined, 3, 'x', [], {}, { version: 3 }, { ...v1, version: 0 }, { ...v1, classes: 'no' }, { ...v1, goal: null }, { ...v1, metrics: [{}] }, { ...v2, editedAt: 5 },
+  for (const junk of [null, undefined, 3, 'x', [], {}, { version: 3 }, { ...v1, version: 0 }, { ...v1, classes: 'no' }, { ...v1, goal: null }, { ...v1, metrics: [{}] }, { ...v2, editedAt: 5 }, { ...v3, editedAt: 5 }, { ...v3, editedBy: 7 }, { ...v3, classes: [{ ...v3.classes[0], inbound: -1 }] }, { ...v3, classes: [{ ...v3.classes[0], inbound: 1.5 }] },
     { ...v1, classes: [{ ...v1.classes[0], contexts: [{ id: 1 }] }] }, { ...v1, classes: [{ ...v1.classes[0], contexts: 'x' }] },
     { ...v1, classes: [{ ...v1.classes[0], depth: '0' }] }, { ...v1, classes: [{ ...v1.classes[0], keyMetricId: 5 }] },
     { ...v1, metrics: [{ ...v1.metrics[0], kind: 'weird' }] }, { ...v1, metrics: [{ ...v1.metrics[0], dateField: 3 }] },

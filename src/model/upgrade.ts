@@ -51,7 +51,7 @@ export function upgradeModel(raw: unknown): Model | null {
     const metrics = raw.metrics as Record<string, unknown>[];
     const ok = (raw.editedAt === null || isStr(raw.editedAt))
       && (raw.editedBy === null || isStr(raw.editedBy))
-      && classes.every((c) => typeof c.shown === 'boolean' && typeof c.core === 'boolean' && typeof c.inbound === 'number')
+      && classes.every((c) => typeof c.shown === 'boolean' && typeof c.core === 'boolean' && Number.isInteger(c.inbound) && (c.inbound as number) >= 0)
       && metrics.every((x) => typeof x.shown === 'boolean');
     // a malformed forecast source falls back to the extrapolated forecast; the rest of the model stays
     return ok ? ({ ...raw, classes: keyFirst(classes, metrics), metrics: metrics.map((x) => fixFormat(fixKind(validForecast(x.forecast) ? x : { ...x, forecast: null }))) } as unknown as Model) : null;
