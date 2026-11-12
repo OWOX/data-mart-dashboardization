@@ -63,3 +63,21 @@ test('without moved connections Apply is off with nothing selected', () => {
   expect(screen.queryByText(/connections between cards changed too/)).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Apply selected' })).toBeDisabled();
 });
+
+const kept: Change = { kind: 'kept', classId: 'k', title: 'Spend' };
+
+test('a kept row has its text and no checkbox, and Apply ignores it', () => {
+  const p = props([kept, added], { needs: undefined });
+  render(<RebuildProposal {...p} />);
+  expect(screen.getByText("Kept: you can't access Spend")).toBeInTheDocument();
+  expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
+  expect(p.onApply).toHaveBeenCalledWith([added]);
+});
+
+test('only kept rows count as no differences but are still listed', () => {
+  render(<RebuildProposal {...props([kept])} />);
+  expect(screen.getByText('The model already matches the descriptions.')).toBeInTheDocument();
+  expect(screen.getByText("Kept: you can't access Spend")).toBeInTheDocument();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+});

@@ -306,7 +306,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     setRebuild({ phase: 'building', steps: [] });
     try {
       const result = await onRebuild((step) => setRebuild((r) => (r.phase === 'building' ? { phase: 'building', steps: [...r.steps, step] } : r)));
-      setRebuild(result.ok ? { phase: 'proposal', candidate: result.model, changes: diffModels(model, result.model), relinks: linksDiffer(model, relink(model, result.model)) } : { phase: 'blocked', blocked: result.blocked });
+      setRebuild(result.ok ? { phase: 'proposal', candidate: result.model, changes: diffModels(model, result.model, accessible ?? undefined), relinks: linksDiffer(model, relink(model, result.model)) } : { phase: 'blocked', blocked: result.blocked });
     } catch (e) {
       setRebuild({ phase: 'error', message: describeError(e) });
     }

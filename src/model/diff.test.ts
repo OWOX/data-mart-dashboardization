@@ -265,3 +265,48 @@ test('a class the member declined bridges the two classes it links, so their lin
   const added = applyChanges(cur, cand, diffModels(cur, cand).filter((c) => c.kind === 'class_added' && c.classId === 'b'), 'now');
   expect(added.edges).toEqual([{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }]);
 });
+
+test("classes the builder can't see are kept, not removed", () => {
+  const current = base();
+  const candidate = copy(base());
+  candidate.classes = candidate.classes.filter((x) => x.id !== 'c');
+  candidate.edges = [];
+  candidate.metrics = candidate.metrics.filter((m) => m.martId !== 'c');
+  const changes = diffModels(current, candidate, new Set(['a']));
+  expect(changes).toContainEqual({ kind: 'kept', classId: 'c', title: 'Customers' });
+  expect(changes.some((x) => x.kind === 'class_removed' || x.kind === 'metric_removed')).toBe(false);
+  const applied = applyChanges(current, candidate, changes, 'now');
+  expect(applied.classes.map((x) => x.id)).toContain('c');
+  expect(applied.edges).toContainEqual(expect.objectContaining({ from: 'a', to: 'c' }));
+  expect(applied.metrics.some((m) => m.martId === 'c')).toBe(true);
+});
+
+test('a class the builder can see and the candidate drops is still proposed for removal', () => {
+  const candidate = copy(base());
+  candidate.classes = candidate.classes.filter((x) => x.id !== 'c');
+  expect(diffModels(base(), candidate, new Set(['a', 'c']))).toContainEqual(expect.objectContaining({ kind: 'class_removed', classId: 'c' }));
+});
+
+test('without a visible set nothing is kept', () => {
+  const candidate = copy(base());
+  candidate.classes = candidate.classes.filter((x) => x.id !== 'c');
+  expect(diffModels(base(), candidate).some((x) => x.kind === 'kept')).toBe(false);
+});
+
+test('a metric from a Data Mart the builder cannot see is not removed', () => {
+  const current = base();
+  current.metrics.push(metric('x:n:SUM', 'x', 'Hidden', 'n'));
+  current.classes[0] = { ...current.classes[0]!, metricIds: [...current.classes[0]!.metricIds, 'x:n:SUM'] };
+  const candidate = copy(base());
+  expect(diffModels(current, candidate, new Set(['a', 'c'])).some((x) => x.kind === 'metric_removed')).toBe(false);
+  expect(diffModels(current, candidate, new Set(['a', 'c', 'x'])).some((x) => x.kind === 'metric_removed')).toBe(true);
+});
+
+test('core flags survive apply', () => {
+  const current = base();
+  current.classes[1] = { ...current.classes[1]!, core: true };
+  const candidate = copy(base());
+  candidate.metrics[0] = { ...candidate.metrics[0]!, kind: 'level' };
+  const changes = diffModels(current, candidate);
+  expect(applyChanges(current, candidate, changes, 'now').classes.find((x) => x.id === 'c')!.core).toBe(true);
+});

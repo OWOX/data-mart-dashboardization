@@ -5,6 +5,8 @@ export type MetricField = 'measure' | 'dateField' | 'plan' | 'kind' | 'format';
 
 export type Change =
   | { kind: 'class_added' | 'class_removed'; classId: string; title: string }
+  /** A class the builder can't access: the rebuild leaves it, its metrics and its lines alone. */
+  | { kind: 'kept'; classId: string; title: string }
   | { kind: 'metric_added' | 'metric_removed'; classId: string; metricId: string; alias: string }
   | { kind: 'metric_changed'; classId: string; metricId: string; field: MetricField; before: string; after: string };
 
@@ -59,15 +61,22 @@ function pairMetrics(current: Model, candidate: Model): Map<string, MetricDef> {
   return pairs;
 }
 
-/** What a rebuild would change. The metrics of an added or removed class travel with the class row. */
-export function diffModels(current: Model, candidate: Model): Change[] {
+/**
+ * What a rebuild would change. The metrics of an added or removed class travel with the class row.
+ * With `visible` (the builder's Data Marts), nothing is removed from a Data Mart outside it; a kept class gets a `kept` row.
+ */
+export function diffModels(current: Model, candidate: Model, visible?: ReadonlySet<string>): Change[] {
   const changes: Change[] = [];
   const have = new Set(current.classes.map((c) => c.id));
   const want = new Set(candidate.classes.map((c) => c.id));
   for (const c of candidate.classes) if (!have.has(c.id)) changes.push({ kind: 'class_added', classId: c.id, title: c.title });
   // the goal class goes only when the candidate names another goal class that will exist; otherwise the row would be dropped on apply
   const goalMoves = candidate.goal.classId !== current.goal.classId && want.has(candidate.goal.classId);
-  for (const c of current.classes) if (!want.has(c.id) && (c.id !== current.goal.classId || goalMoves)) changes.push({ kind: 'class_removed', classId: c.id, title: c.title });
+  const unseen = (martId: string): boolean => visible !== undefined && !visible.has(martId);
+  for (const c of current.classes) {
+    if (want.has(c.id) || (c.id === current.goal.classId && !goalMoves)) continue;
+    changes.push(unseen(c.martId) ? { kind: 'kept', classId: c.id, title: c.title } : { kind: 'class_removed', classId: c.id, title: c.title });
+  }
 
   const pairs = pairMetrics(current, candidate);
   const matched = new Set([...pairs.values()].map((m) => m.id));
@@ -82,7 +91,7 @@ export function diffModels(current: Model, candidate: Model): Change[] {
   }
   for (const m of current.metrics) {
     const classId = classOf(current, m.id, m.martId);
-    if (!matched.has(m.id) && want.has(classId)) changes.push({ kind: 'metric_removed', classId, metricId: m.id, alias: m.alias });
+    if (!matched.has(m.id) && want.has(classId) && !unseen(m.martId)) changes.push({ kind: 'metric_removed', classId, metricId: m.id, alias: m.alias });
   }
   return changes;
 }
