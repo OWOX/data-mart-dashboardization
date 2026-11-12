@@ -47,13 +47,25 @@ export async function fetchInputs(owox: OwoxLike): Promise<Inputs> {
   };
 }
 
+const SAFE_ID = /^[A-Za-z0-9_-]+$/;
+/** The API path of a Data Mart (and an optional suffix like '/contexts'); an id that isn't a plain token throws, so a stored id can't redirect the call. */
+export function martPath(id: string, suffix = ''): string {
+  if (typeof id !== 'string' || !SAFE_ID.test(id)) throw new Error('Invalid Data Mart id');
+  return `/api/data-marts/${encodeURIComponent(id)}${suffix}`;
+}
+/** The API path of a context; same rule as martPath. */
+export function contextPath(id: string): string {
+  if (typeof id !== 'string' || !SAFE_ID.test(id)) throw new Error('Invalid context id');
+  return `/api/contexts/${encodeURIComponent(id)}`;
+}
+
 export async function fetchMartDetail(owox: OwoxLike, id: string): Promise<MartDetail> {
-  const dm = await owox.getJson<{ id: string; title: string; schema?: { fields?: SchemaField[] } | null }>(`/api/data-marts/${id}`);
+  const dm = await owox.getJson<{ id: string; title: string; schema?: { fields?: SchemaField[] } | null }>(martPath(id));
   return { id: dm.id, title: dm.title, fields: dm.schema?.fields ?? [] };
 }
 
 export async function fetchBlendable(owox: OwoxLike, id: string): Promise<Blendable> {
-  const b = await owox.getJson<{ availableSources?: AvailableSource[]; mainUniqueCountKeyFields?: string[] }>(`/api/data-marts/${id}/blendable-schema`);
+  const b = await owox.getJson<{ availableSources?: AvailableSource[]; mainUniqueCountKeyFields?: string[] }>(martPath(id, '/blendable-schema'));
   return {
     availableSources: (b.availableSources ?? []).map(({ aliasPath, dataMartId, title, isAccessibleForReporting }) => ({ aliasPath, dataMartId, title, isAccessibleForReporting })),
     mainUniqueCountKeyFields: b.mainUniqueCountKeyFields ?? [],

@@ -98,6 +98,14 @@ test('mart_add_context keeps a context added after the run', async () => {
   expect(putJson).toHaveBeenCalledWith('/api/data-marts/m1/contexts', { contextIds: ['a', 'late', 'k1'] });
 });
 
+test('mart_add_context with a crafted Data Mart id makes no request', async () => {
+  const { owox, putJson } = withPut(empty);
+  const r = await applyTarget({ kind: 'mart_add_context', martId: '../../plugins/x', contextId: 'k1', martTitle: 'X', contextName: 'Sales' }, mk(owox));
+  expect(r).toMatchObject({ ok: false });
+  expect(putJson).not.toHaveBeenCalled();
+  expect((owox as unknown as { calls: unknown[] }).calls).toEqual([]);
+});
+
 test('a refused mart_add_context names both titles', async () => {
   const owox = { ...base, getJson: async () => ({ contexts: [] }), putJson: vi.fn().mockRejectedValue(forbidden()) } as unknown as OwoxLike;
   expect(await applyTarget({ kind: 'mart_add_context', martId: 'm1', contextId: 'k1', martTitle: 'Leads', contextName: 'Sales' }, mk(owox)))

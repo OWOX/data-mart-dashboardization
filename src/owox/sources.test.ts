@@ -1,4 +1,4 @@
-import { fetchBlendable, fetchInputs, fetchMartDetail, flattenFields, allFieldPaths } from './sources';
+import { contextPath, martPath, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields, allFieldPaths } from './sources';
 import { fakeOwox } from './fake';
 
 const owox = fakeOwox({
@@ -55,4 +55,18 @@ test('allFieldPaths counts hidden fields but not disconnected ones', () => {
     { name: 'a', type: 'RECORD', isPrimaryKey: false, fields: [{ name: 'b', type: 'STRING', isPrimaryKey: false }] },
   ]);
   expect([...paths].sort()).toEqual(['a', 'a.b', 'id']);
+});
+
+test('martPath and contextPath build the usual path for a plain id and reject anything else', async () => {
+  expect(martPath('11111111-aaaa_b')).toBe('/api/data-marts/11111111-aaaa_b');
+  expect(martPath('m1', '/contexts')).toBe('/api/data-marts/m1/contexts');
+  expect(contextPath('k1')).toBe('/api/contexts/k1');
+  for (const bad of ['../../plugins/x', 'a/b', '..', '', 'a?b', 'a b']) {
+    expect(() => martPath(bad), bad).toThrow('Invalid Data Mart id');
+    expect(() => contextPath(bad), bad).toThrow('Invalid context id');
+  }
+  const o = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {} });
+  await expect(fetchMartDetail(o, '../../plugins/x')).rejects.toThrow('Invalid Data Mart id');
+  await expect(fetchBlendable(o, 'a/b')).rejects.toThrow('Invalid Data Mart id');
+  expect(o.calls).toEqual([]);
 });

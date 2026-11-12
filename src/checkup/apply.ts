@@ -1,6 +1,6 @@
 import type { CollectionsLike } from '../store/collections';
 import { saveProjectSettings } from '../store/collections';
-import type { OwoxLike } from '../owox/sources';
+import { contextPath, martPath, type OwoxLike } from '../owox/sources';
 import type { ProjectSettings } from '../types';
 import { describeError, statusesOf } from '../lib/errors';
 import { setCriticalFact, setCriticalPlan } from './tables';
@@ -42,7 +42,7 @@ async function write(t: ApplyTarget, { owox, store, onModel }: ApplyDeps): Promi
     const c = (await owox.getJson<{ id: string; name: string; description?: unknown }[]>('/api/contexts')).find((x) => x.id === scope.contextId);
     if (!c) throw new Error('The context no longer exists');
     const next = change(typeof c.description === 'string' ? c.description : null);
-    if (next !== null) await put(`/api/contexts/${encodeURIComponent(c.id)}`, { name: c.name, description: next });
+    if (next !== null) await put(contextPath(c.id), { name: c.name, description: next });
   };
   switch (t.kind) {
     case 'settings':
@@ -62,13 +62,13 @@ async function write(t: ApplyTarget, { owox, store, onModel }: ApplyDeps): Promi
       await owox.postJson('/api/contexts', { name: t.name, description: t.description });
       return;
     case 'mart_add_context': {
-      const dm = await owox.getJson<{ contexts?: { id: string }[] }>(`/api/data-marts/${encodeURIComponent(t.martId)}`);
+      const dm = await owox.getJson<{ contexts?: { id: string }[] }>(martPath(t.martId));
       // without a contexts list on the detail, the summary has it; never write a list built from nothing
       const current = Array.isArray(dm.contexts) ? dm.contexts : (await owox.dataMarts.list()).find((m) => m.id === t.martId)?.contexts;
       if (!current) throw new Error("Couldn't read the Data Mart's contexts");
       const ids = current.map((c) => c.id);
       if (!ids.includes(t.contextId)) ids.push(t.contextId);
-      await put(`/api/data-marts/${encodeURIComponent(t.martId)}/contexts`, { contextIds: ids });
+      await put(martPath(t.martId, '/contexts'), { contextIds: ids });
       return;
     }
     case 'model': onModel(t.action); return;
