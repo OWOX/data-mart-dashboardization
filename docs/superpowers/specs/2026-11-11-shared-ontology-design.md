@@ -287,7 +287,7 @@ The ontology view takes as many core classes as `coreClasses` lists, from 3 to 7
 ### 8.3 Code
 
 1. `src/checkup/types.ts`: `CheckStatus` becomes `'running' | 'ok' | 'recommend' | 'warn' | 'fail' | 'skip'`; `GroupId` becomes `'critical' | 'core' | 'contexts' | 'connections' | 'metrics' | 'housekeeping'`; `Check` gains `purpose: string` (the tooltip) and `suggestion?: Suggestion`.
-2. `Suggestion`: `{ question, options: { label, value, recommended }[], apply: ApplyTarget }`, where `ApplyTarget` is one of project description table, context create or update, Data Mart contexts, or model.
+2. `Suggestion`: `{ question, options: { label, value, recommended }[], apply: ApplyTarget }`, where `ApplyTarget` is one of plugin settings, the shared model, the project Metrics table, context create or update, or Data Mart contexts.
 3. `src/checkup/suggest.ts`: code-based suggestions. `src/checkup/suggestAi.ts`: AI suggestions, called lazily.
 4. `src/checkup/apply.ts`: writes and the refusal fallback. `src/checkup/tables.ts` gains `upsertTable(markdown, heading, rows)`, which replaces only Gyroscope's table.
 5. `OntologyTab` becomes the Metrics section inside `CheckupTab`.
