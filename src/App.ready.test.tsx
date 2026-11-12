@@ -1,4 +1,3 @@
-import { seedShared } from './test/fixtures';
 import { cleanup, fireEvent, render, screen, waitFor, within } from './test-host';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
@@ -6,7 +5,8 @@ import { fakeOwox, type FakeOwoxData } from './owox/fake';
 import { cacheKey } from './metrics/refresh';
 import { rangeFor } from './lib/dates';
 import { loadShared, loadPreferences, memoryCollections, saveCache, savePreferences, saveViewSettings, type CollectionsLike } from './store/collections';
-import { DEFAULT_SETTINGS, type CacheDoc, type Model } from './types';
+import { seedShared } from './test/fixtures';
+import { type CacheDoc, type Model } from './types';
 
 const GID = '11111111-1111-1111-1111-111111111111';
 const NOW = new Date('2026-10-24T10:00:00Z');
@@ -289,9 +289,38 @@ test('a failed settings save shows an error and stays on the page', async () => 
   const { deps } = await setup({ store });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.change(screen.getByLabelText(/Red when below plan/), { target: { value: '15' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect(await screen.findByText("Couldn't save settings: boom")).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+});
+
+test('saving a changed threshold keeps the stored industry and core classes', async () => {
+  const { deps, store } = await setup();
+  const stored = { thresholdPct: 20, industry: 'saas', coreClasses: [{ martId: 'a', why: 'x' }] };
+  await store.collections('settings').put('project', stored);
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.change(screen.getByLabelText(/Red when below plan/), { target: { value: '15' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(async () => expect((await store.collections('settings').get('project'))!.document).toEqual({ ...stored, thresholdPct: 15 }));
+});
+
+test('saving with an unchanged threshold writes nothing to the settings collection', async () => {
+  const mem = memoryCollections();
+  const puts: string[] = [];
+  const store: CollectionsLike = {
+    collections: <T,>(name: string) => {
+      const c = mem.collections<T>(name);
+      return { ...c, put: async (id: string, doc: T) => { if (name === 'settings') puts.push(id); return c.put(id, doc); } };
+    },
+  };
+  const { deps } = await setup({ store });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await screen.findByText(/Updated 1 h ago/);
+  expect(puts).toEqual([]);
 });
 
 test('retry after a failed initial load re-runs the load, not the AI build', async () => {
@@ -450,7 +479,7 @@ test('with a comparison the header shows the days so far, not the whole range', 
 
 test('a projected range shows the whole period against the whole previous one', async () => {
   const { deps, store } = await setup({ cache: 'none' });
-  await saveViewSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'cur_month' });
+  await saveViewSettings(store, { defaultPreset: 'cur_month', comparisonDefault: true, weekStart: 'monday' });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–31 vs Sep 1–30, 2026 · /));
 });

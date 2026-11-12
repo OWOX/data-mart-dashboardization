@@ -9,7 +9,7 @@ test('round trips and defaults', async () => {
   expect(await loadShared(ctx)).toBeNull();
   expect(await loadSettings(ctx)).toEqual(DEFAULT_SETTINGS);
   await saveShared(ctx, null, model);
-  await saveProjectSettings(ctx, { ...DEFAULT_SETTINGS, thresholdPct: 500 });
+  await saveProjectSettings(ctx, { thresholdPct: 500 });
   await saveCache(ctx, 'k', doc);
   expect(await loadShared(ctx)).toEqual(model);
   expect((await loadSettings(ctx)).thresholdPct).toBe(100);
@@ -69,13 +69,12 @@ test('project settings cap core classes at 7 and reject an unknown industry', as
   expect(s.industry).toBeNull();
   expect(s.coreClasses).toHaveLength(7);
 });
-test('saving the threshold keeps the stored industry and core classes', async () => {
+test('saving the threshold keeps the stored industry, core classes and unknown fields', async () => {
   const store = memoryCollections();
-  await store.collections('settings').put('project', { thresholdPct: 20, industry: 'saas', coreClasses: [{ martId: 'a', why: 'x' }] });
-  const stale = await loadProjectSettings(store);
-  await store.collections('settings').put('project', { thresholdPct: 20, industry: 'b2b', coreClasses: [] });
-  await saveProjectSettings(store, { ...stale, industry: 'b2b', coreClasses: [], thresholdPct: 35 });
-  expect(await loadProjectSettings(store)).toEqual({ thresholdPct: 35, industry: 'b2b', coreClasses: [] });
+  const stored = { thresholdPct: 20, industry: 'mining', coreClasses: [{ martId: 'a', why: 'x' }], extra: 1 };
+  await store.collections('settings').put('project', stored);
+  await saveProjectSettings(store, { thresholdPct: 30 });
+  expect((await store.collections('settings').get('project'))!.document).toEqual({ ...stored, thresholdPct: 30 });
 });
 test('preferences from 0.3 are ignored once', async () => {
   const store = memoryCollections();
@@ -119,17 +118,17 @@ test('the project model is read through the upgrade, never written by the ontolo
 
 test('an unknown default preset reads as null', async () => {
   const ctx = memoryCollections();
-  await saveViewSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'next_decade' as never });
+  await saveViewSettings(ctx, { defaultPreset: 'next_decade' as never, comparisonDefault: true, weekStart: 'monday' });
   expect((await loadViewSettings(ctx)).defaultPreset).toBeNull();
-  await saveViewSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'constructor' as never });
+  await saveViewSettings(ctx, { defaultPreset: 'constructor' as never, comparisonDefault: true, weekStart: 'monday' });
   expect((await loadViewSettings(ctx)).defaultPreset).toBeNull();
 });
 
 test('weekStart is validated', async () => {
   const ctx = memoryCollections();
-  await saveViewSettings(ctx, { ...DEFAULT_SETTINGS, weekStart: 'sunday' });
+  await saveViewSettings(ctx, { defaultPreset: null, comparisonDefault: true, weekStart: 'sunday' });
   expect((await loadViewSettings(ctx)).weekStart).toBe('sunday');
-  await saveViewSettings(ctx, { ...DEFAULT_SETTINGS, weekStart: 'friday' as never });
+  await saveViewSettings(ctx, { defaultPreset: null, comparisonDefault: true, weekStart: 'friday' as never });
   expect((await loadViewSettings(ctx)).weekStart).toBe('monday');
 });
 

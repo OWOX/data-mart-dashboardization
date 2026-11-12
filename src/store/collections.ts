@@ -63,10 +63,9 @@ export async function loadProjectSettings(ctx: CollectionsLike): Promise<Project
     coreClasses: coreOf(raw.coreClasses),
   };
 }
-/** Replaces the project doc, keeping any field it holds that settings don't own (the old view fields stay as the fallback). */
-export async function saveProjectSettings(ctx: CollectionsLike, s: ProjectSettings): Promise<void> {
-  const kept = await readProject(ctx);
-  await ctx.collections<unknown>('settings').put('project', { ...kept, thresholdPct: s.thresholdPct, industry: s.industry, coreClasses: s.coreClasses });
+/** Merges `patch` onto the raw stored doc, so fields the patch omits (and ones settings don't know) are never rewritten. */
+export async function saveProjectSettings(ctx: CollectionsLike, patch: Partial<ProjectSettings>): Promise<void> {
+  await ctx.collections<unknown>('settings').put('project', { ...(await readProject(ctx)), ...patch });
 }
 
 /** The member's own view settings; a stored default preset counts only from a 0.4 doc (`v: 4`), so a 0.3 choice is ignored once. */

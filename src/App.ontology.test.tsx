@@ -1,9 +1,9 @@
-import { seedShared } from './test/fixtures';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
 import { loadShared, memoryCollections } from './store/collections';
+import { seedShared } from './test/fixtures';
 import { type Model } from './types';
 
 const GID = '11111111-1111-1111-1111-111111111111';

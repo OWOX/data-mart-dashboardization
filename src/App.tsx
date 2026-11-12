@@ -14,7 +14,7 @@ import { fetchInputs, fetchMartDetail, type Inputs, type MartDetail, type OwoxLi
 import { runPool } from './lib/pool';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
-  isStale, loadCache, loadPreferences, loadProjectModel, loadProjectSettings, loadSettings, loadShared, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings, type CollectionsLike,
+  isStale, loadCache, loadPreferences, loadProjectModel, loadSettings, loadShared, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings, type CollectionsLike,
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { BuildProgress } from './ui/BuildProgress';
@@ -332,8 +332,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     try {
       const { thresholdPct, industry: _i, coreClasses: _c, ...view } = s;
       await saveViewSettings(store, view);
-      // read fresh so a stale copy never writes industry or core classes back
-      await saveProjectSettings(store, { ...(await loadProjectSettings(store)), thresholdPct });
+      if (thresholdPct !== settings.thresholdPct) await saveProjectSettings(store, { thresholdPct });
     } catch (e) {
       setSettingsError(`Couldn't save settings: ${describeError(e)}`);
       return;
