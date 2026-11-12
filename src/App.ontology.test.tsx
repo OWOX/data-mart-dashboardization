@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
-import { loadShared, memoryCollections, savePreferences } from './store/collections';
+import { loadShared, memoryCollections, savePreferences, saveProjectSettings } from './store/collections';
 import { seedShared } from './test/fixtures';
 import { type Model } from './types';
 
@@ -44,12 +44,25 @@ async function setup() {
 const ctxWith = (route?: string) => { const setRoute = vi.fn(); return { ctx: { projectId: 'p', route, ui: { setRoute } } as never, setRoute }; };
 const customersCard = () => screen.queryByText('Customers', { selector: '.gy-card-title' });
 
+/** Settings is open: goes to the Checkup tab and opens the Metrics section once the first run has settled. */
+async function openMetrics() {
+  fireEvent.click(screen.getByRole('tab', { name: 'Checkup' }));
+  await screen.findByText(/^Checked /);
+  // the card applies its first fold in an effect; let it land before a click
+  await act(async () => {});
+  const toggle = screen.getByRole('button', { name: 'Metrics' });
+  if (toggle.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+}
+
 afterEach(cleanup);
 
-test('a reload at /settings/ontology opens the tab; /settings opens General; others open the canvas', async () => {
+test('a reload at /settings/ontology opens Checkup with the Metrics section open; /settings opens General; others open the canvas', async () => {
   const { deps } = await setup();
   const a = render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
-  expect(await screen.findByRole('tab', { name: 'Metrics', selected: true })).toBeInTheDocument();
+  expect(await screen.findByRole('tab', { name: 'Checkup', selected: true })).toBeInTheDocument();
+  expect(screen.queryByRole('tab', { name: 'Metrics' })).toBeNull();
+  await screen.findByText(/^Checked /);
+  expect(screen.getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true');
   // the tab waits for the Data Mart list, then shows the editor
   expect(await screen.findByText('The model of this project. Changes apply to everyone in the project.')).toBeInTheDocument();
   a.unmount();
@@ -64,8 +77,8 @@ test('switching tabs sets the route', async () => {
   const { deps } = await setup();
   const { ctx, setRoute } = ctxWith('/settings');
   render(<App ctx={ctx} deps={deps} />);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Metrics' }));
-  expect(setRoute).toHaveBeenLastCalledWith('/settings/ontology');
+  fireEvent.click(await screen.findByRole('tab', { name: 'Checkup' }));
+  expect(setRoute).toHaveBeenLastCalledWith('/settings/checkup');
   fireEvent.click(screen.getByRole('tab', { name: 'General' }));
   expect(setRoute).toHaveBeenLastCalledWith('/settings');
 });
@@ -76,7 +89,7 @@ test('unchecking a class and saving hides it on the canvas and stamps editedAt',
   render(<App ctx={ctx} deps={deps} />);
   await waitFor(() => expect(customersCard()).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  await openMetrics();
   const box = await screen.findByRole('checkbox', { name: 'Customers' });
   fireEvent.click(box);
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -93,24 +106,12 @@ test('Cancel on the Ontology tab writes nothing and returns to the canvas', asyn
   const { deps, puts } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  await openMetrics();
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   await screen.findByRole('button', { name: 'Date range' });
   expect(puts).toHaveLength(0);
   expect(within(document.body).queryByRole('tablist')).toBeNull();
-});
-
-test('switching tabs keeps the draft', async () => {
-  const { deps } = await setup();
-  render(<App ctx={ctxWith().ctx} deps={deps} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
-  const box = await screen.findByRole('checkbox', { name: 'Customers' });
-  fireEvent.click(box);
-  fireEvent.click(screen.getByRole('tab', { name: 'General' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
-  expect(screen.getByRole('checkbox', { name: 'Customers' })).not.toBeChecked();
 });
 
 test('a failed access check shows the note and flags nothing', async () => {
@@ -160,8 +161,8 @@ test('with no model, /settings/checkup opens Checkup without a build; Metrics sa
   render(<App ctx={ctx} deps={deps} />);
   expect(await screen.findByRole('tab', { name: 'Checkup', selected: true })).toBeInTheDocument();
   expect(generate).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
-  expect(screen.getByText("No model yet. It's built when you go back to the canvas.")).toBeInTheDocument();
+  await openMetrics();
+  expect(await screen.findByText("No model yet. It's built when you go back to the canvas.")).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back' }));
   expect(setRoute).toHaveBeenLastCalledWith('/');
   await waitFor(() => expect(generate).toHaveBeenCalled());
@@ -203,7 +204,7 @@ test('a save over a newer shared doc shows who changed it and when, and Reload r
   const { deps, store } = await setup();
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  await openMetrics();
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
   const theirs = { ...(await loadShared(store))!, editedAt: '2026-10-24T11:30:00Z', editedBy: 'Anna' };
   await seedShared(store, theirs);
@@ -213,7 +214,7 @@ test('a save over a newer shared doc shows who changed it and when, and Reload r
   await screen.findByRole('button', { name: 'Date range' });
   // the reloaded model is the base now, so a second save goes through
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  await openMetrics();
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await screen.findByRole('button', { name: 'Date range' });
@@ -233,7 +234,7 @@ test('core classes that fail to save leave the saved model in place with a note,
   expect(screen.queryByText(/Something went wrong/)).toBeNull();
   expect(await loadShared(store)).not.toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  await openMetrics();
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await screen.findByRole('button', { name: 'Date range' });
@@ -250,4 +251,31 @@ test('a first build stores the core classes and the editor name', async () => {
   const stored = (await store.collections<{ coreClasses: unknown[] }>('settings').get('project'))!.document.coreClasses;
   expect(stored.length).toBeGreaterThan(0);
   expect(saved.classes.filter((c) => c.core).length).toBe(stored.length);
+});
+
+test('applying a core list from Checkup stores it and updates the core flags of the shared model', async () => {
+  const { deps: base, store, model } = await setup();
+  const fact = `[Revenue](https://app.owox.com/ui/p/data-marts/${GID}/data-setup?field=revenue)`;
+  const owox = fakeOwox({ ...data(), projectDescription: `## Metrics\n| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Revenue | | ${fact} |` });
+  const deps = { ...base, owox };
+  await seedShared(store, { ...model, classes: model.classes.map((c) => ({ ...c, core: false })) });
+  await saveProjectSettings(store, { coreClasses: null });
+  render(<App ctx={ctxWith('/settings/checkup').ctx} deps={deps} />);
+  const section = await screen.findByRole('group', { name: 'Core classes' });
+  await screen.findByText(/^Checked /);
+  fireEvent.click(await within(section).findByRole('button', { name: 'Apply' }));
+  await waitFor(async () => expect((await loadShared(store))!.classes.some((c) => c.core)).toBe(true));
+  const stored = (await store.collections<{ coreClasses: { martId: string }[] }>('settings').get('project'))!.document.coreClasses;
+  expect(stored.length).toBeGreaterThan(0);
+  const coreIds = (await loadShared(store))!.classes.filter((c) => c.core).map((c) => c.martId);
+  expect(coreIds.sort()).toEqual(stored.map((c) => c.martId).sort());
+});
+
+test('a member never sees Apply or Suggest an answer in Checkup', async () => {
+  const { deps } = await setup();
+  const owox = fakeOwox({ ...data(), roles: ['viewer'] });
+  render(<App ctx={ctxWith('/settings/checkup').ctx} deps={{ ...deps, owox }} />);
+  await screen.findByText(/^Checked /);
+  expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Suggest an answer' })).toBeNull();
 });

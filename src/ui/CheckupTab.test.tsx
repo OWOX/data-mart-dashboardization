@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CheckupTab } from './CheckupTab';
-import type { Check } from '../checkup/types';
+import type { Check, Suggestion } from '../checkup/types';
 
 const ck = (id: string, status: Check['status'], over: Partial<Check> = {}): Check => ({ id, group: 'critical', purpose: 'What the check is for.', label: id, status, ...over });
 const now = () => new Date(2026, 10, 4, 14, 2);
@@ -64,11 +64,15 @@ test('a warning naming several Data Marts links each of them', async () => {
   expect(screen.getByRole('button', { name: 'Open Orders' })).toBeInTheDocument();
 });
 
-test('tab fix opens the tab', async () => {
-  const onOpenTab = vi.fn();
-  render(<CheckupTab run={instant([ck('a', 'warn', { fix: { kind: 'tab', label: 'Ontology', tab: 'ontology' } })])} projectId="p1" now={now} onOpenTab={onOpenTab} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Ontology' }));
-  expect(onOpenTab).toHaveBeenCalledWith('ontology');
+test('tab fix opens the Metrics section', async () => {
+  const list = [ck('a', 'warn', { group: 'core', fix: { kind: 'tab', label: 'Open Metrics', tab: 'ontology' } }), ck('m', 'ok', { group: 'metrics' })];
+  render(<CheckupTab run={instant(list)} projectId="p1" now={now} metrics={<p>editor</p>} />);
+  const metrics = await screen.findByRole('group', { name: 'Metrics' });
+  await screen.findByText(/Checked/);
+  await act(async () => {});
+  expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(screen.getByRole('button', { name: 'Open Metrics' }));
+  expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true');
 });
 
 test('snippet fix copies the Metrics table and shows it', async () => {
@@ -146,4 +150,158 @@ test('a recommendation is counted in the summary and marked with a light bulb', 
   render(<CheckupTab run={instant([ck('a', 'recommend'), ck('b', 'recommend'), ck('c', 'ok')])} projectId="p1" now={now} />);
   expect(await screen.findByText('2 recommendations, 1 passed')).toBeInTheDocument();
   expect(screen.getAllByText('💡').length).toBeGreaterThan(0);
+});
+
+const suggestion = (over: Partial<Suggestion> = {}): Suggestion => ({
+  question: 'Which classes are core?',
+  options: [{ label: 'Orders', value: 'o', recommended: true }, { label: 'Customers', value: 'c', recommended: false }],
+  ai: false,
+  target: (o) => ({ kind: 'settings', patch: { coreClasses: [{ martId: String(o.value), why: '' }] } }),
+  ...over,
+});
+const core = (id: string, status: Check['status'], over: Partial<Check> = {}) => ck(id, status, { group: 'core', ...over });
+
+test('sections show the worst status and a count; every check has an (i) tooltip', async () => {
+  render(<CheckupTab run={instant([core('core.set', 'warn'), core('project.fact', 'ok'), core('core.linked', 'recommend')])} projectId="p1" now={now} />);
+  const head = await screen.findByRole('heading', { name: /Core classes.*1 warning, 1 recommendation/ });
+  expect(head).toHaveTextContent('!');
+  expect(screen.getAllByRole('button', { name: /^About / })).toHaveLength(3);
+  expect(screen.getByRole('button', { name: 'About core.set' })).toBeInTheDocument();
+});
+
+test('a section with only passed checks says All passed and starts folded', async () => {
+  render(<CheckupTab run={instant([core('a', 'ok'), core('b', 'skip')])} projectId="p1" now={now} />);
+  expect(await screen.findByRole('heading', { name: /Core classes.*All passed/ })).toBeInTheDocument();
+  await screen.findByText(/Checked/);
+  await act(async () => {});
+  expect(screen.getByRole('button', { name: 'Core classes' })).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('a section with a recommendation only starts folded; with no model every section is open', async () => {
+  const list = [core('a', 'recommend')];
+  const a = render(<CheckupTab run={instant(list)} projectId="p1" now={now} />);
+  await screen.findByText(/Checked/);
+  await act(async () => {});
+  expect(screen.getByRole('button', { name: 'Core classes' })).toHaveAttribute('aria-expanded', 'false');
+  a.unmount();
+  render(<CheckupTab run={instant(list)} projectId="p1" now={now} noModel />);
+  await screen.findByText(/Checked/);
+  await act(async () => {});
+  expect(await screen.findByRole('button', { name: 'Core classes' })).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('an admin applies the recommended answer in one click, then the checkup reruns', async () => {
+  const apply = vi.fn().mockResolvedValue({ ok: true });
+  const run = vi.fn(instant([core('core.set', 'warn', { suggestion: suggestion() })]));
+  render(<CheckupTab run={run} projectId="p1" now={now} isAdmin apply={apply} />);
+  expect(await screen.findByText('Which classes are core?')).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: /Orders/ })).toBeChecked();
+  expect(screen.getByText('Recommended')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(run).toHaveBeenCalledTimes(2));
+  expect(apply).toHaveBeenCalledWith({ kind: 'settings', patch: { coreClasses: [{ martId: 'o', why: '' }] } });
+});
+
+test('Apply applies the option the admin picked', async () => {
+  const apply = vi.fn().mockResolvedValue({ ok: true });
+  render(<CheckupTab run={instant([core('core.set', 'warn', { suggestion: suggestion() })])} projectId="p1" now={now} isAdmin apply={apply} />);
+  fireEvent.click(await screen.findByRole('radio', { name: /Customers/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(apply).toHaveBeenCalledWith({ kind: 'settings', patch: { coreClasses: [{ martId: 'c', why: '' }] } }));
+});
+
+test('a member sees the question and the recommended answer read-only', async () => {
+  const apply = vi.fn();
+  render(<CheckupTab run={instant([core('core.set', 'warn', { suggestion: suggestion() })])} projectId="p1" now={now} isAdmin={false} apply={apply} />);
+  expect(await screen.findByText('Ask a project admin')).toBeInTheDocument();
+  expect(screen.getByText('Which classes are core?')).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: /Orders/ })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Suggest an answer' })).toBeNull();
+});
+
+test('a refused write shows the snippet with Copy and keeps the Fix link', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  const apply = vi.fn().mockResolvedValue({ ok: false, refused: true, snippet: 'PASTE ME' });
+  const fix = { kind: 'owox' as const, label: 'Open settings', path: '/ui/p/x' };
+  render(<CheckupTab run={instant([core('core.set', 'warn', { fix, suggestion: suggestion() })])} projectId="p1" now={now} isAdmin apply={apply} onOpen={() => {}} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
+  const pre = await screen.findByText('PASTE ME');
+  expect(pre.tagName).toBe('PRE');
+  expect(pre).toHaveClass('gy-snippet');
+  fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+  expect(writeText).toHaveBeenCalledWith('PASTE ME');
+  expect(screen.getByRole('button', { name: 'Open settings' })).toBeInTheDocument();
+});
+
+test('a failed write shows the message under the button', async () => {
+  const apply = vi.fn().mockResolvedValue({ ok: false, refused: false, error: 'Server said no' });
+  render(<CheckupTab run={instant([core('core.set', 'warn', { suggestion: suggestion() })])} projectId="p1" now={now} isAdmin apply={apply} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Server said no');
+});
+
+const aiCheck = () => core('core.industry', 'warn', { suggestion: { question: 'Which business model is closest?', options: [], ai: true, target: () => ({ kind: 'settings', patch: {} }) } });
+
+test('the AI suggestion is fetched once, only when asked', async () => {
+  const suggestAi = vi.fn().mockResolvedValue(suggestion({ ai: true, question: 'Which business model is closest?' }));
+  render(<CheckupTab run={instant([aiCheck()])} projectId="p1" now={now} isAdmin apply={vi.fn()} suggestAi={suggestAi} />);
+  const btn = await screen.findByRole('button', { name: 'Suggest an answer' });
+  expect(suggestAi).not.toHaveBeenCalled();
+  fireEvent.click(btn);
+  await screen.findByRole('radio', { name: /Orders/ });
+  expect(screen.queryByRole('button', { name: 'Suggest an answer' })).toBeNull();
+  expect(suggestAi).toHaveBeenCalledTimes(1);
+  expect(suggestAi).toHaveBeenCalledWith('core.industry');
+});
+
+test('the AI suggestion is cached across reruns', async () => {
+  const suggestAi = vi.fn().mockResolvedValue(suggestion({ ai: true }));
+  render(<CheckupTab run={instant([aiCheck()])} projectId="p1" now={now} isAdmin apply={vi.fn()} suggestAi={suggestAi} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Suggest an answer' }));
+  await screen.findByRole('radio', { name: /Orders/ });
+  fireEvent.click(screen.getByRole('button', { name: 'Run checks again' }));
+  await screen.findByRole('radio', { name: /Orders/ });
+  expect(suggestAi).toHaveBeenCalledTimes(1);
+});
+
+test('an AI suggestion that comes back empty says so', async () => {
+  const suggestAi = vi.fn().mockResolvedValue(null);
+  render(<CheckupTab run={instant([aiCheck()])} projectId="p1" now={now} isAdmin apply={vi.fn()} suggestAi={suggestAi} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Suggest an answer' }));
+  expect(await screen.findByText(/Couldn't suggest an answer/)).toBeInTheDocument();
+});
+
+test('an admin without an AI credential sees the question and a hint, no button', async () => {
+  render(<CheckupTab run={instant([aiCheck()])} projectId="p1" now={now} isAdmin apply={vi.fn()} />);
+  expect(await screen.findByText('Which business model is closest?')).toBeInTheDocument();
+  expect(screen.getByText('Map an AI credential to get a suggested answer')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Suggest an answer' })).toBeNull();
+});
+
+test('a member sees an AI question with Ask a project admin', async () => {
+  render(<CheckupTab run={instant([aiCheck()])} projectId="p1" now={now} isAdmin={false} />);
+  expect(await screen.findByText('Which business model is closest?')).toBeInTheDocument();
+  expect(screen.getByText('Ask a project admin')).toBeInTheDocument();
+});
+
+test('the Metrics section holds the editor under its checks; openSection opens it', async () => {
+  const list = [ck('model.built', 'ok', { group: 'metrics' })];
+  render(<CheckupTab run={instant(list)} projectId="p1" now={now} metrics={<p>the editor</p>} openSection="metrics" />);
+  const metrics = await screen.findByRole('group', { name: 'Metrics' });
+  expect(within(metrics).getByText('the editor')).toBeInTheDocument();
+  expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('applying a rebuild opens the Metrics section', async () => {
+  const apply = vi.fn().mockResolvedValue({ ok: true });
+  const sug = suggestion({ target: () => ({ kind: 'model', action: 'rebuild' }) });
+  render(<CheckupTab run={instant([core('model.fresh', 'warn', { suggestion: sug }), ck('model.built', 'ok', { group: 'metrics' })])} projectId="p1" now={now} isAdmin apply={apply} metrics={<p>editor</p>} />);
+  const metrics = await screen.findByRole('group', { name: 'Metrics' });
+  await screen.findByText(/Checked/);
+  await act(async () => {});
+  expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true'));
 });

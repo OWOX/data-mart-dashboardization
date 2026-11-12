@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { SettingsPage } from './SettingsPage';
 import { DEFAULT_SETTINGS } from '../types';
 
@@ -20,22 +20,19 @@ test('saves the chosen week start', () => {
   expect(onSave).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, weekStart: 'sunday' });
 });
 
-test('the tabs are a tablist that arrow keys move through', () => {
+test('the tabs are General and Checkup, a tablist that arrow keys move through', () => {
   const onTabChange = vi.fn();
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} onTabChange={onTabChange} />);
-  expect(screen.getByRole('tablist')).toBeInTheDocument();
+  expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['General', 'Checkup']);
   const general = screen.getByRole('tab', { name: 'General' });
-  const onto = screen.getByRole('tab', { name: 'Metrics' });
-  expect(general).toHaveAttribute('aria-selected', 'true');
-  expect(onto).toHaveAttribute('tabindex', '-1');
-  fireEvent.keyDown(general, { key: 'ArrowRight' });
-  expect(onto).toHaveAttribute('aria-selected', 'true');
-  expect(onto).toHaveFocus();
-  expect(onTabChange).toHaveBeenLastCalledWith('ontology');
-  expect(screen.getByLabelText(/Red when below plan/)).not.toBeVisible();
   const checkup = screen.getByRole('tab', { name: 'Checkup' });
-  fireEvent.keyDown(onto, { key: 'ArrowRight' });
+  expect(general).toHaveAttribute('aria-selected', 'true');
+  expect(checkup).toHaveAttribute('tabindex', '-1');
+  fireEvent.keyDown(general, { key: 'ArrowRight' });
   expect(checkup).toHaveAttribute('aria-selected', 'true');
+  expect(checkup).toHaveFocus();
+  expect(onTabChange).toHaveBeenLastCalledWith('checkup');
+  expect(screen.getByLabelText(/Red when below plan/)).not.toBeVisible();
   fireEvent.keyDown(checkup, { key: 'ArrowRight' });
   expect(general).toHaveAttribute('aria-selected', 'true');
   fireEvent.keyDown(general, { key: 'End' });
@@ -44,17 +41,39 @@ test('the tabs are a tablist that arrow keys move through', () => {
   expect(general).toHaveFocus();
 });
 
-test('the Checkup tab follows Metrics and mounts its panel only while selected', () => {
+test('the Checkup panel mounts only while selected', () => {
   const run = vi.fn(() => Promise.resolve([]));
   const checkup = { run, projectId: 'p', now: () => new Date() };
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} checkup={checkup} />);
-  expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['General', 'Metrics', 'Checkup']);
   expect(run).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('tab', { name: 'Checkup' }));
   expect(run).toHaveBeenCalledTimes(1);
   expect(document.getElementById('gy-panel-checkup')).not.toHaveAttribute('hidden');
   fireEvent.click(screen.getByRole('tab', { name: 'General' }));
   expect(document.getElementById('gy-panel-checkup')!.childElementCount).toBe(0);
+});
+
+test('General has a Your view fieldset and a Project fieldset', () => {
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} />);
+  const view = screen.getByRole('group', { name: 'Your view' });
+  const project = screen.getByRole('group', { name: 'Project' });
+  expect(within(view).getByLabelText('Default date range')).toBeInTheDocument();
+  expect(within(view).getByLabelText('Week starts on')).toBeInTheDocument();
+  expect(within(view).getByLabelText(/Compare with previous period/)).toBeInTheDocument();
+  expect(within(project).getByLabelText(/Red when below plan/)).toBeEnabled();
+});
+
+test('a member sees the threshold disabled with the reason', () => {
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} isAdmin={false} />);
+  const project = screen.getByRole('group', { name: 'Project' });
+  expect(within(project).getByLabelText(/Red when below plan/)).toBeDisabled();
+  expect(within(project).getByText('Only a project admin can change this')).toBeInTheDocument();
+});
+
+test('with no model the Metrics section says so', async () => {
+  const checkup = { run: () => Promise.resolve([{ id: 'model.built', group: 'metrics' as const, label: 'The model is built', purpose: 'p', status: 'ok' as const }]), projectId: 'p', now: () => new Date() };
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} checkup={checkup} tab="checkup" noModel />);
+  expect(await screen.findByText("No model yet. It's built when you go back to the canvas.")).toBeInTheDocument();
 });
 
 test('tab="checkup" opens with the panel visible and a run started', () => {
@@ -64,7 +83,7 @@ test('tab="checkup" opens with the panel visible and a run started', () => {
   expect(run).toHaveBeenCalledTimes(1);
 });
 
-test('General no longer holds the model rebuild; the Ontology tab does', () => {
+test('General does not hold the model rebuild', () => {
   const onRebuild = vi.fn();
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} onRebuild={onRebuild} tab="general" />);
   expect(screen.queryByRole('button', { name: 'Rebuild model' })).toBeNull();

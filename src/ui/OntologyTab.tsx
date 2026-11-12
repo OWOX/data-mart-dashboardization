@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, GripVertical, Info } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
 import { normalizeCurrency } from '../lib/format';
 import { describeError } from '../lib/errors';
 import { conflictMessage } from '../lib/conflict';
@@ -12,10 +12,7 @@ import { deriveKeys } from '../model/shown';
 import { metricName } from '../model/metricName';
 import type { BuildStep } from '../model/build';
 import type { BuildResult, Blocked as BlockedInfo, ClassNode, ForecastDef, MetricDef, MetricFormat, Model, Measure, PlanDef, PlanShape } from '../types';
-import { owoxPath } from '../lib/links';
-import { useBelow } from './anchor';
-import { HOSTS, LINGER_MS } from './Card';
-import { MarkdownText } from './MarkdownText';
+import { InfoTip, OpenPath } from './InfoTip';
 import { Blocked } from './Blocked';
 import { BuildProgress } from './BuildProgress';
 import { RebuildProposal } from './RebuildProposal';
@@ -61,45 +58,6 @@ export function validateDraft(model: Model, details?: ReadonlyMap<string, MartDe
   return null;
 }
 
-/** Where a link to an OWOX page in a tip goes, so it opens in the same tab. */
-const OpenPath = createContext<((path: string) => void) | undefined>(undefined);
-
-/** An (i) button that shows a live description as Markdown on hover, focus and click. The text stays mounted so it is read once; it lingers after the pointer leaves so a link in it can be clicked. */
-function InfoTip({ name, text }: { name: string; text: string }) {
-  const id = useId();
-  const onOpen = useContext(OpenPath);
-  const [hover, setHover] = useState(false);
-  const [focus, setFocus] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const open = hover || focus || pinned;
-  const anchor = useRef<HTMLSpanElement>(null);
-  const style = useBelow(anchor, open);
-  return (
-    <span ref={anchor} className="gy-tip" onMouseEnter={() => { clearTimeout(timer.current); setHover(true); }} onMouseLeave={() => { clearTimeout(timer.current); timer.current = setTimeout(() => setHover(false), LINGER_MS); }}
-      onFocus={() => setFocus(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setFocus(false); setPinned(false); } }}>
-      <button
-        type="button" className="gy-tip-btn" aria-label={`About ${name}`} aria-describedby={id}
-        onClick={() => setPinned((v) => !v)}
-        onKeyDown={(e) => { if (e.key === 'Escape') { setHover(false); setFocus(false); setPinned(false); } }}
-      >
-        <Info size={14} aria-hidden="true" />
-      </button>
-      <span
-        role="tooltip" id={id} hidden={!open} className="gy-tip-pop" style={style}
-        onClick={(e) => {
-          const a = (e.target as Element).closest('a');
-          const path = a && onOpen ? owoxPath(a.getAttribute('href') ?? '', HOSTS) : null;
-          if (path) { e.preventDefault(); setHover(false); setFocus(false); setPinned(false); onOpen!(path); }
-        }}
-      >
-        <div className="gy-md"><MarkdownText text={text} /></div>
-      </span>
-    </span>
-  );
-}
-
 /** The live description of a source's field, if it has one. */
 const fieldNoteOf = (detail: MartDetail | undefined, path: string): string | undefined =>
   martFields(detail?.fields ?? []).find((x) => x.path === path)?.field.description?.trim();
@@ -140,7 +98,7 @@ function Source({ label, detail, status, measure, dateField, noDate, noField = f
   );
 }
 
-export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss, hashOf, readOnly = false, onReload }: {
+export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss, hashOf, readOnly = false, onReload, rebuildRef }: {
   model: Model;
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
@@ -161,6 +119,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   readOnly?: boolean;
   /** Reloads the shared model after a save found it changed by someone else. */
   onReload?: () => void;
+  /** Filled with a function that starts a Rebuild, for a Checkup answer that asks for one. */
+  rebuildRef?: MutableRefObject<(() => void) | null>;
 }) {
   const [draft, setDraft] = useState<Model>(model);
   const [error, setError] = useState<string | null>(null);
@@ -350,6 +310,11 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
       failSave(e);
     }
   };
+  useEffect(() => {
+    if (!rebuildRef) return;
+    rebuildRef.current = !readOnly && canRebuild && !dirty && rebuild.phase === 'idle' ? () => void startRebuild() : null;
+    return () => { rebuildRef.current = null; };
+  });
   const closeRebuild = () => { setError(null); setRebuild({ phase: 'idle' }); };
 
   // without an access list only the Data Marts already referenced can be offered

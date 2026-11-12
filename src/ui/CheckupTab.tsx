@@ -1,8 +1,10 @@
-import { Boxes, ListChecks, Network, RefreshCw, Spline, Target, Wrench, type LucideIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { GROUPS, type Check, type CheckStatus, type Fix, type GroupId } from '../checkup/types';
+import { Boxes, ListChecks, Loader2, Network, RefreshCw, Spline, Target, Wrench, type LucideIcon } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { GROUPS, type ApplyTarget, type Check, type CheckStatus, type Fix, type GroupId, type Suggestion } from '../checkup/types';
+import type { ApplyResult } from '../checkup/apply';
 import { metricsSnippet } from './Blocked';
 import { CollapsibleCard } from './CollapsibleCard';
+import { InfoTip } from './InfoTip';
 
 export interface CheckupProps {
   /** Starts a run; the tab passes onUpdate. App binds runCheckup's other arguments. */
@@ -11,7 +13,18 @@ export interface CheckupProps {
   now: () => Date;
   /** Goes to an OWOX page; without it Fix links show as plain text. */
   onOpen?: (path: string) => void;
-  onOpenTab?: (tab: 'ontology') => void;
+  /** A project admin can pick an answer and Apply it; a member reads the question only. */
+  isAdmin?: boolean;
+  /** Writes one answer from the current state. Without it nothing can be applied. */
+  apply?: (t: ApplyTarget) => Promise<ApplyResult>;
+  /** Drafts an answer with the AI for a check; passed only when an admin has an AI credential. */
+  suggestAi?: (checkId: string) => Promise<Suggestion | null>;
+  /** The Metrics editor, drawn in the Metrics section under its checks. */
+  metrics?: ReactNode;
+  /** No model yet: every section opens. */
+  noModel?: boolean;
+  /** This section opens on the first result and scrolls into view. */
+  openSection?: GroupId;
 }
 
 const GROUP_ICON: Record<GroupId, LucideIcon> = { critical: Target, core: Boxes, contexts: Network, connections: Spline, metrics: ListChecks, housekeeping: Wrench };
@@ -34,10 +47,26 @@ function summarize(checks: Check[], running: boolean): string {
   return running ? `${text}${text ? ', ' : ''}checking…` : text;
 }
 
+/** The section heading's count: "1 warning, 1 recommendation", or "All passed" when nothing needs a look. */
+function countText(checks: Check[]): string {
+  const n = (st: CheckStatus) => checks.filter((c) => c.status === st).length;
+  const parts = [
+    n('fail') > 0 && `${n('fail')} failed`,
+    n('warn') > 0 && plural(n('warn'), 'warning', 'warnings'),
+    n('recommend') > 0 && plural(n('recommend'), 'recommendation', 'recommendations'),
+  ].filter(Boolean) as string[];
+  if (n('running') > 0) parts.push('checking…');
+  return parts.length ? parts.join(', ') : 'All passed';
+}
+
 const worst = (checks: Check[]): CheckStatus => SEVERITY.find((s) => checks.some((c) => c.status === s)) ?? 'skip';
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
-export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupProps) {
+const sectionId = (g: GroupId) => `gy-ck-sec-${g}`;
+const scrollTo = (g: GroupId) => { document.getElementById(sectionId(g))?.scrollIntoView?.({ block: 'start' }); };
+const recommendedIndex = (s: Suggestion) => Math.max(0, s.options.findIndex((o) => o.recommended));
+
+export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply, suggestAi, metrics, noModel = false, openSection }: CheckupProps) {
   const [checks, setChecks] = useState<Check[]>([]);
   const [running, setRunning] = useState(true);
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
@@ -48,6 +77,22 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
   runRef.current = run;
   const nowRef = useRef(now);
   nowRef.current = now;
+  const openRef = useRef({ noModel, openSection });
+  openRef.current = { noModel, openSection };
+  // which sections start folded; set once, when the first run ends, so a rerun never refolds what a person opened
+  const [folded, setFolded] = useState<Record<string, boolean> | null>(null);
+  // sections opened on request: a Fix link to Metrics, or a Rebuild
+  const [attention, setAttention] = useState<ReadonlySet<GroupId>>(new Set());
+  // the option picked per check, as an index; unset means the recommended one
+  const [picked, setPicked] = useState<Record<string, number>>({});
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  const [results, setResults] = useState<Record<string, ApplyResult>>({});
+  // AI answers per check for the session; null: the AI had none
+  const [aiAnswers, setAiAnswers] = useState<Record<string, Suggestion | null>>({});
+  const [aiBusy, setAiBusy] = useState<ReadonlySet<string>>(new Set());
+  const asked = useRef(new Set<string>());
+  const suggestRef = useRef(suggestAi);
+  suggestRef.current = suggestAi;
 
   const start = useCallback(() => {
     const id = ++runId.current;
@@ -58,6 +103,11 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
       if (!fail()) return;
       setChecks(list);
       setRunning(false);
+      setFolded((prev) => {
+        if (prev) return prev;
+        const { noModel: none, openSection: open } = openRef.current;
+        return Object.fromEntries(GROUPS.map((g) => [g.id, !(none || g.id === open || list.some((c) => c.group === g.id && (c.status === 'fail' || c.status === 'warn')))]));
+      });
       setCheckedAt(nowRef.current());
       setAnnounced(summarize(list, false));
     }, () => {
@@ -71,23 +121,103 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
     return () => { runId.current++; };
   }, [start]);
 
+  // the section a request names scrolls into view once its card is on the page
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (!openSection || !folded || scrolled.current) return;
+    scrolled.current = true;
+    scrollTo(openSection);
+  }, [openSection, folded]);
+
+  const openMetrics = () => { setAttention((p) => new Set(p).add('metrics')); scrollTo('metrics'); };
+
+  const doApply = async (c: Check, s: Suggestion) => {
+    if (!apply) return;
+    const target = s.target(s.options[picked[c.id] ?? recommendedIndex(s)]!);
+    if (target.kind === 'model' && target.action === 'rebuild') openMetrics();
+    setBusy((p) => new Set(p).add(c.id));
+    const r = await apply(target).catch((e): ApplyResult => ({ ok: false, refused: false, error: e instanceof Error ? e.message : String(e) }));
+    setBusy((p) => { const n = new Set(p); n.delete(c.id); return n; });
+    setResults((p) => { const n = { ...p }; if (r.ok) delete n[c.id]; else n[c.id] = r; return n; });
+    // a build leaves Settings and a rebuild shows its proposal; every other answer changes what the checks see
+    if (r.ok && target.kind !== 'model') start();
+  };
+
+  const suggest = async (c: Check) => {
+    if (!suggestRef.current || asked.current.has(c.id)) return;
+    asked.current.add(c.id);
+    setAiBusy((p) => new Set(p).add(c.id));
+    const s = await suggestRef.current(c.id).catch(() => null);
+    setAiBusy((p) => { const n = new Set(p); n.delete(c.id); return n; });
+    setAiAnswers((p) => ({ ...p, [c.id]: s }));
+  };
+
+  const renderQuestion = (c: Check) => {
+    const base = c.suggestion;
+    if (!base || c.status === 'ok' || c.status === 'skip' || c.status === 'running') return null;
+    const needsAi = base.ai && base.options.length === 0;
+    const answered = needsAi && c.id in aiAnswers;
+    const sug = needsAi ? aiAnswers[c.id] ?? null : base;
+    const question = sug?.question ?? base.question;
+    const result = results[c.id];
+    return (
+      <div className="gy-ck-ask">
+        <p className="gy-ck-q">{question}</p>
+        {sug && sug.options.length > 0 && (
+          <div role="radiogroup" aria-label={question} className="gy-ck-opts">
+            {sug.options.map((o, i) => (
+              <label key={i} className="gy-ck-opt">
+                <input type="radio" name={`gy-opt-${c.id}`} checked={(picked[c.id] ?? recommendedIndex(sug)) === i} disabled={!isAdmin || busy.has(c.id)}
+                  onChange={() => setPicked((p) => ({ ...p, [c.id]: i }))} />
+                <span>{o.label}</span>
+                {o.recommended && <span className="gy-tag">Recommended</span>}
+              </label>
+            ))}
+          </div>
+        )}
+        {!isAdmin && <p className="dm-muted gy-ck-note">Ask a project admin</p>}
+        {isAdmin && needsAi && !answered && (suggestAi
+          ? <button type="button" className="gy-btn" disabled={aiBusy.has(c.id)} onClick={() => void suggest(c)}>
+              {aiBusy.has(c.id) && <Loader2 size={14} className="gy-spin" aria-hidden="true" />}Suggest an answer
+            </button>
+          : <p className="dm-muted gy-ck-note">Map an AI credential to get a suggested answer</p>)}
+        {isAdmin && answered && !sug && <p className="dm-muted gy-ck-note">Couldn&apos;t suggest an answer. Fix it from the link, or try again later.</p>}
+        {isAdmin && sug && sug.options.length > 0 && apply && (
+          <button type="button" className="gy-btn gy-btn-primary" disabled={busy.has(c.id)} aria-busy={busy.has(c.id)} onClick={() => void doApply(c, sug)}>
+            {busy.has(c.id) && <Loader2 size={14} className="gy-spin" aria-hidden="true" />}Apply
+          </button>
+        )}
+        {result && !result.ok && !result.refused && <p role="alert" className="gy-form-error">{result.error}</p>}
+        {result && !result.ok && result.refused && (
+          <div className="gy-ck-refused">
+            <p className="dm-muted gy-ck-note">OWOX didn&apos;t accept the write from here. Paste this in yourself:</p>
+            <pre className="gy-snippet">{result.snippet}</pre>
+            <button type="button" className="gy-btn" onClick={() => copy(result.snippet)}>Copy</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const copy = (text: string) => { void Promise.resolve(navigator.clipboard?.writeText(text)).catch(() => {}); };
 
   const renderCheck = (c: Check) => {
     const fixes = (c.status === 'fail' || c.status === 'warn' || c.status === 'recommend') && c.fix ? [c.fix].flat() : [];
     const link = (fix: Fix) => {
       if (fix.kind === 'owox') return onOpen ? <button type="button" className="gy-link" onClick={() => onOpen(fix.path)}>{fix.label}</button> : fix.label;
-      if (fix.kind === 'tab') return <button type="button" className="gy-link" onClick={() => onOpenTab?.(fix.tab)}>{fix.label}</button>;
+      if (fix.kind === 'tab') return <button type="button" className="gy-link" onClick={openMetrics}>{fix.label}</button>;
       return <button type="button" className="gy-link" onClick={() => { copy(metricsSnippet(projectId)); setShown(c.id); }}>{fix.label}</button>;
     };
     return (
       <li key={c.id} className="gy-chk" data-state={c.status} data-bad={c.status === 'fail'}>
         <span className="gy-chk-mark" aria-hidden="true">{MARK[c.status]}</span>
         <span className="gy-chk-label">{c.label}</span>
+        <InfoTip name={c.label} text={c.purpose} />
         <span className="gy-sr">, {WORD[c.status]}</span>
         {c.detail && <span className="gy-chk-detail">{c.detail}</span>}
         {fixes.length > 0 && <span className="gy-ck-fix">{fixes.map((f, i) => <span key={i}>{link(f)}</span>)}</span>}
         {fixes.some((f) => f.kind === 'snippet') && shown === c.id && <pre className="gy-snippet">{metricsSnippet(projectId)}</pre>}
+        {renderQuestion(c)}
       </li>
     );
   };
@@ -105,15 +235,17 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
       </div>
       {GROUPS.map((g) => {
         const inGroup = checks.filter((c) => c.group === g.id);
-        if (inGroup.length === 0) return null;
+        if (inGroup.length === 0 && !(g.id === 'metrics' && metrics)) return null;
         const plain = inGroup.filter((c) => !c.context);
         const contexts: { id: string; name: string }[] = [];
         for (const c of inGroup) if (c.context && !contexts.some((x) => x.id === c.context!.id)) contexts.push(c.context);
         const w = worst(inGroup);
+        // open while the first run streams, then by what the run found
+        const fold = folded ? folded[g.id] ?? !(noModel || g.id === openSection) : false;
         return (
-          <section key={g.id} aria-labelledby={`gy-ck-${g.id}`} className="gy-ck-group">
-            <CollapsibleCard variant="section" icon={GROUP_ICON[g.id]} label={g.label}
-              title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label}<span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span><span className="gy-sr">, {WORD[w]}</span></h3>}>
+          <section key={g.id} id={sectionId(g.id)} aria-labelledby={`gy-ck-${g.id}`} className="gy-ck-group">
+            <CollapsibleCard variant="section" icon={GROUP_ICON[g.id]} label={g.label} collapsed={fold} attention={attention.has(g.id)}
+              title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label}<span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span><span className="gy-ck-count">{countText(inGroup)}</span></h3>}>
             {plain.length > 0 && <div className="dm-card-block"><ul className="gy-build-list">{plain.map(renderCheck)}</ul></div>}
             {contexts.length > 0 && <div className="gy-ck-contexts">
             {contexts.map((ctx) => {
@@ -128,6 +260,7 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
               );
             })}
             </div>}
+            {g.id === 'metrics' && metrics && <div className="gy-ck-editor">{metrics}</div>}
             </CollapsibleCard>
           </section>
         );

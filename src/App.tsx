@@ -10,7 +10,7 @@ import { conflictMessage } from './lib/conflict';
 import { shownModel } from './model/shown';
 import { checkHealth, type Issue } from './model/health';
 import { buildModel, currentInputHash, type BuildStep } from './model/build';
-import { aiGenerate, type Generate } from './model/interpret';
+import { aiGenerate, aiGenerateWith, type Generate, type GenerateWith } from './model/interpret';
 import { fetchQuality, type QualitySummary } from './owox/quality';
 import { fetchInputs, type Inputs, type MartDetail, type OwoxLike } from './owox/sources';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
@@ -25,12 +25,18 @@ import { metricName } from './model/metricName';
 import { LoadingBar } from './ui/LoadingBar';
 import { Header, RangeControls } from './ui/Header';
 import { runCheckup } from './checkup/run';
+import { applyTarget, type ApplyResult } from './checkup/apply';
+import { aiSuggestion } from './checkup/suggestAi';
+import type { SuggestContext } from './checkup/suggest';
+import type { ApplyTarget, GroupId } from './checkup/types';
 import { SettingsPage, type SettingsTab } from './ui/SettingsPage';
 
 export interface AppDeps {
   owox: OwoxLike;
   store: CollectionsLike;
   generate: Generate | null;
+  /** The AI handle for Checkup suggestions; null without a credential. */
+  generateWith?: GenerateWith | null;
   userId: string;
   now: () => Date;
 }
@@ -42,7 +48,7 @@ type View =
   | { name: 'error'; message: string; retry: 'load' | 'build' | 'reload' }
   | { name: 'not_set_up' }
   | { name: 'ready' }
-  | { name: 'settings'; tab: SettingsTab };
+  | { name: 'settings'; tab: SettingsTab; section?: GroupId };
 
 export function depsFrom(ctx: PluginContext): AppDeps {
   // the model is built once and saved, so the build reads the descriptions on the stronger tier;
@@ -53,6 +59,7 @@ export function depsFrom(ctx: PluginContext): AppDeps {
     owox: ctx.owox as unknown as OwoxLike,
     store: ctx as unknown as CollectionsLike,
     generate: ai ? aiGenerate(ai, ctx.signal) : null,
+    generateWith: ai ? aiGenerateWith(ai, ctx.signal) : null,
     userId: ctx.userId,
     now: () => new Date(),
   };
@@ -69,11 +76,12 @@ function migrate(project: Model, settings: Settings): Model {
   return applyCore(project, core, inbound);
 }
 
-const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology', checkup: '/settings/checkup' };
-/** The settings tab a route opens; anything else opens the canvas. */
-const tabOf = (route: string | undefined): SettingsTab | null => {
+const ROUTES: Record<SettingsTab, string> = { general: '/settings', checkup: '/settings/checkup' };
+const ROUTES_METRICS = '/settings/ontology';
+/** The settings tab (and Checkup section) a route opens; anything else opens the canvas. /settings/ontology is the 0.3 route of the Metrics tab. */
+const tabOf = (route: string | undefined): { tab: SettingsTab; section?: GroupId } | null => {
   const path = route?.replace(/\/+$/, '');
-  return path === ROUTES.ontology ? 'ontology' : path === ROUTES.checkup ? 'checkup' : path === ROUTES.general ? 'general' : null;
+  return path === ROUTES_METRICS ? { tab: 'checkup', section: 'metrics' } : path === ROUTES.checkup ? { tab: 'checkup' } : path === ROUTES.general ? { tab: 'general' } : null;
 };
 
 /** No default preset means no range: the ontology view. */
@@ -99,7 +107,7 @@ function mergePartial(base: CacheDoc | null, cards: Record<string, CardCache>, m
 
 export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDeps }) {
   const [deps] = useState(() => injected ?? depsFrom(ctx));
-  const { owox, store, generate, userId, now } = deps;
+  const { owox, store, generate, generateWith = null, userId, now } = deps;
 
   const [view, setView] = useState<View>({ name: 'loading' });
   // a reload lands on the settings tab the route names; read once, the first load only
@@ -142,6 +150,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const settingsNow = useRef<Settings>(DEFAULT_SETTINGS);
   settingsNow.current = settings;
   modelNow.current = model;
+  // the latest Checkup run's facts, which an AI suggestion reads; and the Metrics editor's Rebuild trigger
+  const checkupCtx = useRef<SuggestContext | null>(null);
+  const rebuildRef = useRef<(() => void) | null>(null);
   const cacheNow = useRef<CacheDoc | null>(null);
   cacheNow.current = cache;
 
@@ -179,8 +190,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       setModel(m);
       const tab = startTab.current;
       startTab.current = null;
-      if (m) setView(tab ? { name: 'settings', tab } : { name: 'ready' });
-      else if (tab === 'checkup') setView({ name: 'settings', tab });
+      if (m) setView(tab ? { name: 'settings', ...tab } : { name: 'ready' });
+      else if (tab?.tab === 'checkup') setView({ name: 'settings', ...tab });
       else if (member.isAdmin) void buildRef.current();
       else setView({ name: 'not_set_up' });
     } catch (e) {
@@ -349,7 +360,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     void refresh(false).then((done) => { if (done) void checkOutdated(); });
   }, [inputsReady, inputs, model, owox, refresh, range]);
 
-  const openSettings = (tab: SettingsTab = 'general') => { ctx.ui?.setRoute?.(ROUTES[tab]); setSettingsError(null); setView({ name: 'settings', tab }); };
+  const openSettings = (tab: SettingsTab = 'general', section?: GroupId) => { ctx.ui?.setRoute?.(section === 'metrics' ? ROUTES_METRICS : ROUTES[tab]); setSettingsError(null); setView({ name: 'settings', tab, section }); };
   const leaveSettings = () => {
     ctx.ui?.setRoute?.('/');
     // without a model there is no canvas to go back to; only an admin builds one
@@ -401,6 +412,29 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     leaveSettings();
   };
 
+  /** One Checkup answer. A core list also moves the core flags of the shared model, so the canvas shows the new set; an admin's write. */
+  const applyAnswer = async (t: ApplyTarget): Promise<ApplyResult> => {
+    const { thresholdPct, industry, coreClasses } = settingsNow.current;
+    const r = await applyTarget(t, {
+      owox, store, settings: { thresholdPct, industry, coreClasses },
+      onModel: (action) => {
+        if (action === 'build') void build();
+        else { document.getElementById('gy-ck-sec-metrics')?.scrollIntoView?.({ block: 'start' }); rebuildRef.current?.(); }
+      },
+    });
+    if (!r.ok || t.kind !== 'settings') return r;
+    try {
+      const stored = await loadProjectSettings(store);
+      settingsNow.current = { ...settingsNow.current, ...stored };
+      setSettings(settingsNow.current);
+      const base = modelNow.current;
+      if (t.patch.coreClasses && stored.coreClasses && isAdmin && base) await commit(base, stored.coreClasses, true);
+    } catch (e) {
+      return { ok: false, refused: false, error: e instanceof ModelConflict ? conflictMessage(e) : `Saved, but the model wasn't updated: ${describeError(e)}` };
+    }
+    return r;
+  };
+
   switch (view.name) {
     case 'loading':
       return <main className="gy-main"><LoadingBar /><p className="gy-muted gy-loadnote">Loading settings and model…</p></main>;
@@ -430,10 +464,22 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <SettingsPage
           settings={settings}
           tab={view.tab}
+          openSection={view.section}
+          rebuildRef={rebuildRef}
           onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
           ontology={ontologyProps}
           noModel={!model}
-          checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, settings: { thresholdPct: settings.thresholdPct, industry: settings.industry, coreClasses: settings.coreClasses }, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
+          checkup={{
+            // read at call time: an Apply reruns the checkup before this render lands
+            run: (onUpdate) => {
+              const { thresholdPct, industry, coreClasses } = settingsNow.current;
+              return runCheckup({ owox, hasAi: !!generate, settings: { thresholdPct, industry, coreClasses }, model: modelNow.current, projectId: ctx.projectId, onUpdate, onContext: (c) => { checkupCtx.current = c; } });
+            },
+            projectId: ctx.projectId, now, apply: applyAnswer,
+            suggestAi: isAdmin && generateWith
+              ? async (id) => (checkupCtx.current ? aiSuggestion(id, checkupCtx.current, generateWith) : null)
+              : undefined,
+          }}
           onBack={leaveSettings}
           onRebuild={async (onStep) => {
             const r: BuildResult = await buildModel({ owox, generate, userId, now: now(), existingCore: settings.coreClasses, industry: settings.industry, onStep });
@@ -461,7 +507,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           text: i.text,
         })),
         outdated: showOutdated,
-        onReview: () => openSettings('ontology'),
+        onReview: () => openSettings('checkup', 'metrics'),
       } : undefined;
       return (
         <main className="gy-main">

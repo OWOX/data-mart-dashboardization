@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from './test-host';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from './test-host';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
@@ -92,9 +92,18 @@ test('Settings and Back set the route', async () => {
   expect(await screen.findByRole('button', { name: 'Date range' })).toBeInTheDocument();
 });
 
+/** Settings is open: goes to the Checkup tab and opens the Metrics section once the first run has settled. */
+const openMetrics = async () => {
+  fireEvent.click(screen.getByRole('tab', { name: 'Checkup' }));
+  await screen.findByText(/^Checked /);
+  // the card applies its first fold in an effect; let it land before a click
+  await act(async () => {});
+  const toggle = screen.getByRole('button', { name: 'Metrics' });
+  if (toggle.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+};
 const openOntology = async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  await openMetrics();
 };
 // the metric's name is the field's alias, so a rebuild can no longer rename it; a changed kind is a difference it still proposes
 const changedAi = { ...goalAi, metrics: [{ ...goalAi.metrics[0]!, kind: 'level' }] };
@@ -351,7 +360,7 @@ test('a blocked rebuild shows inside the tab and keeps the current model', async
   const before = await loadShared(store);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  await openMetrics();
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   expect(await screen.findByRole('heading', { name: "Goal can't be tracked" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to the model' }));
@@ -758,7 +767,9 @@ test('a broken reference shows the icon with its count, and the layer link opens
   expect(screen.getByRole('dialog', { name: 'Issues' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Review in Metrics' }));
   expect(setRoute).toHaveBeenCalledWith('/settings/ontology');
-  expect(screen.getByRole('tab', { name: 'Metrics' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('tab', { name: 'Checkup' })).toHaveAttribute('aria-selected', 'true');
+  await screen.findByText(/^Checked /);
+  expect(screen.getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true');
 });
 
 test('no issues icon while the model matches its schemas', async () => {

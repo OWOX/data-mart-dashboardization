@@ -416,3 +416,10 @@ test('a passing check has no suggestion', async () => {
   expect(c['project.fact']!.status).toBe('ok');
   expect(c['project.fact']!.suggestion).toBeUndefined();
 });
+
+test('onContext receives the assembled suggestion context once', async () => {
+  const seen: unknown[] = [];
+  await runCheckup({ owox: fakeOwox(data()), hasAi: true, settings: S0, model: null, projectId: 'p', onUpdate: () => {}, onContext: (c) => seen.push(c) });
+  expect(seen).toHaveLength(1);
+  expect(seen[0]).toMatchObject({ projectId: 'p', settings: S0 });
+});

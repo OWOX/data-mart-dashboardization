@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent, type MutableRefObject } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { PRESET_GROUPS, PRESET_LABELS, type BuildResult, type Model, type Preset, type Settings, type WeekStart } from '../types';
 import type { MartDetail, OwoxLike } from '../owox/sources';
@@ -6,11 +6,12 @@ import type { BuildStep } from '../model/build';
 import { LoadingBar } from './LoadingBar';
 import { OntologyTab } from './OntologyTab';
 import { CheckupTab, type CheckupProps } from './CheckupTab';
+import type { GroupId } from '../checkup/types';
 
-export type SettingsTab = 'general' | 'ontology' | 'checkup';
-const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'ontology', label: 'Metrics' }, { id: 'checkup', label: 'Checkup' }];
+export type SettingsTab = 'general' | 'checkup';
+const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'checkup', label: 'Checkup' }];
 
-/** What the Metrics tab edits; null while the Data Marts are still being read. */
+/** What the Metrics section edits; null while the Data Marts are still being read. */
 export interface OntologyProps {
   model: Model;
   details: ReadonlyMap<string, MartDetail>;
@@ -21,7 +22,7 @@ export interface OntologyProps {
   hashOf?: (m: Model) => Promise<string | null>;
 }
 
-export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, noModel = false, isAdmin = true, onReload }: {
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, noModel = false, isAdmin = true, onReload, openSection, rebuildRef }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
   /** Reads the descriptions and schemas again into a candidate model; the Ontology tab shows it as a proposal. */
   onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void;
@@ -29,8 +30,12 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
   onDismiss?: () => void; error?: string | null;
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
   /** What the Checkup tab runs; the tab is mounted only while selected, so each visit starts a run. */
-  checkup?: CheckupProps | null;
-  /** No model yet: the Metrics tab says so instead of waiting for Data Marts. */
+  checkup?: Omit<CheckupProps, 'metrics' | 'isAdmin' | 'noModel' | 'openSection'> | null;
+  /** The Checkup section that opens on arrival, e.g. 'metrics' for the old /settings/ontology route. */
+  openSection?: GroupId;
+  /** Filled with a function that starts the Metrics section's Rebuild. */
+  rebuildRef?: MutableRefObject<(() => void) | null>;
+  /** No model yet: the Metrics section says so instead of waiting for Data Marts. */
   noModel?: boolean;
   /** A member who isn't a project admin reads the model and edits only their own view settings. */
   isAdmin?: boolean;
@@ -58,6 +63,11 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
     onSave({ ...settings, thresholdPct, defaultPreset: preset, comparisonDefault: comparison, weekStart });
   };
 
+  const metrics = ontology
+    ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} readOnly={!isAdmin} onReload={onReload} rebuildRef={rebuildRef} />
+    : noModel ? <p className="dm-muted gy-form-note">No model yet. It&apos;s built when you go back to the canvas.</p>
+    : <><LoadingBar /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>;
+
   return (
     <div className="dm-page">
       <header className="dm-page-header gy-settings-header">
@@ -73,46 +83,48 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
         ))}
       </div>
       <main>
-        <div className="dm-page-content" role="tabpanel" id="gy-panel-ontology" aria-labelledby="gy-tab-ontology" hidden={tab !== 'ontology'}>
-          {ontology
-            ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} readOnly={!isAdmin} onReload={onReload} />
-            : noModel ? <p className="dm-muted gy-form-note">No model yet. It's built when you go back to the canvas.</p>
-            : <><LoadingBar /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
-        </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-checkup" aria-labelledby="gy-tab-checkup" hidden={tab !== 'checkup'}>
-          {tab === 'checkup' && checkup && <CheckupTab {...checkup} onOpen={onOpen} onOpenTab={(t) => go(t)} />}
+          {tab === 'checkup' && checkup && (
+            <CheckupTab {...checkup} onOpen={onOpen} isAdmin={isAdmin} noModel={noModel} openSection={openSection} metrics={metrics} />
+          )}
         </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>
           <form className="dm-card gy-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
-            <p className="dm-muted gy-form-note">These settings apply to everyone in the project.</p>
-            <div className="gy-field">
-              <label htmlFor="gy-threshold">Red when below plan by more than (%)</label>
-              <input id="gy-threshold" className="gy-input" type="number" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} disabled={!isAdmin} />
-              <span className="dm-muted gy-field-hint">{isAdmin ? 'A card between plan and this threshold shows orange.' : 'Only a project admin can change this'}</span>
-            </div>
-            <div className="gy-field">
-              <label htmlFor="gy-default-range">Default date range</label>
-              <select id="gy-default-range" className="gy-select" value={preset ?? ''} onChange={(e) => setPreset(e.target.value === '' ? null : e.target.value as Preset)}>
-                <option value="">None (ontology view)</option>
-                {PRESET_GROUPS.map((g) => (
-                  <optgroup key={g.label} label={g.label}>
-                    {g.presets.map((p) => <option key={p} value={p}>{PRESET_LABELS[p]}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-              <span className="dm-muted gy-field-hint">Only for you</span>
-            </div>
-            <div className="gy-field">
-              <label htmlFor="gy-week-start">Week starts on</label>
-              <select id="gy-week-start" className="gy-select" value={weekStart} onChange={(e) => setWeekStart(e.target.value as WeekStart)}>
-                <option value="monday">Monday</option>
-                <option value="sunday">Sunday</option>
-              </select>
-            </div>
-            <label className="gy-check">
-              <input type="checkbox" checked={comparison} onChange={(e) => setComparison(e.target.checked)} />
-              Compare with previous period by default
-            </label>
+            <fieldset className="gy-fieldset">
+              <legend>Your view</legend>
+              <div className="gy-field">
+                <label htmlFor="gy-default-range">Default date range</label>
+                <select id="gy-default-range" className="gy-select" value={preset ?? ''} onChange={(e) => setPreset(e.target.value === '' ? null : e.target.value as Preset)}>
+                  <option value="">None (ontology view)</option>
+                  {PRESET_GROUPS.map((g) => (
+                    <optgroup key={g.label} label={g.label}>
+                      {g.presets.map((p) => <option key={p} value={p}>{PRESET_LABELS[p]}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+                <span className="dm-muted gy-field-hint">Only for you</span>
+              </div>
+              <div className="gy-field">
+                <label htmlFor="gy-week-start">Week starts on</label>
+                <select id="gy-week-start" className="gy-select" value={weekStart} onChange={(e) => setWeekStart(e.target.value as WeekStart)}>
+                  <option value="monday">Monday</option>
+                  <option value="sunday">Sunday</option>
+                </select>
+              </div>
+              <label className="gy-check">
+                <input type="checkbox" checked={comparison} onChange={(e) => setComparison(e.target.checked)} />
+                Compare with previous period by default
+              </label>
+            </fieldset>
+            <fieldset className="gy-fieldset">
+              <legend>Project</legend>
+              <p className="dm-muted gy-form-note">This applies to everyone in the project.</p>
+              <div className="gy-field">
+                <label htmlFor="gy-threshold">Red when below plan by more than (%)</label>
+                <input id="gy-threshold" className="gy-input" type="number" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} disabled={!isAdmin} />
+                <span className="dm-muted gy-field-hint">{isAdmin ? 'A card between plan and this threshold shows orange.' : 'Only a project admin can change this'}</span>
+              </div>
+            </fieldset>
             {error && <p role="alert" className="gy-form-error">{error}</p>}
             <div className="gy-form-actions">
               <button type="submit" className="gy-btn gy-btn-primary">Save</button>

@@ -7,7 +7,7 @@ import { currentInputHash } from '../model/build';
 import { runPool } from '../lib/pool';
 import { describeError } from '../lib/errors';
 import { criticalRow, findMetricRows, isFieldLink, type MetricRow } from './tables';
-import { codeSuggestion } from './suggest';
+import { codeSuggestion, type SuggestContext } from './suggest';
 import { aiQuestion, isAiCheck } from './suggestAi';
 import type { Check, CheckStatus, Fix, GroupId } from './types';
 
@@ -15,6 +15,8 @@ export interface CheckupArgs {
   owox: OwoxLike; hasAi: boolean; model: Model | null; projectId: string; settings: ProjectSettings;
   /** The whole list, each time a check changes. */
   onUpdate: (checks: Check[]) => void;
+  /** Called once with what the run loaded, so a later AI suggestion reads the same facts. */
+  onContext?: (ctx: SuggestContext) => void;
 }
 
 /** Labels by check id; per-context checks use `context.<name>`. */
@@ -109,7 +111,7 @@ const label = (id: string) => LABELS[id.startsWith('context:') ? `context.${id.s
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** Runs every check of the spec. Never throws; resolves with the final list. */
-export async function runCheckup({ owox: raw, hasAi, model, projectId, settings, onUpdate }: CheckupArgs): Promise<Check[]> {
+export async function runCheckup({ owox: raw, hasAi, model, projectId, settings, onUpdate, onContext }: CheckupArgs): Promise<Check[]> {
   // Every Data Mart schema is requested once per run, however many checks (and checkHealth) ask for it.
   const cache = new Map<string, Promise<unknown>>();
   // Object.create keeps every other member (prototype methods, getters) bound to the real client.
@@ -370,7 +372,8 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
   const attachSuggestions = async () => {
     let g: Awaited<ReturnType<typeof graph>> = { nodes: [], edges: [] };
     try { g = await graph(); } catch { /* suggestions that need the graph are left out */ }
-    const ctx = { inputs, nodes: g.nodes, edges: g.edges, goalId: factOk ? goalId : null, settings, projectId };
+    const ctx: SuggestContext = { inputs, nodes: g.nodes, edges: g.edges, goalId: factOk ? goalId : null, settings, projectId };
+    onContext?.(ctx);
     for (const c of [...map.values()]) {
       if (c.status === 'ok' || c.status === 'skip' || c.status === 'running') continue;
       let s: Check['suggestion'] | null = null;
