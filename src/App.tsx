@@ -14,7 +14,7 @@ import { fetchInputs, fetchMartDetail, type Inputs, type MartDetail, type OwoxLi
 import { runPool } from './lib/pool';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
-  isStale, loadCache, loadOntology, loadPreferences, loadProjectModel, loadSettings, saveCache, saveOntology, savePreferences, saveSettings, type CollectionsLike,
+  isStale, loadCache, loadPreferences, loadProjectModel, loadProjectSettings, loadSettings, loadShared, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings, type CollectionsLike,
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { BuildProgress } from './ui/BuildProgress';
@@ -128,7 +128,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const load = useCallback(async () => {
     setView({ name: 'loading' });
     try {
-      const [s, own, prefs] = await Promise.all([loadSettings(store), loadOntology(store), loadPreferences(store).catch(() => null)]);
+      const [s, own, prefs] = await Promise.all([loadSettings(store), loadShared(store), loadPreferences(store).catch(() => null)]);
       let m = own;
       if (!m) {
         // first open: start from the project model cut to what this member can reach, with no AI call
@@ -151,7 +151,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             } catch { /* keep the project hash */ }
           }
           // a failed save keeps the seed in memory; the next save of the model writes it
-          try { await saveOntology(store, m); } catch { setSeedNote(SEED_NOTE); }
+          try { await saveShared(store, null, m); } catch { setSeedNote(SEED_NOTE); }
         }
       }
       setSettings(s);
@@ -181,7 +181,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     try {
       const result = await buildModel({ owox, generate, userId, now: now(), onStep: (s) => setSteps((p) => [...p, s]) });
       if (!result.ok) { setView({ name: 'blocked', blocked: result.blocked }); return; }
-      await saveOntology(store, result.model);
+      await saveShared(store, modelNow.current, result.model);
       setSeedNote(null);
       setModel(result.model);
       setCache(null);
@@ -310,7 +310,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   // Fire and forget: losing the remembered choice must not disturb the canvas.
   const remember = (r: RangeChoice, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
   const saveOntologyAndLeave = async (m: Model) => {
-    await saveOntology(store, m);
+    await saveShared(store, modelNow.current, m);
     setSeedNote(null);
     // a new model object re-runs the refresh; the cache is judged by editedAt
     setModel(m);
@@ -330,7 +330,10 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     : null;
   const saveSettingsAndLeave = async (s: Settings) => {
     try {
-      await saveSettings(store, s);
+      const { thresholdPct, industry: _i, coreClasses: _c, ...view } = s;
+      await saveViewSettings(store, view);
+      // read fresh so a stale copy never writes industry or core classes back
+      await saveProjectSettings(store, { ...(await loadProjectSettings(store)), thresholdPct });
     } catch (e) {
       setSettingsError(`Couldn't save settings: ${describeError(e)}`);
       return;

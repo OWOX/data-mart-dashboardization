@@ -1,8 +1,9 @@
+import { seedShared } from './test/fixtures';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
-import { loadOntology, memoryCollections, saveOntology } from './store/collections';
+import { loadShared, memoryCollections } from './store/collections';
 import { type Model } from './types';
 
 const GID = '11111111-1111-1111-1111-111111111111';
@@ -32,9 +33,9 @@ async function setup() {
   const store = memoryCollections();
   const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW });
   if (!built.ok) throw new Error('fixture');
-  await saveOntology(store, built.model);
+  await seedShared(store, built.model);
   const puts: Model[] = [];
-  const spy = { collections: <T,>(name: string) => { const c = store.collections<T>(name); return { ...c, put: async (id: string, doc: T) => { if (name === 'ontology') puts.push(doc as Model); return c.put(id, doc); } }; } };
+  const spy = { collections: <T,>(name: string) => { const c = store.collections<T>(name); return { ...c, put: async (id: string, doc: T) => { if (name === 'ontology_project') puts.push(doc as Model); return c.put(id, doc); } }; } };
   const deps: AppDeps = { owox, store: spy, generate: async () => goalAi, userId: 'u1', now: () => NOW };
   return { deps, store, puts, model: built.model };
 }
@@ -81,7 +82,7 @@ test('unchecking a class and saving hides it on the canvas and stamps editedAt',
   expect(setRoute).toHaveBeenLastCalledWith('/');
   expect(customersCard()).toBeNull();
   expect(puts).toHaveLength(1);
-  const saved = (await loadOntology(store))!;
+  const saved = (await loadShared(store))!;
   expect(saved.editedAt).toBe(NOW.toISOString());
   expect(saved.classes.find((c) => c.id === CID)!.shown).toBe(false);
 });

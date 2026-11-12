@@ -1,4 +1,4 @@
-import { isStale, loadCache, loadOntology, loadPreferences, loadProjectModel, loadSettings, memoryCollections, saveCache, saveOntology, savePreferences, saveSettings } from './collections';
+import { isStale, loadCache, loadPreferences, loadProjectModel, loadProjectSettings, loadSettings, loadShared, loadViewSettings, memoryCollections, ModelConflict, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings } from './collections';
 import { model } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type CacheDoc, type Model } from '../types';
 
@@ -6,14 +6,86 @@ const doc = { modelHash: 'h', anchor: '2026-10-23', builtAt: 'b1', thresholdPct:
 
 test('round trips and defaults', async () => {
   const ctx = memoryCollections();
-  expect(await loadOntology(ctx)).toBeNull();
-  expect(await loadSettings(ctx)).toEqual({ ...DEFAULT_SETTINGS, defaultPreset: 'qtd' });
-  await saveOntology(ctx, model);
-  await saveSettings(ctx, { ...DEFAULT_SETTINGS, thresholdPct: 500 });
+  expect(await loadShared(ctx)).toBeNull();
+  expect(await loadSettings(ctx)).toEqual(DEFAULT_SETTINGS);
+  await saveShared(ctx, null, model);
+  await saveProjectSettings(ctx, { ...DEFAULT_SETTINGS, thresholdPct: 500 });
   await saveCache(ctx, 'k', doc);
-  expect(await loadOntology(ctx)).toEqual(model);
+  expect(await loadShared(ctx)).toEqual(model);
   expect((await loadSettings(ctx)).thresholdPct).toBe(100);
   expect(await loadCache(ctx, 'k')).toEqual(doc);
+});
+
+const mk = (over: Partial<Model> = {}): Model => ({ ...model, ...over });
+
+test('saveShared refuses to overwrite a newer doc', async () => {
+  const store = memoryCollections();
+  const a = mk({ builtAt: 't1', editedAt: null });
+  await saveShared(store, null, a);
+  const b = { ...a, editedAt: 't2', editedBy: 'u2' };
+  await saveShared(store, a, b);
+  const stale = { ...a, editedAt: 't3', editedBy: 'u1' };
+  await expect(saveShared(store, a, stale)).rejects.toMatchObject({ name: 'ModelConflict', by: 'u2', at: 't2' });
+  expect((await loadShared(store))!.editedAt).toBe('t2');
+});
+test('saveShared with no base refuses when a doc exists', async () => {
+  const store = memoryCollections();
+  await saveShared(store, null, mk({ builtAt: 't1' }));
+  await expect(saveShared(store, null, mk({ builtAt: 't9' }))).rejects.toBeInstanceOf(ModelConflict);
+});
+test('saveShared writes when nothing is stored, even with a base (a failed seed save)', async () => {
+  const store = memoryCollections();
+  await saveShared(store, mk({ builtAt: 't1' }), mk({ builtAt: 't2' }));
+  expect((await loadShared(store))!.builtAt).toBe('t2');
+});
+test('a conflict names the builder when the doc was never edited', async () => {
+  const store = memoryCollections();
+  await saveShared(store, null, mk({ builtAt: 't1', builtBy: 'u1' }));
+  await expect(saveShared(store, null, mk())).rejects.toMatchObject({ by: 'u1', at: 't1' });
+});
+test('a 0.3 default preset is ignored once; a 0.4 one is kept', async () => {
+  const store = memoryCollections();
+  await store.collections('preferences').put('defaults', { defaultPreset: 'qtd' });
+  expect((await loadViewSettings(store)).defaultPreset).toBeNull();
+  await saveViewSettings(store, { defaultPreset: 'mtd', comparisonDefault: false, weekStart: 'sunday' });
+  expect(await loadViewSettings(store)).toEqual({ defaultPreset: 'mtd', comparisonDefault: false, weekStart: 'sunday' });
+});
+test('view settings fall back to the old project fields for comparison and week start', async () => {
+  const store = memoryCollections();
+  await store.collections('settings').put('project', { thresholdPct: 30, comparisonDefault: false, weekStart: 'sunday' });
+  expect(await loadViewSettings(store)).toEqual({ defaultPreset: null, comparisonDefault: false, weekStart: 'sunday' });
+  expect((await loadProjectSettings(store)).thresholdPct).toBe(30);
+});
+test('project settings keep only valid core classes', async () => {
+  const store = memoryCollections();
+  await store.collections('settings').put('project', { industry: 'saas', coreClasses: [{ martId: 'a', why: 'x' }, { martId: 5 }, null] });
+  expect(await loadProjectSettings(store)).toEqual({ thresholdPct: 20, industry: 'saas', coreClasses: [{ martId: 'a', why: 'x' }] });
+});
+test('project settings cap core classes at 7 and reject an unknown industry', async () => {
+  const store = memoryCollections();
+  const many = Array.from({ length: 9 }, (_, i) => ({ martId: `m${i}`, why: 'w' }));
+  await store.collections('settings').put('project', { industry: 'mining', coreClasses: many });
+  const s = await loadProjectSettings(store);
+  expect(s.industry).toBeNull();
+  expect(s.coreClasses).toHaveLength(7);
+});
+test('saving the threshold keeps the stored industry and core classes', async () => {
+  const store = memoryCollections();
+  await store.collections('settings').put('project', { thresholdPct: 20, industry: 'saas', coreClasses: [{ martId: 'a', why: 'x' }] });
+  const stale = await loadProjectSettings(store);
+  await store.collections('settings').put('project', { thresholdPct: 20, industry: 'b2b', coreClasses: [] });
+  await saveProjectSettings(store, { ...stale, industry: 'b2b', coreClasses: [], thresholdPct: 35 });
+  expect(await loadProjectSettings(store)).toEqual({ thresholdPct: 35, industry: 'b2b', coreClasses: [] });
+});
+test('preferences from 0.3 are ignored once', async () => {
+  const store = memoryCollections();
+  await store.collections('preferences').put('current', { range: { kind: 'preset', preset: 'qtd' }, compare: { kind: 'off' } });
+  expect(await loadPreferences(store)).toBeNull();
+});
+test('a null range is saved and read back', async () => {
+  const store = memoryCollections();
+  await savePreferences(store, { range: null, compare: { kind: 'off' } });
+  expect(await loadPreferences(store)).toEqual({ range: null, compare: { kind: 'off' } });
 });
 
 test('staleness', () => {
@@ -42,23 +114,23 @@ test('the project model is read through the upgrade, never written by the ontolo
   const { version: _v, editedAt: _e, ...v1 } = model;
   await ctx.collections<unknown>('model').put('current', { ...v1, version: 1, classes: model.classes.map(({ shown: _s, ...c }) => c) });
   expect((await loadProjectModel(ctx))?.version).toBe(3);
-  expect(await loadOntology(ctx)).toBeNull();
+  expect(await loadShared(ctx)).toBeNull();
 });
 
-test('unknown default preset falls back', async () => {
+test('an unknown default preset reads as null', async () => {
   const ctx = memoryCollections();
-  await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'next_decade' as never });
-  expect((await loadSettings(ctx)).defaultPreset).toBe('qtd');
-  await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'constructor' as never });
-  expect((await loadSettings(ctx)).defaultPreset).toBe('qtd');
+  await saveViewSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'next_decade' as never });
+  expect((await loadViewSettings(ctx)).defaultPreset).toBeNull();
+  await saveViewSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'constructor' as never });
+  expect((await loadViewSettings(ctx)).defaultPreset).toBeNull();
 });
 
 test('weekStart is validated', async () => {
   const ctx = memoryCollections();
-  await saveSettings(ctx, { ...DEFAULT_SETTINGS, weekStart: 'sunday' });
-  expect((await loadSettings(ctx)).weekStart).toBe('sunday');
-  await saveSettings(ctx, { ...DEFAULT_SETTINGS, weekStart: 'friday' as never });
-  expect((await loadSettings(ctx)).weekStart).toBe('monday');
+  await saveViewSettings(ctx, { ...DEFAULT_SETTINGS, weekStart: 'sunday' });
+  expect((await loadViewSettings(ctx)).weekStart).toBe('sunday');
+  await saveViewSettings(ctx, { ...DEFAULT_SETTINGS, weekStart: 'friday' as never });
+  expect((await loadViewSettings(ctx)).weekStart).toBe('monday');
 });
 
 test('preferences round trip', async () => {
@@ -73,7 +145,7 @@ test('preferences round trip', async () => {
 
 test('invalid preference parts fall back to null', async () => {
   const ctx = memoryCollections();
-  const put = (doc: unknown) => ctx.collections<unknown>('preferences').put('current', doc);
+  const put = (doc: unknown) => ctx.collections<unknown>('preferences').put('current', typeof doc === 'object' ? { ...(doc as object), v: 4 } : doc);
   await put({ range: { kind: 'preset', preset: 'next_decade' }, compare: { kind: 'preset', preset: 'previous_period' } });
   expect(await loadPreferences(ctx)).toEqual({ range: null, compare: { kind: 'preset', preset: 'previous_period' } });
   await put({ range: { kind: 'custom', window: { from: '2026-10-09', to: '2026-10-01' } }, compare: { kind: 'custom', window: { from: '2026-13-01', to: '2026-13-02' } } });
@@ -84,37 +156,12 @@ test('invalid preference parts fall back to null', async () => {
   expect(await loadPreferences(ctx)).toBeNull();
 });
 
-test('a stored this_* preset loads as its to-date id, in settings and in preferences', async () => {
+test('a stored this_* preset loads as its to-date id, in view settings and in preferences', async () => {
   const ctx = memoryCollections();
-  await ctx.collections<unknown>('settings').put('project', { ...DEFAULT_SETTINGS, defaultPreset: 'this_month' });
-  expect((await loadSettings(ctx)).defaultPreset).toBe('mtd');
-  await ctx.collections<unknown>('preferences').put('current', { range: { kind: 'preset', preset: 'this_week' }, compare: { kind: 'off' } });
+  await ctx.collections<unknown>('preferences').put('defaults', { v: 4, defaultPreset: 'this_month' });
+  expect((await loadViewSettings(ctx)).defaultPreset).toBe('mtd');
+  await ctx.collections<unknown>('preferences').put('current', { v: 4, range: { kind: 'preset', preset: 'this_week' }, compare: { kind: 'off' } });
   expect(await loadPreferences(ctx)).toEqual({ range: { kind: 'preset', preset: 'wtd' }, compare: { kind: 'off' } });
   await savePreferences(ctx, { range: { kind: 'preset', preset: 'cur_month' }, compare: { kind: 'off' } });
   expect((await loadPreferences(ctx))!.range).toEqual({ kind: 'preset', preset: 'cur_month' });
-});
-
-test('the member default range overrides the project one; a missing or invalid one falls back to it', async () => {
-  const ctx = memoryCollections();
-  await ctx.collections<unknown>('settings').put('project', { ...DEFAULT_SETTINGS, defaultPreset: 'mtd' });
-  expect((await loadSettings(ctx)).defaultPreset).toBe('mtd');
-  await ctx.collections<unknown>('preferences').put('defaults', { defaultPreset: 'wtd' });
-  expect((await loadSettings(ctx)).defaultPreset).toBe('wtd');
-  await ctx.collections<unknown>('preferences').put('defaults', { defaultPreset: 'this_year' });
-  expect((await loadSettings(ctx)).defaultPreset).toBe('ytd');
-  await ctx.collections<unknown>('preferences').put('defaults', { defaultPreset: 'next_decade' });
-  expect((await loadSettings(ctx)).defaultPreset).toBe('mtd');
-  await ctx.collections<unknown>('preferences').put('defaults', 'junk');
-  expect((await loadSettings(ctx)).defaultPreset).toBe('mtd');
-});
-
-test('saving settings writes the preset to the member document and leaves the project one as it was', async () => {
-  const ctx = memoryCollections();
-  await ctx.collections<unknown>('settings').put('project', { ...DEFAULT_SETTINGS, defaultPreset: 'mtd' });
-  await saveSettings(ctx, { ...DEFAULT_SETTINGS, defaultPreset: 'wtd', thresholdPct: 35 });
-  expect((await ctx.collections<{ defaultPreset: string }>('preferences').get('defaults'))?.document).toEqual({ defaultPreset: 'wtd' });
-  const project = (await ctx.collections<Record<string, unknown>>('settings').get('project'))?.document;
-  expect(project?.defaultPreset).toBe('mtd');
-  expect(project?.thresholdPct).toBe(35);
-  expect((await loadSettings(ctx)).defaultPreset).toBe('wtd');
 });

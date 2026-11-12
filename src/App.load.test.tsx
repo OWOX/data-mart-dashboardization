@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
-import { loadOntology, memoryCollections } from './store/collections';
+import { loadShared, memoryCollections } from './store/collections';
 import type { Model } from './types';
 
 const GID = '11111111-1111-1111-1111-111111111111';
@@ -33,11 +33,11 @@ const ctx = { projectId: 'p1' } as never;
 
 test('an ontology doc wins over the project model', async () => {
   const { deps, store, model } = await setup();
-  await store.collections<Model>('ontology').put('current', { ...model, builtBy: 'mine' });
+  await store.collections<Model>('ontology_project').put('current', { ...model, builtBy: 'mine' });
   await store.collections<Model>('model').put('current', { ...model, builtBy: 'project' });
   render(<App ctx={ctx} deps={deps} />);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
-  expect((await loadOntology(store))!.builtBy).toBe('mine');
+  expect((await loadShared(store))!.builtBy).toBe('mine');
 });
 
 test('with no ontology the project model seeds it, without an AI call', async () => {
@@ -46,7 +46,7 @@ test('with no ontology the project model seeds it, without an AI call', async ()
   await store.collections<unknown>('model').put('current', { ...model, version: 1, builtBy: 'project' });
   render(<App ctx={ctx} deps={{ ...deps, generate }} />);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
-  const saved = (await loadOntology(store))!;
+  const saved = (await loadShared(store))!;
   expect(saved.version).toBe(3);
   expect(saved.builtBy).toBe('project');
   expect(generate).not.toHaveBeenCalled();
@@ -75,7 +75,7 @@ test('seeding drops classes the member cannot access and rehashes for the kept o
   });
   render(<App ctx={ctx} deps={deps} />);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
-  const saved = (await loadOntology(store))!;
+  const saved = (await loadShared(store))!;
   expect(saved.classes.map((c) => c.id)).toEqual(model.classes.map((c) => c.id));
   expect(saved.edges.some((e) => e.to === 'ghost')).toBe(false);
   expect(saved.metrics.some((x) => x.martId === 'ghost')).toBe(false);
@@ -98,7 +98,7 @@ test('seeding drops a class whose Data Mart has no date field, from a project mo
   });
   render(<App ctx={ctx} deps={{ ...deps, owox }} />);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
-  const saved = (await loadOntology(store))!;
+  const saved = (await loadShared(store))!;
   // the goal class has no date field either, and stays
   expect(saved.classes.map((c) => c.id)).toEqual([GID]);
   expect(saved.edges.some((e) => e.to === 'p')).toBe(false);
@@ -115,7 +115,7 @@ test('a schema that cannot be read while seeding keeps the class and the project
   const owox = { ...base, getJson: (async (path: string) => { if (path === `/api/data-marts/${GID}` && !failed) { failed = true; throw new Error('503'); } return base.getJson(path); }) as typeof base.getJson };
   render(<App ctx={ctx} deps={{ ...deps, owox }} />);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
-  const saved = (await loadOntology(store))!;
+  const saved = (await loadShared(store))!;
   expect(failed).toBe(true);
   expect(saved.classes.map((c) => c.id)).toEqual([GID]);
   expect(saved.inputHash).toBe('project-hash');
@@ -127,7 +127,7 @@ test('if the hash cannot be recomputed the project hash is kept', async () => {
   const owox = { ...deps.owox, getJson: async () => { throw new Error('nope'); } } as AppDeps['owox'];
   render(<App ctx={ctx} deps={{ ...deps, owox }} />);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
-  expect((await loadOntology(store))!.inputHash).toBe('project-hash');
+  expect((await loadShared(store))!.inputHash).toBe('project-hash');
 });
 
 test('seeding with unreadable contexts keeps the project hash', async () => {
@@ -137,7 +137,7 @@ test('seeding with unreadable contexts keeps the project hash', async () => {
   const owox = { ...base, getJson: (async (path: string) => { if (path === '/api/contexts') throw new Error('403'); return base.getJson(path); }) as typeof base.getJson };
   render(<App ctx={ctx} deps={{ ...deps, owox }} />);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
-  expect((await loadOntology(store))!.inputHash).toBe('project-hash');
+  expect((await loadShared(store))!.inputHash).toBe('project-hash');
 });
 
 test('dataMarts.list rejecting while seeding seeds the whole project model and keeps its hash', async () => {
@@ -148,7 +148,7 @@ test('dataMarts.list rejecting while seeding seeds the whole project model and k
   expect(screen.queryByText(/LIST_FAILED/)).toBeNull();
   await screen.findByText(/Couldn't check which Data Marts you can access/);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
-  const saved = (await loadOntology(store))!;
+  const saved = (await loadShared(store))!;
   expect(saved.classes.map((c) => c.id)).toEqual(model.classes.map((c) => c.id));
   expect(saved.inputHash).toBe('project-hash');
 });
@@ -160,14 +160,14 @@ test('a failed save while seeding keeps the model, shows a note and saves with t
   const flaky: AppDeps['store'] = {
     collections: <T,>(name: string) => {
       const col = store.collections<T>(name);
-      return { get: col.get, put: async (id: string, doc: T) => { if (failing && name === 'ontology') throw new Error('PUT_FAILED'); return col.put(id, doc); } };
+      return { get: col.get, put: async (id: string, doc: T) => { if (failing && name === 'ontology_project') throw new Error('PUT_FAILED'); return col.put(id, doc); } };
     },
   };
   render(<App ctx={ctx} deps={{ ...deps, store: flaky }} />);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
   expect(await screen.findByText("Couldn't save your model; it will be saved next time.")).toBeInTheDocument();
   expect(screen.queryByText(/Something went wrong/)).toBeNull();
-  expect(await loadOntology(store)).toBeNull();
+  expect(await loadShared(store)).toBeNull();
 });
 
 test('the first build failing to read the project says what failed', async () => {

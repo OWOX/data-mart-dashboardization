@@ -1,10 +1,11 @@
+import { seedShared } from './test/fixtures';
 import { cleanup, fireEvent, render, screen, waitFor, within } from './test-host';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
 import { cacheKey } from './metrics/refresh';
 import { rangeFor } from './lib/dates';
-import { loadOntology, loadPreferences, memoryCollections, saveCache, saveOntology, savePreferences, saveSettings, type CollectionsLike } from './store/collections';
+import { loadShared, loadPreferences, memoryCollections, saveCache, savePreferences, saveViewSettings, type CollectionsLike } from './store/collections';
 import { DEFAULT_SETTINGS, type CacheDoc, type Model } from './types';
 
 const GID = '11111111-1111-1111-1111-111111111111';
@@ -38,7 +39,7 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
   const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW });
   if (!built.ok) throw new Error('fixture');
   const model: Model = { ...built.model, inputHash: opts.inputHash ?? built.model.inputHash };
-  await saveOntology(store, model);
+  await seedShared(store, model);
   const cache = opts.cache ?? 'fresh';
   if (cache !== 'none') {
     const doc: CacheDoc = {
@@ -96,41 +97,41 @@ const changedAi = { ...goalAi, metrics: [{ ...goalAi.metrics[0]!, kind: 'level' 
 
 test('Rebuild with nothing new says the model matches and saves nothing', async () => {
   const { deps, store } = await setup();
-  const before = await loadOntology(store);
+  const before = await loadShared(store);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await openOntology();
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   expect(await screen.findByText('The model already matches the descriptions.')).toBeInTheDocument();
-  expect(await loadOntology(store)).toEqual(before);
+  expect(await loadShared(store)).toEqual(before);
 });
 
 test('Rebuild with nothing new still draws a ref the stored model is missing when closed', async () => {
   const { deps, store } = await setup({ withCustomers: true });
-  const built = (await loadOntology(store))!;
+  const built = (await loadShared(store))!;
   expect(built.edges).toContainEqual(expect.objectContaining({ from: GID, to: CID }));
-  await saveOntology(store, { ...built, edges: [], classes: built.classes.map((c) => (c.id === CID ? { ...c, depth: 5 } : c)) });
+  await seedShared(store, { ...built, edges: [], classes: built.classes.map((c) => (c.id === CID ? { ...c, depth: 5 } : c)) });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await openOntology();
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   expect(await screen.findByText('The model already matches the descriptions.')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-  await waitFor(async () => expect((await loadOntology(store))?.edges).toEqual(built.edges));
-  const saved = (await loadOntology(store))!;
+  await waitFor(async () => expect((await loadShared(store))?.edges).toEqual(built.edges));
+  const saved = (await loadShared(store))!;
   expect(saved.classes.find((c) => c.id === CID)?.depth).toBe(1);
   expect(saved.editedAt).toBe(built.editedAt);
 });
 
 test('a declined row does not keep a moved ref off the canvas: Apply with nothing selected draws it', async () => {
   const { deps, store } = await setup({ withCustomers: true });
-  const built = (await loadOntology(store))!;
-  await saveOntology(store, { ...built, edges: [] });
+  const built = (await loadShared(store))!;
+  await seedShared(store, { ...built, edges: [] });
   render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => changedAi }} />);
   await openOntology();
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Revenue: kind' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
-  await waitFor(async () => expect((await loadOntology(store))?.edges).toEqual(built.edges));
-  expect((await loadOntology(store))?.metrics.find((m) => m.alias === 'Revenue')?.kind).toBe('flow');
+  await waitFor(async () => expect((await loadShared(store))?.edges).toEqual(built.edges));
+  expect((await loadShared(store))?.metrics.find((m) => m.alias === 'Revenue')?.kind).toBe('flow');
 });
 
 test('Rebuild from Settings shows the build progress', async () => {
@@ -148,7 +149,7 @@ test('Rebuild from Settings shows the build progress', async () => {
 
 test('Rebuild proposes changes; Apply selected saves them and returns to the canvas', async () => {
   const { deps, store } = await setup();
-  const before = await loadOntology(store);
+  const before = await loadShared(store);
   render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => changedAi }} />);
   await openOntology();
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
@@ -156,24 +157,24 @@ test('Rebuild proposes changes; Apply selected saves them and returns to the can
   expect(row).toBeChecked();
   expect(screen.getByText('flow → level')).toBeInTheDocument();
   // nothing is saved while the proposal is open
-  expect(await loadOntology(store)).toEqual(before);
+  expect(await loadShared(store)).toEqual(before);
   fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
   expect(await screen.findByRole('button', { name: 'Date range' })).toBeInTheDocument();
-  const saved = await loadOntology(store);
+  const saved = await loadShared(store);
   expect(saved?.metrics.find((m) => m.alias === 'Revenue')?.kind).toBe('level');
   expect(saved?.editedAt).toBe(NOW.toISOString());
 });
 
 test('Discard leaves the stored model as it was', async () => {
   const { deps, store } = await setup();
-  const before = await loadOntology(store);
+  const before = await loadShared(store);
   render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => changedAi }} />);
   await openOntology();
   fireEvent.click(await screen.findByRole('button', { name: 'Rebuild model' }));
   await screen.findByRole('checkbox', { name: 'Revenue: kind' });
   fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
   expect(await screen.findByRole('button', { name: 'Rebuild model' })).toBeEnabled();
-  expect(await loadOntology(store)).toEqual(before);
+  expect(await loadShared(store)).toEqual(before);
 });
 
 test('Rebuild is off while the draft has unsaved edits', async () => {
@@ -190,7 +191,7 @@ test('Rebuild is off while the draft has unsaved edits', async () => {
 
 test('Closing a rebuild with no differences stores the new input hash, keeps editedAt and clears the notice', async () => {
   const { deps, store } = await setup({ inputHash: 'old' });
-  const before = await loadOntology(store);
+  const before = await loadShared(store);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
   fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
@@ -198,7 +199,7 @@ test('Closing a rebuild with no differences stores the new input hash, keeps edi
   await screen.findByText('The model already matches the descriptions.');
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await screen.findByRole('button', { name: 'Date range' });
-  const saved = await loadOntology(store);
+  const saved = await loadShared(store);
   expect(saved?.inputHash).not.toBe('old');
   expect(saved).toEqual({ ...before, inputHash: saved?.inputHash });
   expect(saved?.editedAt).toBe(before?.editedAt);
@@ -208,7 +209,7 @@ test('Closing a rebuild with no differences stores the new input hash, keeps edi
 
 test('Discard hides the out-of-date notice for this session without touching the doc', async () => {
   const { deps, store } = await setup({ inputHash: 'old' });
-  const before = await loadOntology(store);
+  const before = await loadShared(store);
   render(<App ctx={ctxWith().ctx} deps={{ ...deps, generate: async () => changedAi }} />);
   fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
   fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
@@ -219,14 +220,14 @@ test('Discard hides the out-of-date notice for this session without touching the
   await screen.findByRole('button', { name: 'Date range' });
   await new Promise((r) => setTimeout(r, 50));
   expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
-  expect(await loadOntology(store)).toEqual(before);
+  expect(await loadShared(store)).toEqual(before);
 });
 
 /** A saved model without the Customers class, so a rebuild proposes adding it and its hash covers one mart fewer. */
 async function dropCustomers(store: CollectionsLike) {
-  const m = (await loadOntology(store))!;
+  const m = (await loadShared(store))!;
   const keep = m.classes.filter((c) => c.martId !== CID);
-  await saveOntology(store, {
+  await seedShared(store, {
     ...m, inputHash: 'old', classes: keep, edges: [],
     metrics: m.metrics.filter((x) => keep.some((c) => c.id === x.martId)),
   });
@@ -257,7 +258,7 @@ test('a partial Apply that leaves a new class unchecked does not bring the notic
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Add class Customers' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply selected' }));
   await screen.findByRole('button', { name: 'Date range' });
-  const saved = await loadOntology(store);
+  const saved = await loadShared(store);
   expect(saved?.classes.some((c) => c.martId === CID)).toBe(false);
   expect(saved?.inputHash).not.toBe('old');
   await new Promise((r) => setTimeout(r, 100));
@@ -314,7 +315,7 @@ test('retry after a failed initial load re-runs the load, not the AI build', asy
 
 test('a blocked rebuild shows inside the tab and keeps the current model', async () => {
   const { deps, store } = await setup({ generate: async () => missingAi });
-  const before = await loadOntology(store);
+  const before = await loadShared(store);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
@@ -322,7 +323,7 @@ test('a blocked rebuild shows inside the tab and keeps the current model', async
   expect(await screen.findByRole('heading', { name: "Goal can't be tracked" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to the model' }));
   expect(await screen.findByRole('button', { name: 'Rebuild model' })).toBeEnabled();
-  expect(await loadOntology(store)).toEqual(before);
+  expect(await loadShared(store)).toEqual(before);
 });
 
 test('modifiedAt churn alone shows no banner; a class-mart formula change does', async () => {
@@ -425,10 +426,10 @@ test('the toolbar shows the cut windows when a comparison is cut short', async (
 test('the week start setting changes the cache key of a week preset', async () => {
   const mk = async (weekStart: 'monday' | 'sunday') => {
     const { deps, store, traversals } = await setup({ cache: 'none' });
-    await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'wtd', comparisonDefault: false, weekStart });
+    await saveViewSettings(store, { defaultPreset: 'wtd', comparisonDefault: false, weekStart });
     // a fresh doc under the Monday key only
     const monday = cacheKey({ kind: 'preset', preset: 'wtd' }, { kind: 'off' });
-    const m = (await loadOntology(store))!;
+    const m = (await loadShared(store))!;
     await saveCache(store, monday, { modelHash: m.inputHash, builtAt: m.builtAt, editedAt: m.editedAt, thresholdPct: 20, anchor: rangeFor('wtd', NOW).anchor, refreshedAt: '2026-10-24T09:00:00Z', key: monday, comparison: false, cards: {} });
     render(<App ctx={ctxWith().ctx} deps={deps} />);
     return traversals;
@@ -449,7 +450,7 @@ test('with a comparison the header shows the days so far, not the whole range', 
 
 test('a projected range shows the whole period against the whole previous one', async () => {
   const { deps, store } = await setup({ cache: 'none' });
-  await saveSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'cur_month' });
+  await saveViewSettings(store, { ...DEFAULT_SETTINGS, defaultPreset: 'cur_month' });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–31 vs Sep 1–30, 2026 · /));
 });
