@@ -1,6 +1,6 @@
 # Shared ontology and the ontology view: design
 
-Date: 2026-11-11. Status: draft. Answers from 2026-11-11 are in; open questions are at the end.
+Date: 2026-11-11. Status: draft, all questions answered (2026-11-11). Ready for a plan.
 
 Supersedes parts of three specs:
 
@@ -26,6 +26,8 @@ Gyroscope presents the whole project ontology: the business classes and how they
 10. Section 1 is the critical number from the project description. Its class is the goal class in the center.
 11. Section 2 is the core classes. When none are set, Checkup suggests 3 to 7, depending on the project's industry.
 12. Next come contexts, each context's critical number, and the rest of the existing checks.
+13. The AI runs only to build a model from scratch and to suggest values for settings that aren't filled. The ontology and flow views never call it.
+14. Only project admins edit the model. Members adjust their own view: filters, date ranges and their own settings.
 
 ## 1. Why members see different cards today
 
@@ -42,17 +44,39 @@ Every row has to change. Access may decide which numbers a member sees. It must 
 ## 2. One model per project
 
 1. The model lives in one project-scoped document. Collections are fixed within a compatibility line, so this ships as v0.4.0 with a new collection, `ontology_project` (project scope), doc `current`. `plugin.json` `delivery.url` moves to `/v4/`.
-2. Every member reads the same doc. Edits, Rebuild and Apply selected write it for everyone. Each save sets `editedBy` and `editedAt`. The Ontology Model tab shows "Last edited by <name>, <date>".
+2. Every member reads the same doc. Only a project admin writes it: Build, Rebuild, Apply selected, metric edits and Checkup's Apply. Each save sets `editedBy` and `editedAt`. Checkup shows "Last edited by <name>, <date>".
 3. A save checks that the doc hasn't changed since it was read (`editedAt` or `builtAt`). If it has, the save stops and says "<name> changed the model at <time>. Reload to see their changes." Nothing is merged silently.
 4. A member sees only the Data Marts they can access, and the platform doesn't change that. So a build or Rebuild sees only the builder's Data Marts. The shared doc protects what the builder can't see:
    1. Rebuild never removes a class, edge or metric whose Data Mart the builder can't access. The proposal lists them as "Kept: you can't access <title>".
    2. Rebuild adds what the builder can see and the doc lacks.
    3. Manual edits to a metric need access to its Data Mart. Without access, the row is read-only with "You can't access <title>".
    4. Checkup shows "Built by a member who couldn't access N Data Marts" as a recommendation, with the names of members who rebuilt it before.
-5. On the move to 0.4, the old project `model` doc becomes the first shared doc, with no AI call. Edits members made to their own `ontology` docs in 0.3 are not carried over. Without a project `model` doc, the first member to open 0.4 builds the shared doc.
+5. On the move to 0.4, the old project `model` doc becomes the first shared doc, with no AI call. Edits members made to their own `ontology` docs in 0.3 are not carried over. Without a project `model` doc, the first admin to open 0.4 builds the shared doc. A member who opens a project with no shared doc sees "An admin hasn't set up Gyroscope yet" and a read-only Checkup.
 6. The member-scoped `ontology` and project-scoped `model` collections stay in the manifest, read-only. The plugin stops writing them.
 7. `cache` stays member-scoped. Numbers are still computed with each member's own access.
 8. `seedFrom` and `withoutUndated` go. A class no longer needs a date field.
+
+### Roles
+
+A project admin is a member whose `GET /api/auth/context` roles include the project admin role. The first implementation task confirms the role's exact value.
+
+| | Admin | Member |
+|---|---|---|
+| Build or Rebuild the model, edit metrics, mark core classes | Yes | No: read-only, "Only a project admin can change the model" |
+| Checkup's Apply and the industry and core class settings | Yes | No: the suggestion shows read-only, with "Ask a project admin" |
+| Plan threshold (project settings) | Yes | No |
+| Context filters, date range, comparison | Yes | Yes |
+| Own settings: default range, comparison default, week start | Yes | Yes, stored in `preferences` (member scope) |
+| Run Checkup and read every result | Yes | Yes |
+
+### AI calls
+
+The AI runs only in two places, both started by an admin:
+
+1. Building the model from scratch: the first build, and Rebuild, which builds a candidate from scratch and proposes the differences.
+2. Suggesting a value for a setting that isn't filled, in Checkup, when the admin opens that question.
+
+Opening the plugin, the ontology view, the flow view, a refresh and the migration to 0.4 never call the AI.
 
 ### Access on the canvas
 
@@ -71,23 +95,22 @@ The goal class is the Data Mart that owns the critical number from the project d
 
 ### 3.2 Core classes
 
-The core classes are listed in the project description, in a Core classes table, so they are the same for every member and survive a reinstall:
+The industry and the core classes are stored in the plugin's project settings (`settings` collection, project scope, doc `project`), so they are the same for every member. Only an admin sets them, in Checkup. The project description is not edited for them.
 
-```markdown
-## Core classes
-
-| Class | Why it is core |
-|---|---|
-| [Customers](/ui/<projectId>/data-marts/<id>/data-setup) | Every order and subscription belongs to a customer |
-| [Products](/ui/<projectId>/data-marts/<id>/data-setup) | Revenue is counted per product |
+```ts
+interface Settings {
+  // existing fields unchanged
+  industry: Industry | null;               // section 8.2
+  coreClasses: { martId: string; why: string }[] | null;  // 3 to 7; null: not set yet
+}
 ```
 
-The build reads the table, as it reads the Metrics table. Checkup suggests the rows when the table is missing (section 8.2). Without the table, the build picks core classes by the rules below and Checkup reports a warning.
+The build marks the classes in `coreClasses` as core. When `coreClasses` is null, the build picks them by the rules below and Checkup reports a warning with those picks as the suggestion. A change to `coreClasses` updates the `core` flags of the shared model without a rebuild and without the AI.
 
 1. A candidate is a Data Mart with a single-column primary key. A date field is not required. The goal Data Mart is not a candidate.
 2. A candidate must connect to the goal class directly: a calculated field of the goal Data Mart references it, or one of its calculated fields references the goal Data Mart.
 3. Candidates are ranked by inbound references: the number of distinct Data Marts in the project whose calculated fields reference the candidate. Ties go to more connections with other candidates, then to the alphabetical title.
-4. The number of core classes depends on the industry (section 8.2), between 3 and 7. A candidate with no inbound references is never core.
+4. The number of core classes depends on `industry` (section 8.2), between 3 and 7. A candidate with no inbound references is never core.
 5. With fewer than 3 candidates, the canvas shows those that exist, and Checkup reports a warning.
 
 Model additions:
@@ -143,7 +166,7 @@ Every other class with a primary key that connects to the goal or a core class s
 ## 6. Flow view (date range chosen)
 
 1. The goal class stays on top and its key metric is the critical number, as today.
-2. The core classes form the next row, with their key metrics. A core class with no date field shows its Unique Count as a level: the count on the last day of the range, without a sparkline or forecast.
+2. The core classes form the next row, with their key metrics. A core class with no date field shows its Unique Count: the number of rows with a distinct ID as of the end of the range, without a % diff, sparkline or forecast. Its label reads "<count> <Class>", for example "1,234 Customers".
 3. Below them come the classes connected to the goal or to core classes, one row per reference step, as in Gyroscope design 8.1.
 4. Connectors show the direction a reference points. Their meaning stays "this class feeds that class", so the member can follow value from dictionary classes to the critical number.
 5. Cards, badges, plan, forecast and statuses work as in Gyroscope design sections 7 and 8.2.
@@ -174,10 +197,11 @@ Checkup is the one page where a project is set up from scratch or adjusted later
    1. a question that finds the answer, for example "Which number tells you the business is on track?";
    2. a recommended answer, preselected, with up to 3 alternatives;
    3. an **Apply** button that writes the answer with one click, then reruns that section.
-6. Apply writes with the member's own authority: the project description (`PUT /api/projects/settings/description`), a context (`POST /api/contexts`, `PUT /api/contexts/{id}`), a Data Mart's contexts (`PUT /api/data-marts/{id}/contexts`), or the shared model. The description is edited in place: Gyroscope replaces or appends only its own table and keeps the rest of the text.
-7. If the write is refused (the member's role can't edit it), Apply turns into a copy-ready snippet and the existing Fix link to the OWOX page.
-8. Recommended answers come from code when the schemas decide them (inbound references, primary keys, date fields) and from the AI when they need prose (industry, a metric's name, a context's description). An AI suggestion runs only when the member opens a question that needs it, and its result is kept for the session.
-9. Every Apply writes a line to the shared model's history: who, when, what. The (i) tooltip of a passed check shows "Applied by <name>, <date>" when Gyroscope wrote it.
+6. Apply is shown to admins only. Members see the question and the recommended answer read-only, with "Ask a project admin".
+7. Apply writes one of: the plugin's project settings (industry, core classes, threshold), the shared model, the project description's Metrics table (`PUT /api/projects/settings/description`, replacing or appending only that table), a context (`POST /api/contexts`, `PUT /api/contexts/{id}`) or a Data Mart's contexts (`PUT /api/data-marts/{id}/contexts`).
+8. If OWOX refuses a write, Apply turns into a copy-ready snippet and the existing Fix link to the OWOX page.
+9. Recommended answers come from code when the schemas decide them (inbound references, primary keys, date fields) and from the AI when they need prose (industry, a metric's name, a context's description). An AI suggestion runs only when an admin opens a question that needs it, and its result is kept for the session. Members never trigger the AI.
+10. Every Apply writes a line to the shared model's history: who, when, what. The (i) tooltip of a passed check shows "Applied by <name>, <date>" when Gyroscope wrote it.
 
 ### 8.2 Sections and checks
 
@@ -199,8 +223,8 @@ Existing checks keep their ids and logic. New checks are marked **new**.
 
 | Check | Status if not passing | Question and recommended answer |
 |---|---|---|
-| The industry is known **new** | Warning | "Which business model is closest?" The AI reads the description and preselects one. Apply writes an Industry line to the description |
-| It has a Core classes table **new** | Warning | Applies the classes ranked by section 3.2, as many as the industry suggests (below), each with a one-line "Why it is core" from the AI |
+| The industry is set **new** | Warning | "Which business model is closest?" The AI reads the description and preselects one. Apply saves `industry` in the plugin settings |
+| Core classes are set **new** | Warning | Applies the classes ranked by section 3.2, as many as the industry suggests (below), each with a one-line "Why it is core" from the AI. Apply saves `coreClasses` in the plugin settings |
 | Each core class has a unique ID (a single-column primary key) **new** | Warning | Fix link to the Data Mart; recommends the column that is unique in a preview |
 | Each core class connects directly to the goal class **new** | Warning | Names the calculated field to add, for example `customer_id` in Orders referencing Customers |
 | Core classes connect to each other **new** | Recommendation | Lists the pairs with no reference where both share an ID column |
@@ -220,7 +244,7 @@ Core classes by industry, used for the count and as names to match against Data 
 | Finance, lending | 5 | Customers, Accounts, Products, Applications, Channels |
 | Other | 3 | The top 3 candidates by inbound references |
 
-The ontology view takes as many core classes as the Core classes table lists, from 3 to 7; the count above is only the suggestion.
+The ontology view takes as many core classes as `coreClasses` lists, from 3 to 7; the count above is only the suggestion.
 
 **3. Contexts.** The teams or areas that move the critical number. Each one has its own critical number and plan.
 
@@ -272,17 +296,13 @@ The ontology view takes as many core classes as the Core classes table lists, fr
 
 | Layer | Test |
 |---|---|
-| Core class picking | Table-driven: the Core classes table wins; without it, ranking by inbound references, ties, no date field allowed, the goal mart excluded, fewer than 3, more than 7 |
+| Core class picking | Table-driven: `coreClasses` from settings wins; without it, ranking by inbound references, ties, no date field allowed, the goal mart excluded, fewer than 3, more than 7 |
 | Shared model | Two fake members with different access read one doc and get the same classes and edges; the one without access gets lock cards in the flow view |
 | Concurrent edit | A save over a newer doc stops with the "<name> changed the model" message |
 | Upgrade | The 0.3 project `model` doc becomes a `version: 3` shared doc with `core` set; a member's own 0.3 doc is ignored |
 | Rebuild with less access | A builder without access to a class keeps that class, its edges and metrics |
+| Roles | A member gets no Apply, no metric edits and no Rebuild; an admin gets all three; both change their own range and preferences |
+| No AI in views | Opening the plugin, both views, refresh and the 0.4 migration make no AI call |
 | Checkup | Each section's status is the worst inside it; every check has a tooltip; Apply writes the suggested value and reruns the section; a refused write shows the snippet |
 | Views | No range renders the ontology view with no queries; choosing a range runs queries; Clear returns to the ontology view |
 | End to end | Two members of one project, with different Data Mart access, open the plugin and see the same canvas |
-
-## Open questions
-
-1. Who may edit the shared model and apply suggestions that write the model: every member, or project admins only? OWOX roles already limit writes to descriptions and contexts.
-2. Should a core class without a date field show a number in the flow view (Unique Count as of the range end), or only its name?
-3. Should the Core classes and Industry live in the project description (this draft: visible in OWOX, survives a reinstall, readable by AI tools) or only in the shared model (no edits to the description)?
