@@ -80,7 +80,7 @@ test('the Format select saves, and a currency code input appears for Currency', 
 
 test('says the changes are the member\'s own, lists the goal first and locks its checkbox', () => {
   setup();
-  expect(screen.getByText('Your model. Changes here only affect what you see.')).toBeInTheDocument();
+  expect(screen.getByText('The model of this project. Changes apply to everyone in the project.')).toBeInTheDocument();
   const sections = screen.getAllByRole('region');
   expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['Orders', 'Customers']);
   const goal = screen.getByRole('checkbox', { name: 'Orders' });
@@ -700,12 +700,19 @@ describe('an info tip with an OWOX link', () => {
   });
 });
 
-test('a read-only tab disables every input, hides Save and Rebuild and says why', () => {
+test('a read-only tab lets a member unfold a class, disables the inputs, hides Save and Rebuild and says why', () => {
   const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
   render(<OntologyTab model={model()} details={DETAILS} marts={MARTS} owox={owox} now={() => new Date()} onSave={vi.fn()} onCancel={vi.fn()} onRebuild={vi.fn()} readOnly />);
-  openAll();
+  expect(screen.getByText('The model of this project. Only a project admin can change it.')).toBeInTheDocument();
   expect(screen.getByText('Only a project admin can change the model')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Rebuild model' })).toBeNull();
+  const fold = screen.getByRole('button', { name: /Orders/ });
+  expect(fold).toBeEnabled();
+  fireEvent.click(fold);
+  expect(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).toBeInTheDocument();
   expect(screen.getByRole('checkbox', { name: 'Customers' })).toBeDisabled();
+  expect(screen.getAllByRole('checkbox', { name: 'Shown' }).every((e) => (e as HTMLInputElement).disabled)).toBe(true);
+  expect(screen.getByRole('button', { name: 'Reorder Revenue' })).toBeDisabled();
+  expect(within(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).getAllByRole('combobox').every((e) => (e as HTMLButtonElement).disabled)).toBe(true);
 });

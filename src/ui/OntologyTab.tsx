@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, GripVertical, Info } from 'lucide-react';
 import { normalizeCurrency } from '../lib/format';
 import { describeError } from '../lib/errors';
@@ -164,6 +164,11 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   const [draft, setDraft] = useState<Model>(model);
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
+  // read-only disables the editing controls only; fold and info buttons stay usable
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (readOnly) root.current?.querySelectorAll<HTMLElement & { disabled: boolean }>('input, select, textarea, [role="combobox"], .gy-onto-grip').forEach((el) => { el.disabled = true; });
+  });
   const [saving, setSaving] = useState(false);
   const [rebuild, setRebuild] = useState<Rebuild>({ phase: 'idle' });
   // a proposal is judged against the saved model, so unsaved edits can't be kept alongside it
@@ -366,9 +371,9 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
 
   return (
     <OpenPath.Provider value={onOpen}>
-    <div className="gy-onto">
+    <div className="gy-onto" ref={root}>
       <section className="dm-card gy-onto-intro">
-        <p className="gy-onto-note">Your model. Changes here only affect what you see.</p>
+        <p className="gy-onto-note">{readOnly ? 'The model of this project. Only a project admin can change it.' : 'The model of this project. Changes apply to everyone in the project.'}</p>
         {readOnly && <p className="dm-muted gy-form-note">Only a project admin can change the model</p>}
         {martsUnchecked && <p className="gy-bad-text">Couldn&apos;t check which Data Marts you can access; references aren&apos;t verified.</p>}
         {onRebuild && !readOnly && (
@@ -410,7 +415,6 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
 
       {conflict && onReload && <div className="gy-form-actions"><button type="button" className="gy-btn" onClick={onReload}>Reload</button></div>}
 
-      <fieldset className="gy-fieldset" disabled={readOnly}>
       {rebuild.phase === 'idle' && canvasOrder(draft).map((c) => {
         const goal = c.id === draft.goal.classId;
         const classMart = detailOf(c.martId);
@@ -594,8 +598,6 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
           </section>
         );
       })}
-
-      </fieldset>
 
       <div role="status" aria-live="polite" className="gy-sr-only">{announcement}</div>
 

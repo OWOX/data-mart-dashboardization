@@ -49,7 +49,7 @@ test('a reload at /settings/ontology opens the tab; /settings opens General; oth
   const a = render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
   expect(await screen.findByRole('tab', { name: 'Metrics', selected: true })).toBeInTheDocument();
   // the tab waits for the Data Mart list, then shows the editor
-  expect(await screen.findByText('Your model. Changes here only affect what you see.')).toBeInTheDocument();
+  expect(await screen.findByText('The model of this project. Changes apply to everyone in the project.')).toBeInTheDocument();
   a.unmount();
   const b = render(<App ctx={ctxWith('/settings').ctx} deps={deps} />);
   expect(await screen.findByRole('tab', { name: 'General', selected: true })).toBeInTheDocument();
@@ -208,7 +208,34 @@ test('a save over a newer shared doc shows who changed it and when, and Reload r
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect(await screen.findByText(/^Anna changed the model at \d\d:\d\d\. Reload to see their changes\.$/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Date range' })).toBeInTheDocument());
+  await screen.findByRole('button', { name: 'Date range' });
+  // the reloaded model is the base now, so a second save goes through
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await screen.findByRole('button', { name: 'Date range' });
+  expect((await loadShared(store))!.editedBy).toBe('Test Admin');
+});
+
+test('core classes that fail to save leave the saved model in place with a note, and a later save does not conflict', async () => {
+  const store = memoryCollections();
+  const flaky: AppDeps['store'] = {
+    collections: <T,>(name: string) => {
+      const col = store.collections<T>(name);
+      return { get: col.get, put: async (id: string, doc: T) => { if (name === 'settings') throw new Error('SETTINGS_DOWN'); return col.put(id, doc); } };
+    },
+  };
+  render(<App ctx={ctxWith().ctx} deps={{ owox: fakeOwox(data()), store: flaky, generate: async () => goalAi, userId: 'u1', now: () => NOW }} />);
+  expect(await screen.findByText(/Couldn't save the core classes: SETTINGS_DOWN/)).toBeInTheDocument();
+  expect(screen.queryByText(/Something went wrong/)).toBeNull();
+  expect(await loadShared(store)).not.toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await screen.findByRole('button', { name: 'Date range' });
+  expect((await loadShared(store))!.classes.find((c) => c.id === CID)!.shown).toBe(false);
 });
 
 test('a first build stores the core classes and the editor name', async () => {

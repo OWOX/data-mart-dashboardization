@@ -118,6 +118,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [dismissedHash, setDismissedHash] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  // the model saved but its core classes didn't reach the project settings
+  const [coreNote, setCoreNote] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   // the editor's display name, stored as Model.editedBy
   const editor = useRef<string | null>(null);
@@ -144,6 +146,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
 
   const load = useCallback(async () => {
     setView({ name: 'loading' });
+    rebuildCore.current = null;
+    setCoreNote(null);
     try {
       const [s, own, prefs, member] = await Promise.all([loadSettings(store), loadShared(store), loadPreferences(store).catch(() => null), fetchMember(owox)]);
       editor.current = member.name;
@@ -186,20 +190,27 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   useEffect(() => { void load(); }, [load]);
 
   /** Stamps the editor, applies the core list and writes the shared doc; then the list to the project settings when it changed. Admin only. */
-  const commit = useCallback(async (next: Model, core: CoreClass[] | null, stamp: boolean): Promise<Model> => {
+  const commit = useCallback(async (next: Model, core: CoreClass[] | null, stamp: boolean): Promise<void> => {
     const withCore = core ? applyCore(next, core, inboundCounts(next.edges)) : next;
     // a hash-only update (editedAt unchanged) isn't an edit, so the editor stays as it was
     const edited = stamp || next.editedAt !== modelNow.current?.editedAt;
     const saved: Model = { ...withCore, ...(edited ? { editedBy: editor.current ?? userId } : {}), ...(stamp ? { editedAt: now().toISOString() } : {}) };
     await saveShared(store, modelNow.current, saved);
+    // the model is saved: hold it now, so a failure below never leaves a stale base behind
+    modelNow.current = saved;
+    setModel(saved);
+    setCoreNote(null);
     if (core && JSON.stringify(core) !== JSON.stringify(settingsNow.current.coreClasses)) {
-      await saveProjectSettings(store, { coreClasses: core });
-      // keep the local copy in step with what is stored, industry included
-      const stored = await loadProjectSettings(store);
-      settingsNow.current = { ...settingsNow.current, ...stored };
-      setSettings(settingsNow.current);
+      try {
+        await saveProjectSettings(store, { coreClasses: core });
+        // keep the local copy in step with what is stored, industry included
+        const stored = await loadProjectSettings(store);
+        settingsNow.current = { ...settingsNow.current, ...stored };
+        setSettings(settingsNow.current);
+      } catch (e) {
+        setCoreNote(`Couldn't save the core classes: ${describeError(e)}`);
+      }
     }
-    return saved;
   }, [store, userId, now]);
 
   const build = useCallback(async () => {
@@ -212,7 +223,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     try {
       const result = await buildModel({ owox, generate, userId, now: now(), existingCore: settingsNow.current.coreClasses, industry: settingsNow.current.industry, onStep: (s) => setSteps((p) => [...p, s]) });
       if (!result.ok) { setView({ name: 'blocked', blocked: result.blocked }); return; }
-      setModel(await commit(result.model, result.core.classes, true));
+      await commit(result.model, result.core.classes, true);
       setCache(null);
       setView({ name: 'ready' });
     } catch (e) {
@@ -342,10 +353,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     // a rebuild's core classes join the stored ones with the Apply
     const picks = rebuildCore.current;
     const count = INDUSTRIES.find((i) => i.id === (settings.industry ?? 'other'))?.count ?? 3;
-    const saved = await commit(m, picks ? mergeCore(settings.coreClasses, picks, [], count) : null, false);
+    // commit sets the new model object, which re-runs the refresh; the cache is judged by editedAt
+    await commit(m, picks ? mergeCore(settings.coreClasses, picks, [], count) : null, false);
     rebuildCore.current = null;
-    // a new model object re-runs the refresh; the cache is judged by editedAt
-    setModel(saved);
     leaveSettings();
   };
   const ontologyDetails = useMemo(() => (health && health.model === model ? health.details : new Map<string, MartDetail>()), [health, model]);
@@ -442,6 +452,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <main className="gy-main">
           <Header cache={cache} now={now()} period={periodShown} status={status} notices={notices} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
+          {coreNote && <p className="gy-muted">{coreNote}</p>}
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
           <Canvas
             tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}
