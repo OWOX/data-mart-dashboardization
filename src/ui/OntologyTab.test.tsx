@@ -739,3 +739,13 @@ test("a rebuild proposal keeps classes outside the builder's visible set, even w
   expect(await screen.findByText("Kept: you can't access Customers")).toBeInTheDocument();
   expect(screen.queryByText(/Remove class/)).toBeNull();
 });
+
+test("a metric row whose Data Mart the editor can't access is read-only with a note; the others stay editable", () => {
+  setup(model(), DETAILS, MARTS.filter((x) => x.id !== 'c'));
+  const locked = row('Customers');
+  expect(locked.getByRole('checkbox', { name: 'Shown' })).toBeDisabled();
+  expect(locked.getByRole('combobox', { name: 'Format' })).toHaveAttribute('aria-disabled', 'true');
+  expect(locked.getByText("You can't access Customers")).toBeInTheDocument();
+  expect(row('Revenue').getByRole('checkbox', { name: 'Shown' })).toBeEnabled();
+  expect(row('Revenue').queryByText(/You can't access/)).toBeNull();
+});

@@ -481,17 +481,21 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                         })}
                       />
                     );
+                    // an admin without access to the metric's Data Mart can't verify an edit: the row is read-only
+                    const noAccess = !readOnly && !!accessible && !accessible.has(m.martId);
+                    const locked = readOnly || noAccess;
                     return (
-                      <tbody key={m.id} aria-label={`Metric ${label}`} data-metric-id={m.id} className={`gy-onto-metric${dragging?.id === m.id ? ' is-dragging' : ''}${dropMark === m.id ? ' is-drop-before' : ''}${dropEnd === m.id ? ' is-drop-end' : ''}`}>
+                      <ReadOnly key={m.id} value={locked}>
+                      <tbody aria-label={`Metric ${label}`} data-metric-id={m.id} className={`gy-onto-metric${dragging?.id === m.id ? ' is-dragging' : ''}${dropMark === m.id ? ' is-drop-before' : ''}${dropEnd === m.id ? ' is-drop-end' : ''}`}>
                         <tr>
-                          <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" disabled={readOnly} checked={m.shown !== false} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, shown: e.target.checked }))} /></span></td>
+                          <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" disabled={locked} checked={m.shown !== false} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, shown: e.target.checked }))} /></span></td>
                           <td rowSpan={3}><span className="gy-onto-first"><span className="gy-onto-name" title={label}>{label}</span></span></td>
                           <td rowSpan={3}>
                             <span className="gy-onto-stack">
                               <Select className="gy-onto-format" label="Format" value={m.format} options={FORMATS} onChange={(v) => patchMetric(m.id, (x) => ({ ...x, format: v as MetricFormat, currency: v === 'currency' ? x.currency : null }))} />
                               {m.format === 'currency' && (
                                 <input
-                                  className="gy-input gy-onto-cur" aria-label="Currency code" disabled={readOnly} placeholder="USD" maxLength={3} value={m.currency ?? ''}
+                                  className="gy-input gy-onto-cur" aria-label="Currency code" disabled={locked} placeholder="USD" maxLength={3} value={m.currency ?? ''}
                                   onChange={(e) => patchMetric(m.id, (x) => ({ ...x, currency: e.target.value.toUpperCase() || null }))}
                                 />
                               )}
@@ -513,10 +517,10 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                             <span className="gy-onto-first">
                               <button
                                 type="button" className="gy-onto-grip" aria-label={`Reorder ${label}`} title="Drag to reorder, or use the arrow keys" data-handle={m.id}
-                                disabled={readOnly}
-                                onPointerDown={readOnly ? undefined : (e) => startDrag(e, c, m)} onPointerMove={readOnly ? undefined : overDrag}
-                                onPointerUp={readOnly ? undefined : () => endDrag(true, c, m)} onPointerCancel={readOnly ? undefined : () => endDrag(false, c, m)} onLostPointerCapture={readOnly ? undefined : () => endDrag(false, c, m)}
-                                onKeyDown={readOnly ? undefined : (e) => {
+                                disabled={locked}
+                                onPointerDown={locked ? undefined : (e) => startDrag(e, c, m)} onPointerMove={locked ? undefined : overDrag}
+                                onPointerUp={locked ? undefined : () => endDrag(true, c, m)} onPointerCancel={locked ? undefined : () => endDrag(false, c, m)} onLostPointerCapture={locked ? undefined : () => endDrag(false, c, m)}
+                                onKeyDown={locked ? undefined : (e) => {
                                   if (e.key === 'Escape' && dragRef.current) { endDrag(false, c, m); return; }
                                   if (dragRef.current) return;
                                   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); nudge(c, m, e.key === 'ArrowUp' ? -1 : 1); }
@@ -565,10 +569,14 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                             />
                           ) : <td colSpan={3} />}
                         </tr>
+                        {noAccess && (
+                          <tr><td colSpan={10}><p className="dm-muted gy-form-note">You can&apos;t access {model.classes.find((x) => x.martId === m.martId)?.title ?? martTitle(m.martId)}</p></td></tr>
+                        )}
                         {uncomputable(m, detailOf(m.martId).detail) && (
                           <tr><td colSpan={10}><p className="gy-bad-text gy-form-note">OWOX can&apos;t compute this aggregation for this field</p></td></tr>
                         )}
                       </tbody>
+                      </ReadOnly>
                     );
                   })}
                 </table>

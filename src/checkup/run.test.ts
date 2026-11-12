@@ -359,7 +359,7 @@ test('a context with no description is a recommendation', async () => {
 test('no model is a blocker in the metrics section', async () => {
   const c = byId(await run(data()));
   expect(c['model.built']).toMatchObject({ status: 'fail', group: 'metrics', detail: 'No model built yet' });
-  for (const id of ['model.keys', 'model.plans', 'model.history']) expect(c[id]!.status, id).toBe('skip');
+  for (const id of ['model.keys', 'model.plans', 'model.history', 'model.access']) expect(c[id]!.status, id).toBe('skip');
 });
 
 test('core classes without a key metric and shown metrics without a plan are recommendations', async () => {
@@ -431,4 +431,16 @@ test('onContext receives the assembled suggestion context once', async () => {
   await runCheckup({ owox: fakeOwox(data()), hasAi: true, settings: S0, model: null, projectId: 'p', onUpdate: () => {}, onContext: (c) => seen.push(c) });
   expect(seen).toHaveLength(1);
   expect(seen[0]).toMatchObject({ projectId: 'p', settings: S0 });
+});
+
+test('model.access recommends when the viewer cannot list some of the model Data Marts, with their titles', async () => {
+  const cls = (id: string, title: string) => ({ ...savedModel.classes[0]!, id, martId: id, title });
+  const gone = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6'].map((id) => cls(id, `Hidden ${id}`));
+  const m = { ...savedModel, classes: [cls(G, 'Orders'), ...gone], metrics: [] };
+  const c = byId(await run(data(), { model: m }))['model.access']!;
+  expect(c).toMatchObject({ status: 'recommend', group: 'housekeeping' });
+  expect(c.detail).toBe("You can't access 6 Data Marts in the model. A rebuild by you keeps them unchanged. Hidden n1, Hidden n2, Hidden n3, Hidden n4, Hidden n5 and 1 more.");
+  expect(PURPOSES['model.access']!.length).toBeGreaterThan(10);
+  const all = { ...savedModel, classes: [cls(G, 'Orders'), cls(C, 'Customers')], metrics: [] };
+  expect(byId(await run(data(), { model: all }))['model.access']).toMatchObject({ status: 'ok' });
 });

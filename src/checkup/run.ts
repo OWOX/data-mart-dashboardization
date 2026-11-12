@@ -58,6 +58,7 @@ export const LABELS: Record<string, string> = {
   'model.keys': 'Each core class has a key metric',
   'model.plans': 'Each shown metric of the goal and core classes has a plan',
   'model.history': 'Who last changed the model',
+  'model.access': 'You can access every Data Mart in the model',
 };
 /** What each check is for, by check id (per-context ids as in LABELS). */
 export const PURPOSES: Record<string, string> = {
@@ -98,6 +99,7 @@ export const PURPOSES: Record<string, string> = {
   'model.keys': 'The key metric is the number a class shows first. A core class without one shows no headline number.',
   'model.plans': 'A plan lets a metric show whether it is on track. The goal and core classes are where it matters most.',
   'model.history': 'Shows who built or last changed the shared model, and when.',
+  'model.access': 'A rebuild keeps the classes and metrics of Data Marts you cannot access, but you cannot edit or check them.',
 };
 const purpose = (id: string) => PURPOSES[id.startsWith('context:') ? `context.${id.slice(id.indexOf('.') + 1)}` : id] ?? '';
 const FIXED: [GroupId, string][] = [['critical', 'project.description'], ['critical', 'project.table'], ['critical', 'project.critical'], ['critical', 'project.fact'], ['critical', 'project.links'],
@@ -106,7 +108,7 @@ const FIXED: [GroupId, string][] = [['critical', 'project.description'], ['criti
   ['contexts', 'contexts.exist'],
   ['connections', 'connections.reachable'], ['connections', 'connections.any'], ['connections', 'connections.facts'], ['connections', 'connections.pk'], ['connections', 'connections.date'],
   ['metrics', 'model.built'], ['metrics', 'model.health'], ['metrics', 'model.fresh'], ['metrics', 'model.keys'], ['metrics', 'model.plans'],
-  ['housekeeping', 'plugin.ai'], ['housekeeping', 'model.history']];
+  ['housekeeping', 'plugin.ai'], ['housekeeping', 'model.history'], ['housekeeping', 'model.access']];
 const label = (id: string) => LABELS[id.startsWith('context:') ? `context.${id.slice(id.indexOf('.') + 1)}` : id] ?? id;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -351,7 +353,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
   });
 
   const modelGroup = () => guard((id) => id.startsWith('model.'), async () => {
-    const none = ['health', 'fresh', 'keys', 'plans', 'history'];
+    const none = ['health', 'fresh', 'keys', 'plans', 'history', 'access'];
     if (!model) { put('model.built', 'fail', 'No model built yet'); for (const id of none) put(`model.${id}`, 'skip', 'No model built yet'); return; }
     put('model.built', 'ok');
     const fix: Fix = { kind: 'tab', label: 'Open Metrics', tab: 'ontology' };
@@ -365,6 +367,11 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
     const at = new Date(model.editedBy ? model.editedAt ?? model.builtAt : model.builtAt);
     const when = isNaN(at.getTime()) ? '' : `, ${at.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
     put('model.history', 'ok', `${model.editedBy ? 'Last edited' : 'Built'} by ${by}${when}`);
+    const blind = model.classes.filter((c) => !visible.has(c.martId));
+    if (blind.length) {
+      const shown = blind.slice(0, 5).map((c) => c.title).join(', ');
+      put('model.access', 'recommend', `You can't access ${plural(blind.length, 'Data Mart', 'Data Marts')} in the model. A rebuild by you keeps them unchanged. ${shown}${blind.length > 5 ? ` and ${blind.length - 5} more` : ''}.`);
+    } else put('model.access', 'ok');
     const { issues } = await checkHealth(owox, model, visible);
     if (issues.length) put('model.health', 'warn', plural(issues.length, 'broken reference', 'broken references'), fix); else put('model.health', 'ok');
     if (!inputs.contextsOk) { put('model.fresh', 'skip', "Contexts couldn't be read"); return; }
