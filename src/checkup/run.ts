@@ -52,7 +52,7 @@ export const LABELS: Record<string, string> = {
   'model.health': 'The saved model has no broken references',
   'model.fresh': 'The saved model matches the descriptions',
   'model.keys': 'Each core class has a key metric',
-  'model.plans': 'Each shown metric has a plan',
+  'model.plans': 'Each shown metric of the goal and core classes has a plan',
   'model.history': 'Who last changed the model',
 };
 /** What each check is for, by check id (per-context ids as in LABELS). */
@@ -208,6 +208,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
       const shape = model?.metrics.find((m) => m.id === model.goal.metricId)?.plan?.shape;
       if (map.get('project.plan')!.status !== 'ok') skip('project.shape', 'project.plan');
       else if (shape) put('project.shape', 'ok', shape);
+      else if (model) put('project.shape', 'recommend', 'Not known yet: rebuild the model to detect it', { kind: 'tab', label: 'Open Metrics', tab: 'ontology' });
       else put('project.shape', 'recommend', 'Not known yet: build the model to detect it', projectFix);
     }
     await putLinks('project.links', projectRows, projectFix);
@@ -243,7 +244,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
       if (c.description?.trim()) put(`${p}.description`, 'ok'); else put(`${p}.description`, 'recommend', 'Empty description', fix);
       const n = inputs.marts.filter((m) => m.contexts.some((x) => x.id === c.id)).length;
       if (n) put(`${p}.marts`, 'ok', `${n} Data Marts`); else put(`${p}.marts`, 'warn', 'No Data Marts in this context', fix);
-      if (rows.some((r) => r.fact.some(isFieldLink))) put(`${p}.fact`, 'ok'); else put(`${p}.fact`, 'warn', 'No metric row links a fact', fix);
+      if (criticalRow(rows)?.fact.some(isFieldLink)) put(`${p}.fact`, 'ok'); else put(`${p}.fact`, 'warn', 'No Critical number row with a fact', fix);
       if (rows.some((r) => r.plan.some(isFieldLink))) put(`${p}.plan`, 'ok'); else put(`${p}.plan`, 'recommend', 'No metric row links a plan', fix);
       await putLinks(`${p}.links`, rows, fix);
     })));
@@ -297,7 +298,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
     const ids = ['business', 'industry', 'set', 'keys', 'toGoal', 'linked', 'count', 'missing'];
     if (!factOk) { for (const id of ids) skip(`core.${id}`, 'project.fact'); return; }
     const { nodes, edges } = await graph();
-    const industry = INDUSTRIES.find((i) => i.id === (settings.industry ?? 'other'))!;
+    const industry = INDUSTRIES.find((i) => i.id === (settings.industry ?? 'other')) ?? INDUSTRIES.find((i) => i.id === 'other')!;
     const nodeOf = new Map(nodes.map((n) => [n.id, n]));
     const keyed = (id: string) => { const n = nodeOf.get(id); return !!n && singleKey(n.detail); };
     // the saved list, or what the build would pick

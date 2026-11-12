@@ -21,8 +21,8 @@ function data(over: Partial<FakeOwoxData> = {}): FakeOwoxData {
   return {
     projectDescription: table(`| Critical number | Revenue | [Plan](${url(P, 'revenue')}) | [Revenue](${url(G, 'revenue')}) |`),
     contexts: [
-      { id: 'k1', name: 'Sales', description: table(`| Leading | Customers | [Plan](${url(P, 'revenue')}) | [Customers](${url(C, 'revenue')}) |`) },
-      { id: 'k3', name: 'Orders', description: table(`| Leading | Orders | [Plan](${url(P, 'revenue')}) | [Orders](${url(G, 'revenue')}) |`) },
+      { id: 'k1', name: 'Sales', description: table(`| Critical number | Customers | [Plan](${url(P, 'revenue')}) | [Customers](${url(C, 'revenue')}) |`) },
+      { id: 'k3', name: 'Orders', description: table(`| Critical number | Orders | [Plan](${url(P, 'revenue')}) | [Orders](${url(G, 'revenue')}) |`) },
     ],
     marts: [mart(G, 'Orders', [{ id: 'k1', name: 'Sales' }, { id: 'k3', name: 'Orders' }]), mart(C, 'Customers', [{ id: 'k1', name: 'Sales' }]), mart(P, 'Plan')],
     details: {
@@ -47,11 +47,10 @@ const noCalc = (d: MartDetail): MartDetail => ({ ...d, fields: d.fields.filter((
 
 test('a complete project passes everything except the saved model, which is skipped', async () => {
   const cs = await run(data());
-  // core.* and project.shape judge other things; they have their own tests
+  // core.*, project.shape and model.history have their own tests
   for (const c of cs.filter((x) => !x.id.startsWith('core.') && !['project.shape', 'model.history'].includes(x.id))) {
     if (c.id === 'model.built') expect(c).toMatchObject({ status: 'fail', detail: 'No model built yet' });
     else if (c.id.startsWith('model.')) expect(c).toMatchObject({ status: 'skip', detail: 'No model built yet' });
-    else if (c.id === 'connections.date' || /^context:.*\.(description|plan)$/.test(c.id)) expect(c.status, c.id).toBe('ok');
     else expect(c, c.id).toMatchObject({ status: 'ok' });
   }
 });
@@ -159,7 +158,7 @@ test('two contexts pass; fewer warn', async () => {
 });
 
 test('per-context checks warn on an empty context and carry the context', async () => {
-  const d = data({ contexts: [{ id: 'k1', name: 'Sales', description: table(`| Leading | Customers | [Plan](${url(P, 'revenue')}) | [Customers](${url(C, 'revenue')}) |`) }, { id: 'k2', name: 'Empty', description: null }] });
+  const d = data({ contexts: [{ id: 'k1', name: 'Sales', description: table(`| Critical number | Customers | [Plan](${url(P, 'revenue')}) | [Customers](${url(C, 'revenue')}) |`) }, { id: 'k2', name: 'Empty', description: null }] });
   const c = byId(await run(d));
   for (const k of ['fact', 'marts']) expect(c[`context:k2.${k}`], k).toMatchObject({ status: 'warn', context: { id: 'k2', name: 'Empty' } });
   for (const k of ['description', 'plan']) expect(c[`context:k2.${k}`], k).toMatchObject({ status: 'recommend', context: { id: 'k2', name: 'Empty' } });
@@ -380,4 +379,26 @@ test('the plan shape is known once the model holds the goal plan', async () => {
   expect(byId(await run(data(), { model: m }))['project.shape']).toMatchObject({ status: 'ok', detail: 'daily' });
   const none = data({ projectDescription: table(`| Critical number | Revenue | | [Revenue](${url(G, 'revenue')}) |`) });
   expect(byId(await run(none))['project.shape']!.status).toBe('skip');
+});
+
+test('the plan label says it covers the goal and core classes', () => {
+  expect(LABELS['model.plans']).toBe('Each shown metric of the goal and core classes has a plan');
+});
+
+test('a context needs a Critical number row with a fact', async () => {
+  const leading = data({ contexts: [{ id: 'k1', name: 'Sales', description: table(`| Leading | Customers | | [Customers](${url(C, 'revenue')}) |`) }] });
+  expect(byId(await run(leading))['context:k1.fact']).toMatchObject({ status: 'warn', detail: 'No Critical number row with a fact' });
+  const noFact = data({ contexts: [{ id: 'k1', name: 'Sales', description: table('| Critical number | Customers | | |') }] });
+  expect(byId(await run(noFact))['context:k1.fact']!.status).toBe('warn');
+  expect(byId(await run(data()))['context:k1.fact']!.status).toBe('ok');
+});
+
+test('an unknown shape with a model says rebuild and links Metrics', async () => {
+  const m = { ...savedModel, goal: { ...savedModel.goal, metricId: null }, metrics: [] };
+  expect(byId(await run(data(), { model: m }))['project.shape']).toMatchObject({ status: 'recommend', detail: 'Not known yet: rebuild the model to detect it', fix: { kind: 'tab', tab: 'ontology' } });
+});
+
+test('an unknown industry id falls back to Other', async () => {
+  const s = { thresholdPct: 20, industry: 'nope' as never, coreClasses: core(C, Pr, St) };
+  expect(byId(await run(rich(), { settings: s }))['core.count']!.status).toBe('ok');
 });
