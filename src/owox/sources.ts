@@ -19,9 +19,11 @@ export interface OwoxLike {
   getJson<T>(path: string, query?: Record<string, unknown>): Promise<T>;
   /** Optional so older callers compile; without it no data-quality icons show. */
   postJson?<T>(path: string, body: unknown): Promise<T>;
+  /** Optional: Checkup's Apply writes with it. */
+  putJson?<T>(path: string, body: unknown): Promise<T>;
   /** Optional: renders Markdown to sanitized HTML (POST /api/markdown/parse-to-html). */
   markdown?: { parseToHtml(r: { markdown: string }): Promise<string> };
-  project: { getSettings(): Promise<{ description: string | null }> };
+  project: { getSettings(): Promise<{ description: string | null }>; updateDescription?(description: string | null): Promise<unknown> };
   dataMarts: {
     list(): Promise<MartSummary[]>;
     traverseData(id: string, options: Record<string, unknown>): Promise<{ rowChunks(): AsyncIterable<Record<string, unknown>[]> }>;

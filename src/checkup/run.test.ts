@@ -402,3 +402,17 @@ test('an unknown industry id falls back to Other', async () => {
   const s = { thresholdPct: 20, industry: 'nope' as never, coreClasses: core(C, Pr, St) };
   expect(byId(await run(rich(), { settings: s }))['core.count']!.status).toBe('ok');
 });
+
+test('checks that are not passing carry a suggestion; AI-only ones carry an empty one', async () => {
+  const d = data({ projectDescription: '  ', contexts: [] });
+  const c = byId(await run(d));
+  expect(c['project.description']!.suggestion).toMatchObject({ ai: true, options: [], question: 'What does the business sell, and to whom?' });
+  expect(c['contexts.exist']!.suggestion!.options.length).toBeGreaterThan(0);
+  expect(c['plugin.ai']!.suggestion).toBeUndefined();
+});
+
+test('a passing check has no suggestion', async () => {
+  const c = byId(await run(data()));
+  expect(c['project.fact']!.status).toBe('ok');
+  expect(c['project.fact']!.suggestion).toBeUndefined();
+});

@@ -2,7 +2,7 @@ import type { BuildResult, ClassNode, CoreClass, Industry, MetricDef } from '../
 import { extractLinks } from '../lib/links';
 import type { MartLink } from '../lib/links';
 import { hashString } from '../lib/hash';
-import { describeError } from '../lib/errors';
+import { describeError, statusesOf } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields } from '../owox/sources';
 import type { Blendable, Inputs, MartDetail, OwoxLike } from '../owox/sources';
@@ -45,13 +45,7 @@ export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'
   ]));
 }
 
-const isNotFound = (e: unknown): boolean => {
-  for (let c = e; c instanceof Error; c = c.cause) {
-    const p = (c as { payload?: { status?: unknown } }).payload;
-    if ((c as { status?: unknown }).status === 404 || p?.status === 404) return true;
-  }
-  return /\b404\b|not found/i.test(describeError(e));
-};
+const isNotFound = (e: unknown): boolean => statusesOf(e).includes(404) || /\b404\b|not found/i.test(describeError(e));
 
 /**
  * The hash as it would be computed now. A Data Mart missing from the access list, or one whose fetch says

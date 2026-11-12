@@ -7,6 +7,8 @@ import { currentInputHash } from '../model/build';
 import { runPool } from '../lib/pool';
 import { describeError } from '../lib/errors';
 import { criticalRow, findMetricRows, isFieldLink, type MetricRow } from './tables';
+import { codeSuggestion } from './suggest';
+import { aiQuestion, isAiCheck } from './suggestAi';
 import type { Check, CheckStatus, Fix, GroupId } from './types';
 
 export interface CheckupArgs {
@@ -364,6 +366,22 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
     if (hash !== model.inputHash) put('model.fresh', 'warn', 'The descriptions changed since the model was built', fix); else put('model.fresh', 'ok');
   });
 
+  /** Code answers for checks that aren't passing; checks only the AI can answer get an empty one, so the tab offers "Suggest an answer". */
+  const attachSuggestions = async () => {
+    let g: Awaited<ReturnType<typeof graph>> = { nodes: [], edges: [] };
+    try { g = await graph(); } catch { /* suggestions that need the graph are left out */ }
+    const ctx = { inputs, nodes: g.nodes, edges: g.edges, goalId: factOk ? goalId : null, settings, projectId };
+    for (const c of [...map.values()]) {
+      if (c.status === 'ok' || c.status === 'skip' || c.status === 'running') continue;
+      let s: Check['suggestion'] | null = null;
+      try { s = codeSuggestion(c.id, ctx); } catch { /* no suggestion */ }
+      if (!s && isAiCheck(c.id)) s = { question: aiQuestion(c.id, ctx), options: [], ai: true, target: () => ({ kind: 'settings', patch: {} }) };
+      if (s) map.set(c.id, { ...c, suggestion: s });
+    }
+    publish();
+  };
+
   await Promise.all([projectGroup(), goalGroup(), contextsGroup(), connectionsGroup(), coreGroup(), modelGroup()]);
+  await attachSuggestions();
   return [...map.values()];
 }

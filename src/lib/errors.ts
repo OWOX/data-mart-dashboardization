@@ -9,3 +9,15 @@ export function describeError(error: unknown): string {
   }
   return error instanceof Error ? error.message : String(error);
 }
+
+/** Every HTTP status on the error and its `cause` chain: `status` or `payload.status`, first to last. */
+export function statusesOf(error: unknown): number[] {
+  const out: number[] = [];
+  for (let c = error; c instanceof Error; c = c.cause) {
+    const p = (c as { payload?: { status?: unknown } }).payload;
+    for (const s of [(c as { status?: unknown }).status, p?.status]) if (typeof s === 'number') out.push(s);
+  }
+  return out;
+}
+/** The first HTTP status found, or undefined. */
+export const statusOf = (error: unknown): number | undefined => statusesOf(error)[0];

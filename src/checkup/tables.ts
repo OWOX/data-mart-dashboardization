@@ -45,3 +45,46 @@ export function findMetricRows(markdown: string | null | undefined, source: 'pro
 export const criticalRow = (rows: MetricRow[]): MetricRow | null => rows.find((r) => /critical/i.test(r.role)) ?? null;
 /** A link that names a real Data Mart field: not a placeholder, with a Data Mart id and a field. */
 export const isFieldLink = (l: MartLink): boolean => !l.placeholder && !!l.martId && !!l.field;
+
+interface Located { start: number; end: number; lines: string[]; role: number; plan: number }
+
+// the first table with Role, Plan and Fact columns; start and end are character offsets (end excludes the last line's break)
+function locateMetricsTable(markdown: string): Located | null {
+  const lines = markdown.split('\n');
+  let pos = 0;
+  const offsets = lines.map((l) => { const o = pos; pos += l.length + 1; return o; });
+  for (let i = 0; i + 1 < lines.length; i++) {
+    if (!lines[i]!.includes('|') || !isSeparator(lines[i + 1]!)) continue;
+    const head = cells(lines[i]!).map((c) => c.toLowerCase());
+    const [role, plan, fact] = ['role', 'plan', 'fact'].map((n) => head.indexOf(n)) as [number, number, number];
+    if (role < 0 || plan < 0 || fact < 0) continue;
+    const leading = lines[i]!.trim().startsWith('|');
+    let last = i + 1;
+    while (last + 1 < lines.length && isRow(lines[last + 1]!, leading)) last++;
+    const end = offsets[last]! + lines[last]!.replace(/\r$/, '').length;
+    return { start: offsets[i]!, end, lines: lines.slice(i, last + 1).map((l) => l.replace(/\r$/, '')), role, plan };
+  }
+  return null;
+}
+
+/** Replaces the first Metrics table in the description, or appends one; the rest of the text stays byte for byte. */
+export function upsertMetricsTable(markdown: string | null, table: string): string {
+  const headed = table.startsWith('|') ? `## Metrics\n${table}` : table;
+  if (!markdown?.trim()) return headed;
+  const at = locateMetricsTable(markdown);
+  return at ? markdown.slice(0, at.start) + table + markdown.slice(at.end) : `${markdown}\n\n${headed}`;
+}
+
+/** The first Metrics table with the plan cell of its Critical number row set to `planCell`; null without such a row. */
+export function withCriticalPlan(markdown: string | null, planCell: string): string | null {
+  const at = markdown ? locateMetricsTable(markdown) : null;
+  if (!at) return null;
+  const i = at.lines.findIndex((l, n) => n >= 2 && /critical/i.test(cells(l)[at.role] ?? ''));
+  if (i < 0) return null;
+  const row = cells(at.lines[i]!);
+  while (row.length <= at.plan) row.push('');
+  row[at.plan] = planCell;
+  const lines = [...at.lines];
+  lines[i] = `| ${row.map((c) => c.replace(/\|/g, '\\|')).join(' | ')} |`;
+  return lines.join('\n');
+}

@@ -79,15 +79,22 @@ export async function interpret(generate: Generate, input: InterpretInput): Prom
   return { ...parsed.data, metrics: parsed.data.metrics.map((m) => ({ ...m, currency: m.format === 'currency' ? normalizeCurrency(m.currency) : null })) };
 }
 
-export function aiGenerate(model: unknown, signal?: AbortSignal): Generate {
-  return async (prompt) => {
+/** Like `Generate`, with the answer's shape chosen by the caller. */
+export type GenerateWith = (prompt: string, schema: z.ZodType) => Promise<unknown>;
+
+export function aiGenerateWith(model: unknown, signal?: AbortSignal): GenerateWith {
+  return async (prompt, schema) => {
     const { output } = await generateText({
       model: model as never, // the SDK's provider-v4 handle; ai@7 accepts LanguageModelV4
-      output: Output.object({ schema: AiOutputSchema }),
+      output: Output.object({ schema }),
       prompt,
       temperature: 0,
       abortSignal: signal,
     });
     return output;
   };
+}
+
+export function aiGenerate(model: unknown, signal?: AbortSignal): Generate {
+  return (prompt) => aiGenerateWith(model, signal)(prompt, AiOutputSchema);
 }

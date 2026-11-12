@@ -41,3 +41,32 @@ test('isFieldLink rejects placeholders and links without a field', () => {
   expect(isFieldLink(nofield!)).toBe(false);
   expect(criticalRow([])).toBeNull();
 });
+
+import { upsertMetricsTable, withCriticalPlan } from './tables';
+
+test('upsertMetricsTable replaces only the Metrics table', () => {
+  const md = 'Intro.\n\n| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Old | | |\n\nOutro.';
+  const out = upsertMetricsTable(md, '| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Revenue | | [Revenue](/ui/p/data-marts/o/data-setup?field=revenue) |');
+  expect(out.startsWith('Intro.\n\n')).toBe(true);
+  expect(out.endsWith('\n\nOutro.')).toBe(true);
+  expect(out).toContain('| Critical number | Revenue |');
+  expect(out).not.toContain('| Old |');
+});
+
+test('upsertMetricsTable appends when there is none', () => {
+  expect(upsertMetricsTable('Just text.', 'T')).toBe('Just text.\n\nT');
+  expect(upsertMetricsTable(null, 'T')).toBe('T');
+  expect(upsertMetricsTable('  ', 'T')).toBe('T');
+});
+
+test('upsertMetricsTable ignores tables without Role, Plan and Fact', () => {
+  const md = '| A | B |\n|---|---|\n| 1 | 2 |';
+  expect(upsertMetricsTable(md, 'T')).toBe(`${md}\n\nT`);
+});
+
+test('withCriticalPlan rewrites only the plan cell of the Critical number row', () => {
+  const md = `x\n\n| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Revenue | | ${link(ID, 'rev')} |\n| Leading | Leads | | ${link(ID, 'leads')} |\n\ny`;
+  const out = withCriticalPlan(md, link(PLAN, 'plan'))!;
+  expect(out).toBe(`| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Revenue | ${link(PLAN, 'plan')} | ${link(ID, 'rev')} |\n| Leading | Leads | | ${link(ID, 'leads')} |`);
+  expect(withCriticalPlan('no table', 'L')).toBeNull();
+});
