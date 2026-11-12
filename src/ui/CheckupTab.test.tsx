@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { CheckupTab } from './CheckupTab';
 import type { Check } from '../checkup/types';
 
-const ck = (id: string, status: Check['status'], over: Partial<Check> = {}): Check => ({ id, group: 'heading', label: id, status, ...over });
+const ck = (id: string, status: Check['status'], over: Partial<Check> = {}): Check => ({ id, group: 'critical', purpose: 'What the check is for.', label: id, status, ...over });
 const now = () => new Date(2026, 10, 4, 14, 2);
 
 function deferred() {
@@ -28,17 +28,17 @@ test('runs on mount, draws running checks, then the final list with summary and 
 });
 
 test('groups render in order with labels; empty groups are skipped; heading shows the worst mark', async () => {
-  const list = [ck('m', 'ok', { group: 'housekeeping' }), ck('p', 'fail', { group: 'heading' }), ck('p2', 'ok', { group: 'heading' }), ck('g', 'ok', { group: 'connections' })];
+  const list = [ck('m', 'ok', { group: 'housekeeping' }), ck('p', 'fail', { group: 'critical' }), ck('p2', 'ok', { group: 'critical' }), ck('g', 'ok', { group: 'connections' })];
   render(<CheckupTab run={instant(list)} projectId="p1" now={now} />);
   const heads = await screen.findAllByRole('heading', { level: 3 });
   expect(heads).toHaveLength(3);
-  ['Where the business is heading', 'How it connects', 'Housekeeping'].forEach((label, i) => expect(heads[i]).toHaveTextContent(label));
+  ['Critical number', 'Connections', 'Housekeeping'].forEach((label, i) => expect(heads[i]).toHaveTextContent(label));
   expect(heads[0]).toHaveTextContent('✗');
-  expect(screen.queryByRole('heading', { name: /What drives it/ })).toBeNull();
+  expect(screen.queryByRole('heading', { name: /Contexts/ })).toBeNull();
 });
 
 test('context checks render inside a group named after the context', async () => {
-  const list = [ck('x', 'ok', { group: 'drivers', context: { id: 'c1', name: 'Sales' } }), ck('y', 'ok', { group: 'drivers' })];
+  const list = [ck('x', 'ok', { group: 'contexts', context: { id: 'c1', name: 'Sales' } }), ck('y', 'ok', { group: 'contexts' })];
   render(<CheckupTab run={instant(list)} projectId="p1" now={now} />);
   const group = await screen.findByRole('group', { name: 'Sales' });
   expect(within(group).getByText('x')).toBeInTheDocument();
@@ -102,7 +102,7 @@ test('the refresh icon spins while running only', async () => {
   expect(icon()).not.toHaveClass('gy-spin');
 });
 
-const inCtx = (id: string, status: Check['status']) => ck(id, status, { group: 'drivers', context: { id: 'c1', name: 'Finance' } });
+const inCtx = (id: string, status: Check['status']) => ck(id, status, { group: 'contexts', context: { id: 'c1', name: 'Finance' } });
 
 test('an all-ok context starts folded with a passed mark; its checks are hidden', async () => {
   render(<CheckupTab run={instant([inCtx('a', 'ok'), inCtx('b', 'ok')])} projectId="p1" now={now} />);
@@ -129,7 +129,7 @@ test('the fold follows the results as a run streams', async () => {
   let push!: (c: Check[]) => void;
   const d = deferred();
   render(<CheckupTab run={(onUpdate) => { push = onUpdate; return d.promise; }} projectId="p1" now={now} />);
-  const other = (id: string, status: Check['status']) => ck(id, status, { group: 'drivers', context: { id: 'c2', name: 'Ads' } });
+  const other = (id: string, status: Check['status']) => ck(id, status, { group: 'contexts', context: { id: 'c2', name: 'Ads' } });
   act(() => push([inCtx('a', 'running'), other('x', 'running')]));
   const fin = screen.getByRole('group', { name: 'Finance' }), ads = screen.getByRole('group', { name: 'Ads' });
   expect(within(fin).getAllByRole('listitem')).toHaveLength(1);
@@ -140,4 +140,10 @@ test('the fold follows the results as a run streams', async () => {
   act(() => push([inCtx('a', 'ok'), other('x', 'fail')]));
   expect(within(fin).queryByRole('listitem')).toBeNull();
   expect(within(ads).getAllByRole('listitem')).toHaveLength(1);
+});
+
+test('a recommendation is counted in the summary and marked with a light bulb', async () => {
+  render(<CheckupTab run={instant([ck('a', 'recommend'), ck('b', 'recommend'), ck('c', 'ok')])} projectId="p1" now={now} />);
+  expect(await screen.findByText('2 recommendations, 1 passed')).toBeInTheDocument();
+  expect(screen.getAllByText('💡').length).toBeGreaterThan(0);
 });

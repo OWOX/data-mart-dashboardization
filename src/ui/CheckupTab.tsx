@@ -1,4 +1,4 @@
-import { Compass, Network, RefreshCw, Spline, Wrench, type LucideIcon } from 'lucide-react';
+import { Boxes, ListChecks, Network, RefreshCw, Spline, Target, Wrench, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GROUPS, type Check, type CheckStatus, type Fix, type GroupId } from '../checkup/types';
 import { metricsSnippet } from './Blocked';
@@ -14,11 +14,11 @@ export interface CheckupProps {
   onOpenTab?: (tab: 'ontology') => void;
 }
 
-const GROUP_ICON: Record<GroupId, LucideIcon> = { heading: Compass, drivers: Network, connections: Spline, housekeeping: Wrench };
-const MARK: Record<CheckStatus, string> = { ok: '✓', fail: '✗', warn: '!', skip: '–', running: '' };
-const WORD: Record<CheckStatus, string> = { ok: 'passed', fail: 'failed', warn: 'warning', skip: 'skipped', running: 'checking' };
+const GROUP_ICON: Record<GroupId, LucideIcon> = { critical: Target, core: Boxes, contexts: Network, connections: Spline, metrics: ListChecks, housekeeping: Wrench };
+const MARK: Record<CheckStatus, string> = { ok: '✓', fail: '✗', warn: '!', recommend: '💡', skip: '–', running: '' };
+const WORD: Record<CheckStatus, string> = { ok: 'passed', fail: 'failed', warn: 'warning', recommend: 'recommendation', skip: 'skipped', running: 'checking' };
 // worst first
-const SEVERITY: CheckStatus[] = ['fail', 'warn', 'running', 'ok', 'skip'];
+const SEVERITY: CheckStatus[] = ['fail', 'warn', 'recommend', 'running', 'ok', 'skip'];
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -27,6 +27,7 @@ function summarize(checks: Check[], running: boolean): string {
   const parts = [
     n('fail') > 0 && `${n('fail')} failed`,
     n('warn') > 0 && plural(n('warn'), 'warning', 'warnings'),
+    n('recommend') > 0 && plural(n('recommend'), 'recommendation', 'recommendations'),
     n('ok') > 0 && `${n('ok')} passed`,
   ].filter(Boolean) as string[];
   const text = parts.join(', ');
@@ -73,7 +74,7 @@ export function CheckupTab({ run, projectId, now, onOpen, onOpenTab }: CheckupPr
   const copy = (text: string) => { void Promise.resolve(navigator.clipboard?.writeText(text)).catch(() => {}); };
 
   const renderCheck = (c: Check) => {
-    const fixes = (c.status === 'fail' || c.status === 'warn') && c.fix ? [c.fix].flat() : [];
+    const fixes = (c.status === 'fail' || c.status === 'warn' || c.status === 'recommend') && c.fix ? [c.fix].flat() : [];
     const link = (fix: Fix) => {
       if (fix.kind === 'owox') return onOpen ? <button type="button" className="gy-link" onClick={() => onOpen(fix.path)}>{fix.label}</button> : fix.label;
       if (fix.kind === 'tab') return <button type="button" className="gy-link" onClick={() => onOpenTab?.(fix.tab)}>{fix.label}</button>;

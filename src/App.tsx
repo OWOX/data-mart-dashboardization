@@ -433,7 +433,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
           ontology={ontologyProps}
           noModel={!model}
-          checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
+          checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, settings: { thresholdPct: settings.thresholdPct, industry: settings.industry, coreClasses: settings.coreClasses }, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
           onBack={leaveSettings}
           onRebuild={async (onStep) => {
             const r: BuildResult = await buildModel({ owox, generate, userId, now: now(), existingCore: settings.coreClasses, industry: settings.industry, onStep });
