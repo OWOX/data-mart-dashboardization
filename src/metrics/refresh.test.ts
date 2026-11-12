@@ -218,9 +218,18 @@ describe('broken references', () => {
 
   test('a plan query that throws leaves the fact intact', async () => {
     const plan = { martId: 'p', measure: { field: 'x', fn: 'SUM' as const }, dateField: 'd', shape: 'daily' as const };
-    const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: (id) => { if (id === 'p') throw new Error('403 forbidden'); return [{ 'Unique Count': 5 }]; } });
-    const doc = await refreshCanvas({ owox, model: model([metric('m', { plan })]), spec, key: 'k', thresholdPct: 20 });
+    const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: (id) => { if (id === 'p') throw Object.assign(new Error('403 forbidden'), { status: 403 }); return [{ 'Unique Count': 5 }]; } });
+    const doc = await refreshCanvas({ owox, model: model([metric('m', { plan, dateField: 'date' })]), spec, key: 'k', thresholdPct: 20 });
     expect(doc.cards.a!.metrics.m).toMatchObject({ fact: 5, plan: null, error: null });
+    // a refusal stays quiet
+    expect(doc.cards.a!.metrics.m!.warning).toBeUndefined();
+  });
+
+  test('a plan query that fails for another reason leaves the fact and warns', async () => {
+    const plan = { martId: 'p', measure: { field: 'x', fn: 'SUM' as const }, dateField: 'd', shape: 'daily' as const };
+    const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: (id) => { if (id === 'p') throw new Error('timeout'); return [{ 'Unique Count': 5 }]; } });
+    const doc = await refreshCanvas({ owox, model: model([metric('m', { plan, dateField: 'date' })]), spec, key: 'k', thresholdPct: 20 });
+    expect(doc.cards.a!.metrics.m).toMatchObject({ fact: 5, plan: null, error: null, warning: "Couldn't load the plan: timeout" });
   });
 
   test('a traverse that throws Not found mid-refresh gives a warning, and the run carries on', async () => {

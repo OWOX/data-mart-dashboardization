@@ -9,7 +9,9 @@ export type IssueKind =
   | 'plan_mart_missing' | 'plan_field_missing' | 'forecast_mart_missing' | 'forecast_field_missing';
 
 /** `martId` is the Data Mart the issue is about: the class's own for a class issue, the metric's for a metric issue. */
-export interface Issue { kind: IssueKind; classId: string; martId: string; metricId: string | null; text: string }
+export interface Issue { kind: IssueKind; classId: string; martId: string; metricId: string | null; text: string;
+  /** For plan_mart_missing and forecast_mart_missing: the source's Data Mart, which `martId` (the metric's) is not. */
+  sourceMartId?: string }
 
 /** Issues that stop a metric from being queried at all; the others only drop its plan or forecast source. */
 export const BLOCKING: ReadonlySet<IssueKind> = new Set<IssueKind>(['mart_missing', 'fact_field_missing', 'date_field_missing']);
@@ -58,7 +60,7 @@ export async function checkHealth(
   for (const m of model.metrics) {
     const classId = classOf.get(m.id) ?? m.martId;
     const name = model.classes.find((c) => c.id === classId)?.title ?? m.martId;
-    const add = (kind: IssueKind, text: string) => issues.push({ kind, classId, martId: m.martId, metricId: m.id, text });
+    const add = (kind: IssueKind, text: string, sourceMartId?: string) => issues.push({ kind, classId, martId: m.martId, metricId: m.id, text, ...(sourceMartId ? { sourceMartId } : {}) });
     // the class's own issue already says its Data Mart is gone
     if (!details.has(m.martId)) { if (gone.has(m.martId) && !reported.has(m.martId)) add('mart_missing', 'Data Mart not found or not accessible'); }
     else {
@@ -73,7 +75,7 @@ export async function checkHealth(
       const t = title(src.martId, src.martId);
       // no access to the source's Data Mart is not an issue
       if (!set && !gone.has(src.martId)) continue;
-      if (!set) { add(`${label}_mart_missing`, `The ${label} Data Mart was not found`); continue; }
+      if (!set) { add(`${label}_mart_missing`, `The ${label} Data Mart was not found`, src.martId); continue; }
       const missing = [src.measure.field, src.dateField].filter((f) => !set.has(f));
       if (missing.length) add(`${label}_field_missing`, `The ${label} field ${missing.join(', ')} no longer exists in ${t}`);
     }

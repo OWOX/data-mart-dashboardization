@@ -87,3 +87,10 @@ test('a Data Mart the viewer cannot list is no issue unless its detail says 404'
   const b = await checkHealth(owox({}), model([metric('m')]), new Set());
   expect(b.issues.map((i) => i.kind)).toEqual(['mart_missing']);
 });
+
+test('a missing plan or forecast Data Mart names the source in sourceMartId', async () => {
+  const src = (martId: string) => ({ martId, measure: { field: 'rev', fn: 'SUM' as const }, dateField: 'd' });
+  const m = metric('m', { plan: { ...src('p'), shape: 'daily' as const }, forecast: src('x') });
+  const { issues } = await checkHealth(owox({ o: ['revenue', 'date'] }), model([m]), all);
+  expect(issues.map((i) => [i.kind, i.martId, i.sourceMartId])).toEqual([['plan_mart_missing', 'o', 'p'], ['forecast_mart_missing', 'o', 'x']]);
+});

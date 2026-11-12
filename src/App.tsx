@@ -90,6 +90,10 @@ const tabOf = (route: string | undefined): { tab: SettingsTab; section?: GroupId
   return path === ROUTES_METRICS ? { tab: 'checkup', section: 'metrics' } : path === ROUTES.checkup ? { tab: 'checkup' } : path === ROUTES.general ? { tab: 'general' } : null;
 };
 
+/** Data Marts a health check confirmed gone: class and metric Data Marts, and the sources of plans and forecasts. */
+export const goneMartIds = (issues: Issue[]): Set<string> =>
+  new Set(issues.flatMap((i) => (i.kind === 'mart_missing' ? [i.martId] : i.sourceMartId ? [i.sourceMartId] : [])));
+
 /** No default preset means no range: the ontology view. */
 const rangeOf = (s: Settings): RangeChoice | null => (s.defaultPreset ? { kind: 'preset', preset: s.defaultPreset } : null);
 const compareOf = (s: Settings): CompareChoice => (s.comparisonDefault ? { kind: 'preset', preset: 'previous_period' } : { kind: 'off' });
@@ -299,7 +303,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const issuesNow = useMemo<Issue[]>(() => (health && health.model === model ? health.issues : []), [health, model]);
   const markdown = useMemo(() => createMarkdownHtml(owox.markdown ? (r) => owox.markdown!.parseToHtml(r) : undefined), [owox]);
   const detailsNow = useMemo(() => (health && health.model === model ? health.details : undefined), [health, model]);
-  const goneMarts = useMemo(() => new Set(issuesNow.filter((i) => i.kind === 'mart_missing').map((i) => i.martId)), [issuesNow]);
+  const goneMarts = useMemo(() => goneMartIds(issuesNow), [issuesNow]);
   const missingIds = useMemo(() => new Set(issuesNow.filter((i) => i.kind === 'mart_missing' && i.metricId === null).map((i) => i.classId)), [issuesNow]);
 
   const refresh = useCallback(async (force: boolean): Promise<boolean> => {

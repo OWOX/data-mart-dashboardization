@@ -1,6 +1,6 @@
 import type { DateWindow, MetricDef, MetricResult, RangeSpec, SeriesPack } from '../types';
 import { addDays, eachDay, maxDay, minDay } from '../lib/dates';
-import { describeError } from '../lib/errors';
+import { describeError, statusOf as httpStatus } from '../lib/errors';
 import { diffPct, forecastFor, HISTORY_DAYS, levelAt, planForRange, statusOf, trendOf } from '../lib/stats';
 import type { OwoxLike } from '../owox/sources';
 import { queryDaily, queryTotal } from './query';
@@ -100,7 +100,12 @@ export async function computeMetric(args: {
       try {
         const planDaily = await queryDaily(owox, p.martId, p.measure, p.dateField, { from: addDays(range.from, -1), to: range.to });
         plan = planForRange(planDaily, range, p.shape);
-      } catch { plan = null; }
+      } catch (e) {
+        plan = null;
+        // a refusal is a no-access case and stays quiet; anything else is shown
+        const st = httpStatus(e);
+        if (st !== 401 && st !== 403) warning = `Couldn't load the plan: ${describeError(e)}`;
+      }
     }
 
     // a projected range is judged by its forecast over the whole period; without one, a partial total against a

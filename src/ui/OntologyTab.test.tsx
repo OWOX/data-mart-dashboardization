@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { OntologyTab } from './OntologyTab';
+import { goneMartIds } from '../App';
+import { checkHealth } from '../model/health';
 import { fakeOwox } from '../owox/fake';
 import type { MartDetail, SchemaField } from '../owox/sources';
 import type { MetricDef, Model } from '../types';
@@ -222,10 +224,15 @@ test('a missing field is flagged red and the old value kept', () => {
   expect(row('Units').getByLabelText('Fact field')).not.toHaveClass('gy-bad');
 });
 
-test('a Data Mart that is gone is flagged on the plan source and on the class', () => {
+test('a plan Data Mart the health check finds gone is flagged red on the plan source', async () => {
   const m = model();
   m.metrics[0] = { ...m.metrics[0]!, plan: { martId: 'gone', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day', shape: 'daily' } };
-  setup(m, DETAILS, MARTS, true, new Set(['gone']));
+  // the fake answers 404 for 'gone'; the viewer lists a, c and p
+  const health = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
+  const { issues } = await checkHealth(health, m, new Set(MARTS.map((x) => x.id)));
+  const gone = goneMartIds(issues);
+  expect(gone.has('gone')).toBe(true);
+  setup(m, DETAILS, MARTS, true, gone);
   const plan = row('Revenue').getByRole('combobox', { name: 'Plan source' });
   expect(plan).toHaveClass('gy-bad');
   expect(plan).toHaveAttribute('title', 'gone › goal no longer exists');
