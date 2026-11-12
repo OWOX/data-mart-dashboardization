@@ -42,27 +42,7 @@ test('isFieldLink rejects placeholders and links without a field', () => {
   expect(criticalRow([])).toBeNull();
 });
 
-import { setCriticalFact, setCriticalPlan, upsertMetricsTable } from './tables';
-
-test('upsertMetricsTable replaces only the Metrics table', () => {
-  const md = 'Intro.\n\n| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Old | | |\n\nOutro.';
-  const out = upsertMetricsTable(md, '| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Revenue | | [Revenue](/ui/p/data-marts/o/data-setup?field=revenue) |');
-  expect(out.startsWith('Intro.\n\n')).toBe(true);
-  expect(out.endsWith('\n\nOutro.')).toBe(true);
-  expect(out).toContain('| Critical number | Revenue |');
-  expect(out).not.toContain('| Old |');
-});
-
-test('upsertMetricsTable appends when there is none', () => {
-  expect(upsertMetricsTable('Just text.', 'T')).toBe('Just text.\n\nT');
-  expect(upsertMetricsTable(null, 'T')).toBe('T');
-  expect(upsertMetricsTable('  ', 'T')).toBe('T');
-});
-
-test('upsertMetricsTable ignores tables without Role, Plan and Fact', () => {
-  const md = '| A | B |\n|---|---|\n| 1 | 2 |';
-  expect(upsertMetricsTable(md, 'T')).toBe(`${md}\n\nT`);
-});
+import { setCriticalFact, setCriticalPlan } from './tables';
 
 const PH = '[Revenue](https://app.owox.com/ui/p/data-marts/<id>/data-setup?field=revenue)';
 const DESC = `Intro.\n\n## Metrics\n| Role | Metric | Owner | Plan | Fact |\n|---|---|---|---|---|\n| Critical number | Revenue | Ann | ${link(PLAN, 'p')} | ${PH} |\n| Leading | Leads | Bo | | ${link(ID, 'leads')} |\n| Lagging | Churn | Cy | | ${link(ID, 'churn')} |\n\nOutro.`;

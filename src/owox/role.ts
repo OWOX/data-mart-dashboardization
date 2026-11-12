@@ -14,5 +14,3 @@ export async function fetchMember(owox: OwoxLike): Promise<{ isAdmin: boolean; n
   }
 }
 
-/** True when the member's roles include admin; any failure reads as not admin. */
-export const fetchIsAdmin = (owox: OwoxLike): Promise<boolean> => fetchMember(owox).then((m) => m.isAdmin);

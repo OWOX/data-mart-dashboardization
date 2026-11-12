@@ -221,7 +221,7 @@ Existing checks keep their ids and logic. New checks are marked **new**.
 | It has a Critical number row whose fact links a Data Mart field | Blocker | "Which number tells you the business is on track?" Recommended: the most referenced additive money field (SUM) of a Data Mart with a primary key and a date field, for example Revenue in Orders. Alternatives: the next 3 |
 | Every Data Mart and field linked in the description exists | Blocker | Offers to relink each missing link to the field with the same name in another Data Mart, or to remove the row |
 | Goal Data Mart: published, accessible, the field exists, primary key, date field | Blocker | No Apply: the Fix link opens the Data Mart. For a missing primary key, recommends the column whose values are unique in a preview |
-| The Critical number's plan links a Data Mart field | Warning | "Where is the plan for <metric>?" Recommended: a field named like plan, target or budget in a Data Mart that shares the date field. Alternative: "No plan yet" |
+| The Critical number's plan links a Data Mart field | Warning | "Where is the plan for <metric>?" Recommended: a field named like plan, target or budget in a Data Mart that shares the date field. |
 | The plan's shape is known (daily, cumulative, level) **new** | Recommendation | Recommended from the plan values: cumulative when they only grow within a month |
 
 **2. Core classes.** The 3 to 7 dictionary classes around the critical number: who buys, what is bought, where they come from.

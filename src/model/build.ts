@@ -74,7 +74,7 @@ const READING_ERRORS = new Set(['AI_NoObjectGeneratedError', 'AI_TypeValidationE
 /** A model that answered unreadably, as against a call that never got an answer (timeout, bad key, wrong model). */
 export const isReadingError = (e: unknown): boolean =>
   e instanceof Error && (READING_ERRORS.has(e.name) || e.message.startsWith('AI_INVALID:'));
-const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'AI_REQUEST_FAILED' | 'GOAL_NOT_CONNECTED' | 'GOAL_NO_ACCESS', detail: string, mismatches: string[] = []): BuildResult =>
+const fail = (code: 'AI_NOT_CONFIGURED' | 'AI_INVALID' | 'AI_REQUEST_FAILED' | 'GOAL_NO_ACCESS', detail: string, mismatches: string[] = []): BuildResult =>
   ({ ok: false, blocked: { code, detail, mismatches } });
 
 /** What the build is doing, for the progress page. Mart counts run over both detail-loading phases against all visible marts. */

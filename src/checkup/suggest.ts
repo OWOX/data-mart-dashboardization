@@ -67,7 +67,7 @@ function criticalNumber(ctx: SuggestContext): Suggestion | null {
   };
 }
 
-function plan(ctx: SuggestContext): Suggestion {
+function plan(ctx: SuggestContext): Suggestion | null {
   const metric = criticalMetric(ctx);
   const goal = ctx.nodes.find((n) => n.id === ctx.goalId);
   const types = goal ? new Set(flattenFields(goal.detail.fields).map((x) => x.field.type.toUpperCase()).filter((t) => DATE_TYPES.has(t))) : undefined;
@@ -77,15 +77,13 @@ function plan(ctx: SuggestContext): Suggestion {
       .filter(({ field }) => NUMBER_TYPE.test(field.type.toUpperCase()) && (PLAN.test(field.name) || PLAN.test(field.alias ?? '')))
       .map(({ path, field }) => ({ martId: n.id, title: n.title, field: path, label: `${field.alias || field.name} (${n.title})` })))
     .slice(0, 3);
-  const none: Option = { label: 'No plan yet', value: null, recommended: !picks.length };
-  const options = [...pickOptions(picks), none];
+  if (!picks.length) return null;
   return {
     question: `Where is the plan for ${metric}?`,
-    options,
+    options: pickOptions(picks),
     ai: false,
     target: (o) => {
-      const p = o.value as FieldPick | null;
-      if (!p) return { kind: 'settings', patch: {} };
+      const p = o.value as FieldPick;
       return { kind: 'critical_plan', scope: 'project', planLink: fieldLink(ctx.projectId, p.martId, p.field, `Plan · ${metric}`) };
     },
   };

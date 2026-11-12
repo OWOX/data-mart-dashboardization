@@ -27,11 +27,6 @@ const STEPS: Record<BlockCode, string[]> = {
     'Mark its primary key fields in the schema.',
     'Retry.',
   ],
-  GOAL_NOT_CONNECTED: [
-    'Ask a project admin for access to the goal\'s Data Mart, or',
-    'add a calculated field to a Data Mart you can see that references the goal\'s Data Mart, then',
-    'Retry.',
-  ],
   GOAL_NO_ACCESS: [
     'Ask a project admin with access to the goal Data Mart',
     'to build the model, then Retry.',

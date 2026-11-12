@@ -2,7 +2,7 @@
 
 Gyroscope is an OWOX Data Marts plugin that answers one question first: are we on track for the goal in the project description? It draws the project's ontology: one model of business classes, the same for every member of the project.
 
-1. With no date range, the default, the canvas is the ontology view. The class that owns the goal sits in the center, with 3 to 5 core dictionary classes (Customers, Users, Products) around it. Cards show class names only.
+1. With no date range, the default, the canvas is the ontology view. The class that owns the goal sits in the center, with 3 to 7 core dictionary classes (Customers, Users, Products) around it. Cards show class names only.
 2. With a date range, the canvas is the flow view. Each card shows one key metric against plan, with a trend, and with a forecast when the range ends in the future. Classes connected to the core ones appear below them.
 
 The [shared ontology spec](docs/superpowers/specs/2026-11-11-shared-ontology-design.md) describes both views.
@@ -12,12 +12,10 @@ The [shared ontology spec](docs/superpowers/specs/2026-11-11-shared-ontology-des
 1. The project description has a Metrics table with a Critical number row that links to a Data Mart field. That field is the goal.
 2. An AI Credential is mapped when the plugin is installed. Gyroscope uses it to build the model of classes and metrics.
 3. Calculated fields in your Data Marts reference other Data Marts. Gyroscope draws a connection for each reference.
-4. A project admin opens Gyroscope first to build the shared model. Until then, members see "An admin hasn't set up Gyroscope yet".
+4. A project with a 0.3 model is migrated on the first admin open, with no AI build, and members see the model right away. Only a project with no model needs an admin to build one; until then, members see "An admin hasn't set up Gyroscope yet".
 5. Describe the business model in the project description: what is sold, to whom, and through which channels. The first build takes the core classes from it. Calculated-field references are still what draws connections.
 
-Settings has two tabs. General holds your view and, for admins, the project threshold. Checkup is the setup page: sections, tooltips and one-click answers for admins.
-
-Settings, then Checkup, sets a project up from scratch or adjusts an existing one. Its sections (critical number, core classes, contexts, connections, metrics, housekeeping) show blockers, warnings and recommendations. A check that isn't filled asks a question, suggests an answer and applies it with one click.
+Settings has two tabs. General holds your view and, for admins, the project threshold. Checkup is the setup page: it sets a project up from scratch or adjusts an existing one. Its sections (critical number, core classes, contexts, connections, metrics, housekeeping) show blockers, warnings and recommendations with tooltips. A check that isn't filled asks a question, suggests an answer, and an admin applies it with one click.
 
 ## Develop
 
@@ -42,7 +40,7 @@ The plugin platform does not support a local preview. Test Gyroscope as an insta
 
 The [design spec](docs/superpowers/specs/2026-10-24-gyroscope-design.md) has the details. Each step below maps to a section.
 
-1. Build the ontology model: Gyroscope turns Data Marts, references and contexts into classes, connections and metrics, and picks the main class and key metrics (spec section 5).
+1. Build the ontology model: Gyroscope turns Data Marts, references and contexts into classes, connections and metrics, and takes the goal class and core classes, with key metrics (spec section 5).
 2. Date ranges: presets, the fact window, the forecast window and the comparison window, all in UTC (section 6).
 3. Metrics: one query per metric, a forecast, plan values and statuses (section 7).
 4. Canvas and card: layout by reference distance, context filters, and the metric card (section 8).

@@ -71,16 +71,6 @@ function locateMetricsTables(markdown: string): Located[] {
 const rowText = (c: string[]) => `|${c.map((x) => (x ? ` ${x.replace(/\|/g, '\\|')} ` : ' ')).join('|')}|`;
 const eolOf = (md: string) => (md.includes('\r\n') ? '\r\n' : '\n');
 
-/** Replaces the first Metrics table in the description, or appends one; the rest of the text stays byte for byte. */
-export function upsertMetricsTable(markdown: string | null, table: string): string {
-  const headed = table.startsWith('|') ? `## Metrics\n${table}` : table;
-  if (!markdown?.trim()) return headed;
-  const at = locateMetricsTables(markdown)[0];
-  if (!at) return `${markdown}\n\n${headed}`;
-  const end = at.starts[at.lines.length - 1]! + at.lines[at.lines.length - 1]!.length;
-  return markdown.slice(0, at.starts[0]!) + table + markdown.slice(end);
-}
-
 // swaps one body row's cells in place; nothing else in the text moves
 function editCritical(markdown: string, edit: (row: string[], t: Located) => void): string | null {
   for (const t of locateMetricsTables(markdown)) {

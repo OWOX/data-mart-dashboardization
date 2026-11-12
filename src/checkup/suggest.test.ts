@@ -26,11 +26,11 @@ test('the critical number suggestion prefers a revenue field in a dated Data Mar
   expect(codeSuggestion('project.critical', ctxWith())).not.toBeNull();
 });
 
-test('the plan suggestion offers plan-like fields and No plan yet', () => {
+test('the plan suggestion offers plan-like fields and no empty choice; with none it offers nothing', () => {
   const s = codeSuggestion('project.plan', ctxWith())!;
   expect(s.question).toBe('Where is the plan for Revenue?');
-  expect(s.options.map((o) => o.label)).toEqual(['revenue_plan (Plan)', 'target (Plan)', 'No plan yet']);
-  expect(s.target(s.options[2]!)).toEqual({ kind: 'settings', patch: {} });
+  expect(s.options.map((o) => o.label)).toEqual(['revenue_plan (Plan)', 'target (Plan)']);
+  expect(codeSuggestion('project.plan', ctxWith({}, { nodes: ctxWith().nodes.filter((n) => n.id !== PL) }))).toBeNull();
   expect(s.target(s.options[0]!)).toEqual({ kind: 'critical_plan', scope: 'project', planLink: `[Plan · Revenue](https://app.owox.com/ui/p/data-marts/${PL}/data-setup?field=revenue_plan)` });
 });
 
