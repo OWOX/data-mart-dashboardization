@@ -12,6 +12,10 @@ The [shared ontology spec](docs/superpowers/specs/2026-11-11-shared-ontology-des
 1. The project description has a Metrics table with a Critical number row that links to a Data Mart field. That field is the goal.
 2. An AI Credential is mapped when the plugin is installed. Gyroscope uses it to build the model of classes and metrics.
 3. Calculated fields in your Data Marts reference other Data Marts. Gyroscope draws a connection for each reference.
+4. A project admin opens Gyroscope first to build the shared model. Until then, members see "An admin hasn't set up Gyroscope yet".
+5. Describe the business model in the project description: what is sold, to whom, and through which channels. The first build takes the core classes from it. Calculated-field references are still what draws connections.
+
+Settings has two tabs. General holds your view and, for admins, the project threshold. Checkup is the setup page: sections, tooltips and one-click answers for admins.
 
 Settings, then Checkup, sets a project up from scratch or adjusts an existing one. Its sections (critical number, core classes, contexts, connections, metrics, housekeeping) show blockers, warnings and recommendations. A check that isn't filled asks a question, suggests an answer and applies it with one click.
 
@@ -28,10 +32,10 @@ The plugin platform does not support a local preview. Test Gyroscope as an insta
 
 ## Release
 
-1. Push to `main`. GitHub Pages deploys `dist/` to the folder of the compatibility line: `v3/` for 0.3.x. Installs of 0.2 keep loading the root.
-2. A new compatibility line (0.4) needs `plugin.json` `delivery.url` moved to its folder (`/v4/`); a test fails until it is.
+1. Push to `main`. GitHub Pages deploys `dist/` to the folder of the compatibility line: `v4/` for 0.4.x. Installs of 0.2 keep loading the root.
+2. A new compatibility line (0.5) needs `plugin.json` `delivery.url` moved to its folder (`/v5/`); a test fails until it is.
 3. Check the plugin with `owox-ctl plugins check OWOX/gyroscope --ref main`.
-4. Create a release with `gh release create v0.3.0 --target <full commit SHA> --generate-notes`.
+4. Create a release with `gh release create v0.4.0 --target <full commit SHA> --generate-notes`.
 5. In OWOX, open Plugins, then Publish Plugin, and choose "Only me" for testing.
 
 ## How it works
@@ -44,3 +48,5 @@ The [design spec](docs/superpowers/specs/2026-10-24-gyroscope-design.md) has the
 4. Canvas and card: layout by reference distance, context filters, and the metric card (section 8).
 5. States: blocked, failed and loading screens, each with a fix or a retry (section 9).
 6. Cache: the canvas reads cached results, and a refresh runs when the data is stale (section 10).
+
+The [shared ontology spec](docs/superpowers/specs/2026-11-11-shared-ontology-design.md) covers the shared model, core classes, the two views and Checkup.

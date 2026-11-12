@@ -1,6 +1,6 @@
 # Shared ontology and the ontology view: design
 
-Date: 2026-11-11. Status: draft, all questions answered (2026-11-11). Ready for a plan.
+Date: 2026-11-11. Status: implemented in 0.4.0 (2026-11-11).
 
 Supersedes parts of three specs:
 
