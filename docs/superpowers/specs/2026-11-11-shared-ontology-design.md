@@ -105,7 +105,12 @@ interface Settings {
 }
 ```
 
-The build marks the classes in `coreClasses` as core. When `coreClasses` is null, the build picks them by the rules below and Checkup reports a warning with those picks as the suggestion. A change to `coreClasses` updates the `core` flags of the shared model without a rebuild and without the AI.
+Where the core classes come from:
+
+1. The project description describes the business model: what the business sells, to whom, and through what. On the first build, the AI reads it and names the Data Marts that stand for those entities (customers, products, visitors). Only Data Marts with a single-column primary key qualify. These become `coreClasses`.
+2. If the description names none, the build picks them by the ranking rules below, and Checkup reports a warning: "The project description doesn't describe the business model", with a drafted paragraph to add.
+3. Later builds and Rebuilds add a core class the description newly names, up to 7. They never remove one: a core class stays in `coreClasses` and in the model when the description stops naming it. Only an admin unmarking it in Checkup removes it.
+4. A change to `coreClasses` updates the `core` flags of the shared model without a rebuild and without the AI.
 
 1. A candidate is a Data Mart with a single-column primary key. A date field is not required. The goal Data Mart is not a candidate.
 2. A candidate must connect to the goal class directly: a calculated field of the goal Data Mart references it, or one of its calculated fields references the goal Data Mart.
@@ -223,6 +228,7 @@ Existing checks keep their ids and logic. New checks are marked **new**.
 
 | Check | Status if not passing | Question and recommended answer |
 |---|---|---|
+| The description describes the business model **new** | Warning | "What does the business sell, to whom, and through which channels?" The AI drafts a paragraph that names the core Data Marts. Apply appends it to the project description |
 | The industry is set **new** | Warning | "Which business model is closest?" The AI reads the description and preselects one. Apply saves `industry` in the plugin settings |
 | Core classes are set **new** | Warning | Applies the classes ranked by section 3.2, as many as the industry suggests (below), each with a one-line "Why it is core" from the AI. Apply saves `coreClasses` in the plugin settings |
 | Each core class has a unique ID (a single-column primary key) **new** | Warning | Fix link to the Data Mart; recommends the column that is unique in a preview |
@@ -296,6 +302,7 @@ The ontology view takes as many core classes as `coreClasses` lists, from 3 to 7
 
 | Layer | Test |
 |---|---|
+| Core classes from the description | First build takes the AI's picks from the description; a later build adds new ones and keeps those the description dropped; a pick without a single-column primary key is dropped |
 | Core class picking | Table-driven: `coreClasses` from settings wins; without it, ranking by inbound references, ties, no date field allowed, the goal mart excluded, fewer than 3, more than 7 |
 | Shared model | Two fake members with different access read one doc and get the same classes and edges; the one without access gets lock cards in the flow view |
 | Concurrent edit | A save over a newer doc stops with the "<name> changed the model" message |
