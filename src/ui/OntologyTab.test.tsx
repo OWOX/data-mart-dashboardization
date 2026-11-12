@@ -27,11 +27,11 @@ const MARTS: { id: string; title: string; description?: string | null }[] = [{ i
 
 const openAll = () => { for (const b of screen.queryAllByRole('button', { expanded: false })) fireEvent.click(b); };
 
-function setup(m: Model = model(), details = DETAILS, marts: typeof MARTS | null = MARTS, open = true) {
+function setup(m: Model = model(), details = DETAILS, marts: typeof MARTS | null = MARTS, open = true, gone?: ReadonlySet<string>, readOnly = false) {
   const onSave = vi.fn(async () => undefined);
   const onCancel = vi.fn();
   const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(details), blendables: {} });
-  render(<OntologyTab model={m} details={details} marts={marts} owox={owox} now={() => new Date('2026-11-04T10:00:00Z')} onSave={onSave} onCancel={onCancel} />);
+  render(<OntologyTab model={m} details={details} marts={marts} owox={owox} now={() => new Date('2026-11-04T10:00:00Z')} onSave={onSave} onCancel={onCancel} gone={gone} readOnly={readOnly} />);
   if (open) openAll();
   return { onSave, onCancel };
 }
@@ -225,7 +225,7 @@ test('a missing field is flagged red and the old value kept', () => {
 test('a Data Mart that is gone is flagged on the plan source and on the class', () => {
   const m = model();
   m.metrics[0] = { ...m.metrics[0]!, plan: { martId: 'gone', measure: { field: 'goal', fn: 'SUM' }, dateField: 'stat_day', shape: 'daily' } };
-  setup(m, DETAILS, MARTS);
+  setup(m, DETAILS, MARTS, true, new Set(['gone']));
   const plan = row('Revenue').getByRole('combobox', { name: 'Plan source' });
   expect(plan).toHaveClass('gy-bad');
   expect(plan).toHaveAttribute('title', 'gone › goal no longer exists');
@@ -271,9 +271,18 @@ test('a schema that fails to load says so instead of flagging missing', async ()
 test('a class whose Data Mart is gone is flagged', () => {
   const details = new Map(DETAILS);
   details.delete('c');
-  setup(model(), details, MARTS.filter((x) => x.id !== 'c'));
+  setup(model(), details, MARTS.filter((x) => x.id !== 'c'), true, new Set(['c']));
   expect(within(screen.getByRole('region', { name: 'Customers' })).getByText('Data Mart not found or not accessible')).toBeInTheDocument();
   expect(within(screen.getByRole('region', { name: 'Orders' })).queryByText('Data Mart not found or not accessible')).toBeNull();
+});
+
+test.each([false, true])('a class outside the access list is a no-access case, not broken (read-only: %s)', (readOnly) => {
+  const details = new Map(DETAILS);
+  details.delete('c');
+  setup(model(), details, MARTS.filter((x) => x.id !== 'c'), false, undefined, readOnly);
+  expect(within(screen.getByRole('region', { name: 'Customers' })).getByText("You can't access Customers")).toBeInTheDocument();
+  expect(screen.queryByText('Data Mart not found or not accessible')).toBeNull();
+  expect(header('Customers')).not.toHaveTextContent('broken');
 });
 
 test('schema fetches for referenced Data Marts run at most six at a time', async () => {
@@ -420,7 +429,7 @@ test('aria-controls points at an existing element while folded', () => {
 test('broken count: a gone class counts 1 and its metrics add nothing', () => {
   const details = new Map(DETAILS);
   details.delete('a');
-  setup(model(), details, MARTS.filter((x) => x.id !== 'a'), false);
+  setup(model(), details, MARTS.filter((x) => x.id !== 'a'), false, new Set(['a']));
   expect(header('Orders')).toHaveTextContent('1 broken');
 });
 
@@ -430,7 +439,7 @@ test('broken count: a gone plan Data Mart is 1; a missing field and a non-date d
   // fact field missing, fact date field no longer a DATE, forecast date field missing
   m.metrics[1] = { ...m.metrics[1]!, measure: { field: 'nope', fn: 'SUM' }, dateField: 'qty',
     forecast: { martId: 'p', measure: { field: 'goal', fn: 'SUM' }, dateField: 'absent' } };
-  setup(m, DETAILS, MARTS, false);
+  setup(m, DETAILS, MARTS, false, new Set(['gone']));
   // Revenue: plan gone 1 + forecast ok 0; Units: 1 + 1 + 1
   expect(header('Orders')).toHaveTextContent('4 broken');
   expect(header('Customers')).not.toHaveTextContent('broken');

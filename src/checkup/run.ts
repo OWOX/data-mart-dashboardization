@@ -5,7 +5,7 @@ import { INDUSTRIES, inboundCounts, rankCore, singleKey } from '../model/core';
 import { checkHealth } from '../model/health';
 import { currentInputHash } from '../model/build';
 import { runPool } from '../lib/pool';
-import { describeError } from '../lib/errors';
+import { describeError, statusesOf } from '../lib/errors';
 import { criticalRow, findMetricRows, isFieldLink, type MetricRow } from './tables';
 import { codeSuggestion, type SuggestContext } from './suggest';
 import { aiQuestion, isAiCheck } from './suggestAi';
@@ -177,18 +177,25 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
   /** Plan and Fact links that name a field must name a Data Mart you can see, with that field. */
   const linkProblems = async (rows: MetricRow[]) => {
     const links = rows.flatMap((r) => [...r.plan, ...r.fact]).filter(isFieldLink);
-    const problems = (await Promise.all(links.map(async (l) => {
-      if (!visible.has(l.martId!)) return `${l.text}: Data Mart not found or not accessible`;
+    // a failure is a link that can't be right; a warning is one this member can't check
+    const found = await Promise.all(links.map(async (l): Promise<{ fail?: string; warn?: string }> => {
+      if (!visible.has(l.martId!)) {
+        try { await detail(l.martId!); } catch (e) { if (statusesOf(e).includes(404)) return { fail: `${l.text}: Data Mart not found` }; }
+        return { warn: `${l.text}: you can't access this Data Mart` };
+      }
       try {
         const d = await detail(l.martId!);
-        return allFieldPaths(d.fields).has(l.field!) ? null : `${l.text}: field ${l.field} isn't in ${d.title}`;
-      } catch (e) { return `${l.text}: ${describeError(e)}`; }
-    }))).filter((p): p is string => !!p);
-    return { n: links.length, problems };
+        return allFieldPaths(d.fields).has(l.field!) ? {} : { fail: `${l.text}: field ${l.field} isn't in ${d.title}` };
+      } catch (e) { return { fail: `${l.text}: ${describeError(e)}` }; }
+    }));
+    const problems = found.flatMap((x) => (x.fail ? [x.fail] : []));
+    const warnings = found.flatMap((x) => (x.warn ? [x.warn] : []));
+    return { n: links.length, problems, warnings };
   };
   const putLinks = async (id: string, rows: MetricRow[], fix: Fix) => {
-    const { n, problems } = await linkProblems(rows);
-    if (problems.length) put(id, 'fail', problems.join('; '), fix);
+    const { n, problems, warnings } = await linkProblems(rows);
+    if (problems.length) put(id, 'fail', [...problems, ...warnings].join('; '), fix);
+    else if (warnings.length) put(id, 'warn', warnings.join('; '), fix);
     else put(id, 'ok', n ? `${n} links` : 'No links');
   };
 

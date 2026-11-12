@@ -71,6 +71,7 @@ export async function refreshCanvas(args: {
 
   // a class whose Data Mart is gone stops every metric of that Data Mart; a metric's own issues come with its id
   const goneMarts = new Set(issues.filter((i) => i.kind === 'mart_missing' && i.metricId === null).map((i) => i.martId));
+  const seen = (martId: string) => !visibleIds || visibleIds.has(martId);
   const mine = (id: string) => issues.filter((i) => i.metricId === id);
 
   onProgress?.(0, ids.size);
@@ -87,8 +88,9 @@ export async function refreshCanvas(args: {
         // a broken plan is dropped, a broken forecast source falls back to extrapolating the fact series
         const usable: MetricDef = {
           ...metric,
-          plan: soft.some((i) => i.kind.startsWith('plan_')) ? null : metric.plan,
-          forecast: soft.some((i) => i.kind.startsWith('forecast_')) ? null : metric.forecast,
+          // a source on a Data Mart the viewer can't access is dropped the same way, without an issue
+          plan: soft.some((i) => i.kind.startsWith('plan_')) || (metric.plan && seen(metric.plan.martId)) === false ? null : metric.plan,
+          forecast: soft.some((i) => i.kind.startsWith('forecast_')) || (metric.forecast && seen(metric.forecast.martId)) === false ? null : metric.forecast,
         };
         const out = await computeMetric({ owox, metric: usable, spec, thresholdPct, withSpark: true });
         const warning = [...soft.map((i) => i.text), ...(out.result.warning ? [out.result.warning] : []), ...(out.result.error ? [out.result.error] : [])].join('; ') || null;

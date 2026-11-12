@@ -24,7 +24,7 @@ import { ReadOnly } from './readOnly';
 const FORMATS: { value: MetricFormat; label: string }[] = [{ value: 'number', label: 'Number' }, { value: 'percent', label: 'Percent' }, { value: 'currency', label: 'Currency' }];
 const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
 const CALCULATED = 'CALC';
-type DetailStatus = 'ok' | 'loading' | 'unreadable' | 'gone';
+type DetailStatus = 'ok' | 'loading' | 'unreadable' | 'gone' | 'no_access';
 
 /** The rebuild flow on the tab: nothing is saved until a proposal is applied. */
 type Rebuild =
@@ -69,7 +69,7 @@ function Source({ label, detail, status, measure, dateField, noDate, noField = f
 }) {
   const infos = martFields(detail?.fields ?? []);
   // a schema that is still loading, or couldn't be read, flags nothing
-  const unverified = status === 'loading' || status === 'unreadable';
+  const unverified = status === 'loading' || status === 'unreadable' || status === 'no_access';
   const fieldNote = fieldNoteOf(detail, measure.field);
   const pick = (path: string) => {
     const calc = infos.find((x) => x.path === path)?.field.calculated?.level === 'metric';
@@ -98,7 +98,7 @@ function Source({ label, detail, status, measure, dateField, noDate, noField = f
   );
 }
 
-export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss, hashOf, readOnly = false, onReload, rebuildRef, onDirty }: {
+export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss, hashOf, readOnly = false, onReload, rebuildRef, onDirty, gone }: {
   model: Model;
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
@@ -121,6 +121,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   onReload?: () => void;
   /** Filled with a function that starts a Rebuild, for a Checkup answer that asks for one. */
   rebuildRef?: MutableRefObject<(() => void) | null>;
+  /** Data Marts the health check confirmed are gone; any other one outside `marts` is a no-access case. */
+  gone?: ReadonlySet<string>;
   /** Tells the page whether the draft holds unsaved edits. */
   onDirty?: (dirty: boolean) => void;
 }) {
@@ -179,7 +181,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     const detail = details.get(id) ?? extra.get(id) ?? undefined;
     if (detail) return { detail, status: 'ok' };
     // gone only when the access list was read and doesn't hold it
-    if (accessible && !accessible.has(id)) return { detail, status: 'gone' };
+    // outside the access list is no access, unless the health check confirmed the Data Mart is gone
+    if (accessible && !accessible.has(id)) return { detail, status: gone?.has(id) ? 'gone' : 'no_access' };
     return { detail, status: extra.get(id) === null ? 'unreadable' : 'loading' };
   };
 
@@ -343,7 +346,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   // the forecast list: the fields of every offered Data Mart, grouped by it
   const forecastGroups: FieldGroup[] = martOptions.flatMap((o) => {
     const { detail, status } = detailOf(o.value);
-    if (status === 'gone') return [];
+    if (status === 'gone' || status === 'no_access') return [];
     return [{ martId: o.value, title: o.label, status, options: fieldOptions(valueFields(martFields(detail?.fields ?? []))) }];
   });
 
@@ -397,7 +400,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
       {rebuild.phase === 'idle' && canvasOrder(draft).map((c) => {
         const goal = c.id === draft.goal.classId;
         const classMart = detailOf(c.martId);
-        const classNote = classMart.status === 'gone' ? 'Data Mart not found or not accessible' : classMart.status === 'unreadable' ? "Couldn't read the schema" : null;
+        const classNote = classMart.status === 'gone' ? 'Data Mart not found or not accessible' : classMart.status === 'no_access' ? `You can't access ${c.title}` : classMart.status === 'unreadable' ? "Couldn't read the schema" : null;
         const metrics = c.metricIds.map((id) => draft.metrics.find((m) => m.id === id)).filter((m): m is MetricDef => !!m);
         const open = openIds.has(c.id);
         const bodyId = `gy-onto-body-${c.id}`;

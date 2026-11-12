@@ -207,6 +207,22 @@ describe('broken references', () => {
     expect(owox.calls.some((c) => c.path === 'traverse:p')).toBe(false);
   });
 
+  test('a plan on a Data Mart the viewer cannot access is dropped without an issue; the fact stays', async () => {
+    const plan = { martId: 'p', measure: { field: 'x', fn: 'SUM' as const }, dateField: 'd', shape: 'daily' as const };
+    const owox = ok();
+    const doc = await refreshCanvas({ owox, model: model([metric('m', { plan })]), spec, key: 'k', thresholdPct: 20, visibleIds: new Set(['a']) });
+    expect(doc.cards.a!.metrics.m).toMatchObject({ fact: 5, plan: null, error: null });
+    expect(doc.cards.a!.metrics.m!.warning).toBeUndefined();
+    expect(owox.calls.some((c) => c.path === 'traverse:p')).toBe(false);
+  });
+
+  test('a plan query that throws leaves the fact intact', async () => {
+    const plan = { martId: 'p', measure: { field: 'x', fn: 'SUM' as const }, dateField: 'd', shape: 'daily' as const };
+    const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: {}, blendables: {}, rows: (id) => { if (id === 'p') throw new Error('403 forbidden'); return [{ 'Unique Count': 5 }]; } });
+    const doc = await refreshCanvas({ owox, model: model([metric('m', { plan })]), spec, key: 'k', thresholdPct: 20 });
+    expect(doc.cards.a!.metrics.m).toMatchObject({ fact: 5, plan: null, error: null });
+  });
+
   test('a traverse that throws Not found mid-refresh gives a warning, and the run carries on', async () => {
     const owox = ok();
     const base = owox.dataMarts.traverseData;

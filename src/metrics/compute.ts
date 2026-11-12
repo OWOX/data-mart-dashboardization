@@ -96,8 +96,11 @@ export async function computeMetric(args: {
     let plan: number | null = null;
     if (metric.plan) {
       const p = metric.plan;
-      const planDaily = await queryDaily(owox, p.martId, p.measure, p.dateField, { from: addDays(range.from, -1), to: range.to });
-      plan = planForRange(planDaily, range, p.shape);
+      // a plan that can't be read leaves the fact in place, without a plan
+      try {
+        const planDaily = await queryDaily(owox, p.martId, p.measure, p.dateField, { from: addDays(range.from, -1), to: range.to });
+        plan = planForRange(planDaily, range, p.shape);
+      } catch { plan = null; }
     }
 
     // a projected range is judged by its forecast over the whole period; without one, a partial total against a

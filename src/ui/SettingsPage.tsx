@@ -20,6 +20,8 @@ export interface OntologyProps {
   now: () => Date;
   onSave: (m: Model) => Promise<void>;
   hashOf?: (m: Model) => Promise<string | null>;
+  /** Data Marts the health check confirmed are gone. */
+  gone?: ReadonlySet<string>;
 }
 
 export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, noModel = false, isAdmin = true, onReload, openSection, rebuildRef }: {

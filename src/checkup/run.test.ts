@@ -444,3 +444,15 @@ test('model.access recommends when the viewer cannot list some of the model Data
   const all = { ...savedModel, classes: [cls(G, 'Orders'), cls(C, 'Customers')], metrics: [] };
   expect(byId(await run(data(), { model: all }))['model.access']).toMatchObject({ status: 'ok' });
 });
+
+test('a link to a Data Mart outside the viewer list warns unless the fetch says 404', async () => {
+  const d = data();
+  const unlisted = { ...d, marts: d.marts.filter((m) => m.id !== P) };
+  const warn = byId(await run(unlisted))['project.links']!;
+  expect(warn.status).toBe('warn');
+  expect(warn.detail).toContain("you can't access this Data Mart");
+  expect(warn.detail).not.toContain('not found');
+  const gone = byId(await run({ ...unlisted, details: without(unlisted.details, P) }))['project.links']!;
+  expect(gone.status).toBe('fail');
+  expect(gone.detail).toContain('Data Mart not found');
+});

@@ -299,6 +299,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const issuesNow = useMemo<Issue[]>(() => (health && health.model === model ? health.issues : []), [health, model]);
   const markdown = useMemo(() => createMarkdownHtml(owox.markdown ? (r) => owox.markdown!.parseToHtml(r) : undefined), [owox]);
   const detailsNow = useMemo(() => (health && health.model === model ? health.details : undefined), [health, model]);
+  const goneMarts = useMemo(() => new Set(issuesNow.filter((i) => i.kind === 'mart_missing').map((i) => i.martId)), [issuesNow]);
   const missingIds = useMemo(() => new Set(issuesNow.filter((i) => i.kind === 'mart_missing' && i.metricId === null).map((i) => i.classId)), [issuesNow]);
 
   const refresh = useCallback(async (force: boolean): Promise<boolean> => {
@@ -427,7 +428,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     return currentInputHash(owox, data, m.classes.map((c) => c.id), ontologyDetails).catch(() => null);
   };
   const ontologyProps = model && inputs && inputs.model === model
-    ? { model, owox, now, onSave: saveOntologyAndLeave, details: ontologyDetails, marts: ontologyMarts, hashOf }
+    ? { model, owox, now, onSave: saveOntologyAndLeave, details: ontologyDetails, marts: ontologyMarts, hashOf, gone: goneMarts }
     : null;
   const saveSettingsAndLeave = async (s: Settings) => {
     try {
