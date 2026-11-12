@@ -8,9 +8,9 @@ const metric = (id: string, over: Partial<MetricDef> = {}): MetricDef => ({
   source: 'project', isUniqueCount: false, format: 'number', currency: null, plan: null, shown: true, forecast: null, ...over,
 });
 const model = (metrics: MetricDef[], extra: string[] = []): Model => ({
-  version: 2, inputHash: 'h', builtAt: '', builtBy: 'u', editedAt: null,
+  version: 3, inputHash: 'h', builtAt: '', builtBy: 'u', editedAt: null, editedBy: null,
   goal: { classId: 'o', metricId: null, goalMartId: 'o', viaFallback: false },
-  classes: ['o', ...extra].map((id, depth) => ({ id, martId: id, title: id === 'o' ? 'Orders' : id, contexts: [], depth, keyMetricId: null, metricIds: id === 'o' ? metrics.map((m) => m.id) : [], shown: true })),
+  classes: ['o', ...extra].map((id, depth) => ({ id, martId: id, title: id === 'o' ? 'Orders' : id, contexts: [], depth, keyMetricId: null, metricIds: id === 'o' ? metrics.map((m) => m.id) : [], shown: true, core: false, inbound: 0 })),
   edges: [], metrics,
 });
 const owox = (details: Record<string, string[]>) => fakeOwox({

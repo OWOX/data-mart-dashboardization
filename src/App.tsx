@@ -65,7 +65,7 @@ const tabOf = (route: string | undefined): SettingsTab | null => {
   return path === ROUTES.ontology ? 'ontology' : path === ROUTES.checkup ? 'checkup' : path === ROUTES.general ? 'general' : null;
 };
 
-const rangeOf = (s: Settings): RangeChoice => ({ kind: 'preset', preset: s.defaultPreset });
+const rangeOf = (s: Settings): RangeChoice => ({ kind: 'preset', preset: s.defaultPreset ?? 'qtd' });
 const compareOf = (s: Settings): CompareChoice => (s.comparisonDefault ? { kind: 'preset', preset: 'previous_period' } : { kind: 'off' });
 
 /** The previous doc for the key with the new cards laid over it, metric by metric; a spark is replaced once its new one arrives. */

@@ -6,10 +6,10 @@ const metric = (id: string, martId: string, alias: string, f: string, extra: Par
   isUniqueCount: false, format: 'number', currency: null, plan: null, shown: true, forecast: null, ...extra,
 });
 const cls = (id: string, title: string, depth: number, metricIds: string[], extra: Partial<ClassNode> = {}): ClassNode => ({
-  id, martId: id, title, contexts: [], depth, keyMetricId: metricIds[0] ?? null, metricIds, shown: true, ...extra,
+  id, martId: id, title, contexts: [], depth, keyMetricId: metricIds[0] ?? null, metricIds, shown: true, core: false, inbound: 0, ...extra,
 });
 const base = (): Model => ({
-  version: 2, inputHash: 'old', builtAt: 'b', builtBy: 'u', editedAt: null,
+  version: 3, inputHash: 'old', builtAt: 'b', builtBy: 'u', editedAt: null, editedBy: null,
   goal: { classId: 'a', metricId: 'a:rev:SUM', goalMartId: 'a', viaFallback: false },
   classes: [cls('a', 'Orders', 0, ['a:rev:SUM', 'a:qty:SUM']), cls('c', 'Customers', 1, ['c:n:SUM'])],
   edges: [{ from: 'a', to: 'c' }],

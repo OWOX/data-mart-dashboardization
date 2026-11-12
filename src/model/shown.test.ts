@@ -2,9 +2,9 @@ import { deriveKeys, shownModel } from './shown';
 import type { ClassNode, MetricDef, Model } from '../types';
 
 const mt = (id: string, shown: boolean): MetricDef => ({ id, martId: 'a', alias: id, measure: { field: id, fn: 'SUM' }, kind: 'flow', dateField: null, role: 'critical', source: 'project', isUniqueCount: false, format: 'number', currency: null, plan: null, shown, forecast: null });
-const cl = (id: string, shown: boolean, metricIds: string[] = [], keyMetricId: string | null = metricIds[0] ?? null): ClassNode => ({ id, martId: id, title: id, contexts: [], depth: 0, keyMetricId, metricIds, shown });
+const cl = (id: string, shown: boolean, metricIds: string[] = [], keyMetricId: string | null = metricIds[0] ?? null): ClassNode => ({ id, martId: id, title: id, contexts: [], depth: 0, keyMetricId, metricIds, shown, core: false, inbound: 0 });
 const model = (classes: ClassNode[], metrics: MetricDef[]): Model => ({
-  version: 2, inputHash: 'h', builtAt: 'b', builtBy: 'u', editedAt: null,
+  version: 3, inputHash: 'h', builtAt: 'b', builtBy: 'u', editedAt: null, editedBy: null,
   goal: { classId: 'g', metricId: null, goalMartId: 'g', viaFallback: false }, classes, edges: [], metrics,
 });
 

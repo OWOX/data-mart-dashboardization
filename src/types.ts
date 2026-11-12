@@ -70,17 +70,20 @@ export interface ClassNode {
   keyMetricId: string | null;
   metricIds: string[];       // key first, then badges in role order
   shown: boolean;            // appears on the canvas; the goal class is always drawn
+  core: boolean;             // a core class of the business; builds add these and never remove them
+  inbound: number;           // how many other classes point at this one
 }
 
 /** `fields` are the calculated fields of `from` whose formulas reference `to`; absent on models built before it. */
 export interface Edge { from: string; to: string; fields?: string[] }
 
 export interface Model {
-  version: 2;
+  version: 3;
   inputHash: string;
   builtAt: string;           // ISO timestamp
   builtBy: string;           // ctx.userId
   editedAt: string | null;   // last manual edit; with builtAt it versions the cache
+  editedBy: string | null;   // ctx.userId of the last manual edit
   goal: { classId: string; metricId: string | null; goalMartId: string; viaFallback: boolean };
   classes: ClassNode[];
   edges: Edge[];
@@ -149,9 +152,15 @@ export interface CacheDoc {
 }
 
 export type WeekStart = 'monday' | 'sunday';
-export interface Settings { thresholdPct: number; defaultPreset: Preset; comparisonDefault: boolean; weekStart: WeekStart }
+export type Industry = 'ecommerce' | 'saas' | 'marketplace' | 'media' | 'b2b' | 'apps' | 'finance' | 'other';
+export interface CoreClass { martId: string; why: string }
+/** Project-wide, admin only: settings collection, doc `project`. */
+export interface ProjectSettings { thresholdPct: number; industry: Industry | null; coreClasses: CoreClass[] | null }
+/** The member's own: preferences collection, doc `defaults`. null preset: no range, the ontology view. */
+export interface ViewSettings { defaultPreset: Preset | null; comparisonDefault: boolean; weekStart: WeekStart }
+export type Settings = ProjectSettings & ViewSettings;
 
-export const DEFAULT_SETTINGS: Settings = { thresholdPct: 20, defaultPreset: 'qtd', comparisonDefault: true, weekStart: 'monday' };
+export const DEFAULT_SETTINGS: Settings = { thresholdPct: 20, industry: null, coreClasses: null, defaultPreset: null, comparisonDefault: true, weekStart: 'monday' };
 
 export const PRESET_LABELS: Record<Preset, string> = {
   last_year: 'Last year', last_quarter: 'Last quarter', last_month: 'Last month', last_week: 'Last week',

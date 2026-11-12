@@ -44,14 +44,14 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
     tabRefs.current[TABS[to]!.id]?.focus();
   };
   const [threshold, setThreshold] = useState(String(settings.thresholdPct));
-  const [preset, setPreset] = useState<Preset>(settings.defaultPreset);
+  const [preset, setPreset] = useState<Preset | null>(settings.defaultPreset);
   const [weekStart, setWeekStart] = useState<WeekStart>(settings.weekStart);
   const [comparison, setComparison] = useState(settings.comparisonDefault);
 
   const save = () => {
     const n = Number(threshold);
     const thresholdPct = Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : settings.thresholdPct;
-    onSave({ thresholdPct, defaultPreset: preset, comparisonDefault: comparison, weekStart });
+    onSave({ ...settings, thresholdPct, defaultPreset: preset, comparisonDefault: comparison, weekStart });
   };
 
   return (
@@ -88,7 +88,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
             </div>
             <div className="gy-field">
               <label htmlFor="gy-default-range">Default date range</label>
-              <select id="gy-default-range" className="gy-select" value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
+              <select id="gy-default-range" className="gy-select" value={preset ?? 'qtd'} onChange={(e) => setPreset(e.target.value as Preset)}>
                 {PRESET_GROUPS.map((g) => (
                   <optgroup key={g.label} label={g.label}>
                     {g.presets.map((p) => <option key={p} value={p}>{PRESET_LABELS[p]}</option>)}

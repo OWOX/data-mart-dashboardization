@@ -11,11 +11,11 @@ const metric = (id: string, martId: string, alias: string, f: string, extra: Par
   isUniqueCount: false, format: 'number', currency: null, plan: null, shown: true, forecast: null, ...extra,
 });
 const model = (): Model => ({
-  version: 2, inputHash: 'h', builtAt: 'b', builtBy: 'u', editedAt: null,
+  version: 3, inputHash: 'h', builtAt: 'b', builtBy: 'u', editedAt: null, editedBy: null,
   goal: { classId: 'a', metricId: 'a:revenue:SUM', goalMartId: 'a', viaFallback: false },
   classes: [
-    { id: 'c', martId: 'c', title: 'Customers', contexts: [{ id: 'x', name: 'Sales' }], depth: 1, keyMetricId: 'c:qty:SUM', metricIds: ['c:qty:SUM'], shown: true },
-    { id: 'a', martId: 'a', title: 'Orders', contexts: [], depth: 0, keyMetricId: 'a:revenue:SUM', metricIds: ['a:revenue:SUM', 'a:qty:SUM'], shown: true },
+    { id: 'c', martId: 'c', title: 'Customers', contexts: [{ id: 'x', name: 'Sales' }], depth: 1, keyMetricId: 'c:qty:SUM', metricIds: ['c:qty:SUM'], shown: true, core: false, inbound: 0 },
+    { id: 'a', martId: 'a', title: 'Orders', contexts: [], depth: 0, keyMetricId: 'a:revenue:SUM', metricIds: ['a:revenue:SUM', 'a:qty:SUM'], shown: true, core: false, inbound: 0 },
   ],
   edges: [],
   metrics: [metric('a:revenue:SUM', 'a', 'Revenue', 'revenue'), metric('a:qty:SUM', 'a', 'Units', 'qty', { role: 'leading' }), metric('c:qty:SUM', 'c', 'Customers', 'qty')],
@@ -280,7 +280,7 @@ test('schema fetches for referenced Data Marts run at most six at a time', async
   const ids = Array.from({ length: 10 }, (_, i) => `m${i}`);
   const m = model();
   m.metrics = ids.map((id) => metric(`${id}:qty:SUM`, id, id, 'qty'));
-  m.classes = [{ id: 'a', martId: 'a', title: 'Orders', contexts: [], depth: 0, keyMetricId: m.metrics[0]!.id, metricIds: m.metrics.map((x) => x.id), shown: true }];
+  m.classes = [{ id: 'a', martId: 'a', title: 'Orders', contexts: [], depth: 0, keyMetricId: m.metrics[0]!.id, metricIds: m.metrics.map((x) => x.id), shown: true, core: false, inbound: 0 }];
   m.goal = { classId: 'a', metricId: m.metrics[0]!.id, goalMartId: 'a', viaFallback: false };
   const base = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(ids.map((id) => [id, detail(id, id)])), blendables: {} });
   let active = 0, peak = 0;

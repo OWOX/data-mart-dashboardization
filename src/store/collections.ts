@@ -26,7 +26,9 @@ export async function loadSettings(ctx: CollectionsLike): Promise<Settings> {
   const t = raw.thresholdPct;
   return {
     thresholdPct: typeof t === 'number' && Number.isFinite(t) ? Math.min(100, Math.max(1, t)) : d.thresholdPct,
-    defaultPreset: presetOf(own?.defaultPreset) ?? presetOf(raw.defaultPreset) ?? d.defaultPreset,
+    industry: null,
+    coreClasses: null,
+    defaultPreset: presetOf(own?.defaultPreset) ?? presetOf(raw.defaultPreset) ?? 'qtd',
     comparisonDefault: typeof raw.comparisonDefault === 'boolean' ? raw.comparisonDefault : d.comparisonDefault,
     weekStart: raw.weekStart === 'monday' || raw.weekStart === 'sunday' ? raw.weekStart : d.weekStart,
   };
@@ -34,7 +36,7 @@ export async function loadSettings(ctx: CollectionsLike): Promise<Settings> {
 /** The preset goes to the member's document; the project document keeps whatever `defaultPreset` it had. */
 export async function saveSettings(ctx: CollectionsLike, s: Settings): Promise<void> {
   const { defaultPreset, ...rest } = s;
-  await ctx.collections<{ defaultPreset: Preset }>('preferences').put('defaults', { defaultPreset });
+  await ctx.collections<{ defaultPreset: Preset | null }>('preferences').put('defaults', { defaultPreset });
   const col = ctx.collections<Record<string, unknown>>('settings');
   const kept = (await col.get('project'))?.document?.defaultPreset;
   await col.put('project', kept === undefined ? rest : { ...rest, defaultPreset: kept });

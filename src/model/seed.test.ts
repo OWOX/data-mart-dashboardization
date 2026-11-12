@@ -2,10 +2,10 @@ import { seedFrom, withoutUndated } from './seed';
 import type { MartDetail } from '../owox/sources';
 import type { ClassNode, MetricDef, Model } from '../types';
 
-const c = (id: string, depth: number): ClassNode => ({ id, martId: id, title: id, contexts: [], depth, keyMetricId: `${id}:k`, metricIds: [`${id}:k`], shown: true });
+const c = (id: string, depth: number): ClassNode => ({ id, martId: id, title: id, contexts: [], depth, keyMetricId: `${id}:k`, metricIds: [`${id}:k`], shown: true, core: false, inbound: 0 });
 const m = (martId: string): MetricDef => ({ id: `${martId}:k`, martId, alias: martId, measure: { field: 'k', fn: 'SUM' }, kind: 'flow', dateField: null, role: 'critical', source: 'project', isUniqueCount: false, format: 'number', currency: null, plan: null, shown: true, forecast: null });
 const project: Model = {
-  version: 2, inputHash: 'h', builtAt: 'b', builtBy: 'u', editedAt: null,
+  version: 3, inputHash: 'h', builtAt: 'b', builtBy: 'u', editedAt: null, editedBy: null,
   goal: { classId: 'g', metricId: 'g:k', goalMartId: 'g', viaFallback: false },
   classes: [c('g', 0), c('a', 1), c('b', 1)],
   edges: [{ from: 'g', to: 'a' }, { from: 'g', to: 'b' }, { from: 'a', to: 'b' }],

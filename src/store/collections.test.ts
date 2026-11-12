@@ -7,7 +7,7 @@ const doc = { modelHash: 'h', anchor: '2026-10-23', builtAt: 'b1', thresholdPct:
 test('round trips and defaults', async () => {
   const ctx = memoryCollections();
   expect(await loadOntology(ctx)).toBeNull();
-  expect(await loadSettings(ctx)).toEqual(DEFAULT_SETTINGS);
+  expect(await loadSettings(ctx)).toEqual({ ...DEFAULT_SETTINGS, defaultPreset: 'qtd' });
   await saveOntology(ctx, model);
   await saveSettings(ctx, { ...DEFAULT_SETTINGS, thresholdPct: 500 });
   await saveCache(ctx, 'k', doc);
@@ -41,7 +41,7 @@ test('the project model is read through the upgrade, never written by the ontolo
   const ctx = memoryCollections();
   const { version: _v, editedAt: _e, ...v1 } = model;
   await ctx.collections<unknown>('model').put('current', { ...v1, version: 1, classes: model.classes.map(({ shown: _s, ...c }) => c) });
-  expect((await loadProjectModel(ctx))?.version).toBe(2);
+  expect((await loadProjectModel(ctx))?.version).toBe(3);
   expect(await loadOntology(ctx)).toBeNull();
 });
 

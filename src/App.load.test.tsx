@@ -47,7 +47,7 @@ test('with no ontology the project model seeds it, without an AI call', async ()
   render(<App ctx={ctx} deps={{ ...deps, generate }} />);
   expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
   const saved = (await loadOntology(store))!;
-  expect(saved.version).toBe(2);
+  expect(saved.version).toBe(3);
   expect(saved.builtBy).toBe('project');
   expect(generate).not.toHaveBeenCalled();
   // the project doc is left alone

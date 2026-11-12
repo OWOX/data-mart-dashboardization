@@ -43,24 +43,33 @@ function keyFirst(classes: Record<string, unknown>[], metrics: Record<string, un
   });
 }
 
-/** A v1 doc becomes v2 (everything shown, no forecast source, never edited); a valid v2 doc passes; anything else is null. */
+/** A v1 or v2 doc becomes v3 (no core classes, no editor); a valid v3 doc passes; anything else is null. */
 export function upgradeModel(raw: unknown): Model | null {
   if (!isObj(raw) || !shaped(raw)) return null;
+  if (raw.version === 3) {
+    const classes = raw.classes as Record<string, unknown>[];
+    const metrics = raw.metrics as Record<string, unknown>[];
+    const ok = (raw.editedAt === null || isStr(raw.editedAt))
+      && (raw.editedBy === null || isStr(raw.editedBy))
+      && classes.every((c) => typeof c.shown === 'boolean' && typeof c.core === 'boolean' && typeof c.inbound === 'number')
+      && metrics.every((x) => typeof x.shown === 'boolean');
+    // a malformed forecast source falls back to the extrapolated forecast; the rest of the model stays
+    return ok ? ({ ...raw, classes: keyFirst(classes, metrics), metrics: metrics.map((x) => fixFormat(fixKind(validForecast(x.forecast) ? x : { ...x, forecast: null }))) } as unknown as Model) : null;
+  }
   if (raw.version === 2) {
     const classes = raw.classes as Record<string, unknown>[];
     const metrics = raw.metrics as Record<string, unknown>[];
     const ok = (raw.editedAt === null || isStr(raw.editedAt))
       && classes.every((c) => typeof c.shown === 'boolean')
       && metrics.every((x) => typeof x.shown === 'boolean');
-    // a malformed forecast source falls back to the extrapolated forecast; the rest of the model stays
-    return ok ? ({ ...raw, classes: keyFirst(classes, metrics), metrics: metrics.map((x) => fixFormat(fixKind(validForecast(x.forecast) ? x : { ...x, forecast: null }))) } as unknown as Model) : null;
+    return ok ? upgradeModel({ ...raw, version: 3, editedBy: null, classes: classes.map((c) => ({ ...c, core: false, inbound: 0 })) }) : null;
   }
   if (raw.version !== 1) return null;
-  return {
+  return upgradeModel({
     ...raw,
     version: 2,
     editedAt: null,
-    classes: keyFirst((raw.classes as Record<string, unknown>[]).map((c) => ({ ...c, shown: true })), raw.metrics as Record<string, unknown>[]),
-    metrics: (raw.metrics as Record<string, unknown>[]).map((x) => fixFormat(fixKind({ ...x, shown: true, forecast: null }))),
-  } as unknown as Model;
+    classes: (raw.classes as Record<string, unknown>[]).map((c) => ({ ...c, shown: true })),
+    metrics: (raw.metrics as Record<string, unknown>[]).map((x) => ({ ...x, shown: true, forecast: null })),
+  });
 }

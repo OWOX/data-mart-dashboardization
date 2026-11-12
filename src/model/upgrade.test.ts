@@ -9,9 +9,9 @@ const v1 = {
   metrics: [{ id: 'a:id:COUNT_DISTINCT', martId: 'a', alias: 'A', measure: { field: 'id', fn: 'COUNT_DISTINCT' }, kind: 'flow', dateField: 'date', role: 'unique', source: 'schema', isUniqueCount: true, plan: null }],
 };
 
-test('v1 becomes v2 with everything shown, no forecast, never edited', () => {
+test('v1 becomes v3 with everything shown, no forecast, never edited', () => {
   const m = upgradeModel(v1)!;
-  expect(m.version).toBe(2);
+  expect(m.version).toBe(3);
   expect(m.editedAt).toBeNull();
   expect(m.classes[0]!.shown).toBe(true);
   expect(m.metrics[0]!.shown).toBe(true);
@@ -81,4 +81,23 @@ test('a key that is already the first shown metric leaves the order alone', () =
   const metric = (id: string, shown: boolean) => ({ ...v1.metrics[0], id, shown, forecast: null });
   const doc = { ...v2, classes: [{ ...v2.classes[0], keyMetricId: 'b', metricIds: ['a', 'b', 'c'] }], metrics: [metric('a', false), metric('b', true), metric('c', true)] };
   expect(upgradeModel(doc)!.classes[0]!.metricIds).toEqual(['a', 'b', 'c']);
+});
+
+const v2Doc = () => ({ ...v2, classes: [...v2.classes, { ...v2.classes[0]!, id: 'b', martId: 'b', title: 'B', depth: 1 }] });
+
+test('a v2 doc becomes v3 with no core classes and no editor', () => {
+  const m = upgradeModel(v2Doc())!;
+  expect(m.version).toBe(3);
+  expect(m.editedBy).toBeNull();
+  expect(m.classes.every((c) => c.core === false && c.inbound === 0)).toBe(true);
+});
+test('a v3 doc keeps its core flags', () => {
+  const v3 = { ...v2Doc(), version: 3, editedBy: 'u1', classes: v2Doc().classes.map((c, i) => ({ ...c, core: i === 1, inbound: 4 })) };
+  const m = upgradeModel(v3)!;
+  expect(m.classes.map((c) => c.core)).toEqual(v3.classes.map((c) => c.core));
+  expect(m.editedBy).toBe('u1');
+});
+test('a v3 doc with a non-boolean core is rejected', () => {
+  const bad = { ...v2Doc(), version: 3, editedBy: null, classes: v2Doc().classes.map((c) => ({ ...c, core: 'yes', inbound: 0 })) };
+  expect(upgradeModel(bad)).toBeNull();
 });
