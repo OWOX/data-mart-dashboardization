@@ -7,8 +7,8 @@ import { PRESET_GROUPS, PRESET_LABELS, type CompareChoice, type ComparePreset, t
 import { Calendar, monthStart } from './Calendar';
 
 type Props = {
-  range: RangeChoice; compare: CompareChoice; now: Date; weekStart?: WeekStart;
-  onChange: (range: RangeChoice, compare: CompareChoice) => void;
+  range: RangeChoice | null; compare: CompareChoice; now: Date; weekStart?: WeekStart;
+  onChange: (range: RangeChoice | null, compare: CompareChoice) => void;
 };
 
 /** The month to open on: the window's end, or yesterday when the end is past the current month. */
@@ -52,31 +52,33 @@ export function DateRangePicker(props: Props) {
 
 function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, onClose }: Props & { panelRef: React.RefObject<HTMLDivElement | null>; onClose: () => void }) {
   const anchor = anchorFor(now);
-  const [dRange, setDRange] = useState<RangeChoice>(range);
+  const [dRange, setDRange] = useState<RangeChoice | null>(range);
   const [compareOn, setCompareOn] = useState(compare.kind !== 'off');
   const [dCompare, setDCompare] = useState<Exclude<CompareChoice, { kind: 'off' }>>(compare.kind === 'off' ? { kind: 'preset', preset: 'previous_period' } : compare);
   // After a first click the next click closes the window instead of starting a new one.
   const [pendingRange, setPendingRange] = useState(false);
   const [pendingCompare, setPendingCompare] = useState(false);
   const effective: CompareChoice = compareOn ? dCompare : { kind: 'off' };
-  const spec = resolveRange(dRange, effective, now, weekStart);
-  const drawn = dRange.kind === 'custom' ? dRange.window : spec.range;
+  // with no range the windows are computed for a stand-in and not shown; the comparison stays off until a range is picked
+  const calcRange: RangeChoice = dRange ?? { kind: 'preset', preset: 'mtd' };
+  const spec = resolveRange(calcRange, effective, now, weekStart);
+  const drawn = !dRange ? null : dRange.kind === 'custom' ? dRange.window : spec.range;
   // The resolved (clipped, length-matched) window is what gets queried, so it is what we show; the raw pick goes to onChange.
-  const comparison = resolveRange(dRange, dCompare, now, weekStart).comparison;
+  const comparison = dRange ? resolveRange(dRange, dCompare, now, weekStart).comparison : null;
   const rawCompare = dCompare.kind === 'custom' ? dCompare.window : null;
   /** The `*` marks the range itself, so the text is cut where the comparison starts. */
-  const forecast = spec.forecastWindow;
+  const forecast = dRange ? spec.forecastWindow : null;
   // by days, as on the cards
   const forecastPct = forecast ? Math.round((diffDays(forecast.from, forecast.to) + 1) / spec.days * 100) : 0;
-  const [summaryHead, ...summaryRest] = formatPeriod(drawn, compareOn ? comparison : null).split(' vs ');
+  const [summaryHead, ...summaryRest] = (drawn ? formatPeriod(drawn, compareOn ? comparison : null) : '').split(' vs ');
   const summary = { head: summaryHead, tail: summaryRest.length ? ` vs ${summaryRest.join(' vs ')}` : '' };
   const [rangeMonth, setRangeMonth] = useState(() => openMonth(drawn, anchor));
   const [compareMonth, setCompareMonth] = useState(() => openMonth(comparison, anchor));
   const id = useId();
-  const options = compareOptions(dRange, now, weekStart);
+  const options = compareOptions(calcRange, now, weekStart);
   const stillOffered = dCompare.kind !== 'preset' || options.some((o) => o.preset === dCompare.preset);
   const compareSeed = dCompare.kind === 'preset' ? dCompare.preset : 'custom';
-  const rangeSeed = dRange.kind === 'preset' ? dRange.preset : `${dRange.window.from}_${dRange.window.to}`;
+  const rangeSeed = !dRange ? 'none' : dRange.kind === 'preset' ? dRange.preset : `${dRange.window.from}_${dRange.window.to}`;
 
   useEffect(() => { if (!stillOffered) setDCompare({ kind: 'preset', preset: 'previous_period' }); }, [stillOffered]);
   // Follow the comparison when the range or the comparison kind changes; custom picks keep the month the user is looking at.
@@ -93,7 +95,7 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
     pending && cur ? (d < cur.from ? { from: d, to: cur.from } : { from: cur.from, to: d }) : { from: d, to: d };
 
   const pickRange = (d: Day) => {
-    setDRange({ kind: 'custom', window: pick(dRange.kind === 'custom' ? dRange.window : null, pendingRange, d) });
+    setDRange({ kind: 'custom', window: pick(dRange?.kind === 'custom' ? dRange.window : null, pendingRange, d) });
     setPendingRange(!pendingRange);
   };
   const pickCompare = (d: Day) => {
@@ -127,25 +129,26 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
           {summary.tail}
         </span>
         <button type="button" className="gy-btn" onClick={onClose}>Cancel</button>
-        <button type="button" className="gy-btn gy-btn-primary" onClick={() => { onChange(dRange, effective); onClose(); }}>Apply</button>
+        {range && <button type="button" className="gy-btn" onClick={() => { onChange(null, compare); onClose(); }}>Clear</button>}
+        <button type="button" className="gy-btn gy-btn-primary" disabled={!dRange} onClick={() => { if (dRange) { onChange(dRange, effective); onClose(); } }}>Apply</button>
       </div>
       {/* The columns' wrappers don't box their children: each list shares a grid row with its calendar, so it is as tall as the calendar. */}
       <div className="gy-drp-left">
         <div className="gy-drp-presets">
           <div className="gy-drp-list">
             {PRESET_GROUPS.flatMap((g) => g.presets).map((p) => (
-              <button key={p} type="button" className="gy-drp-preset" aria-pressed={dRange.kind === 'preset' && dRange.preset === p} onClick={() => choosePreset(p)}>
+              <button key={p} type="button" className="gy-drp-preset" aria-pressed={dRange?.kind === 'preset' && dRange.preset === p} onClick={() => choosePreset(p)}>
                 {PRESET_LABELS[p]}
               </button>
             ))}
-            <span className="gy-drp-preset gy-drp-custom" aria-current={dRange.kind === 'custom' ? 'true' : undefined}>Custom</span>
+            <span className="gy-drp-preset gy-drp-custom" aria-current={dRange?.kind === 'custom' ? 'true' : undefined}>Custom</span>
           </div>
         </div>
         <label className="gy-check gy-drp-compare" htmlFor={`${id}-cmp`}>
-          <input id={`${id}-cmp`} type="checkbox" checked={compareOn} onChange={(e) => toggleCompare(e.target.checked)} />
+          <input id={`${id}-cmp`} type="checkbox" checked={compareOn && !!dRange} disabled={!dRange} onChange={(e) => toggleCompare(e.target.checked)} />
           Compare
         </label>
-        {compareOn && (
+        {compareOn && dRange && (
           <div className="gy-drp-presets gy-drp-cmplist">
             <div className="gy-drp-list">
               {options.map((o) => (
@@ -167,8 +170,8 @@ function Panel({ range, compare, now, weekStart = 'monday', onChange, panelRef, 
         <div className="gy-drp-cal">
           <Calendar month={rangeMonth} selected={drawn} weekStart={weekStart} anchorYear={Number(anchor.slice(0, 4))} aria-label="Range calendar" onPick={pickRange} onMonth={setRangeMonth} />
         </div>
-        {compareOn && <div className="gy-drp-sep" role="separator" />}
-        {compareOn && (
+        {compareOn && dRange && <div className="gy-drp-sep" role="separator" />}
+        {compareOn && dRange && (
           <div className="gy-drp-cmpcal">
             <Calendar month={compareMonth} selected={comparison} weekStart={weekStart} anchorYear={Number(anchor.slice(0, 4))} aria-label="Comparison calendar" isDisabled={(d) => d > anchor} onPick={pickCompare} onMonth={setCompareMonth} />
           </div>

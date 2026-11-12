@@ -92,7 +92,8 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
             </div>
             <div className="gy-field">
               <label htmlFor="gy-default-range">Default date range</label>
-              <select id="gy-default-range" className="gy-select" value={preset ?? 'qtd'} onChange={(e) => setPreset(e.target.value as Preset)}>
+              <select id="gy-default-range" className="gy-select" value={preset ?? ''} onChange={(e) => setPreset(e.target.value === '' ? null : e.target.value as Preset)}>
+                <option value="">None (ontology view)</option>
                 {PRESET_GROUPS.map((g) => (
                   <optgroup key={g.label} label={g.label}>
                     {g.presets.map((p) => <option key={p} value={p}>{PRESET_LABELS[p]}</option>)}

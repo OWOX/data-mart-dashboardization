@@ -191,7 +191,8 @@ export function compareLabel(range: RangeChoice, compare: CompareChoice, now: Da
 }
 
 /** The closed control's text: 'This quarter vs previous', 'This quarter vs last year', 'This quarter'. */
-export function controlLabel(range: RangeChoice, compare: CompareChoice): string {
+export function controlLabel(range: RangeChoice | null, compare: CompareChoice): string {
+  if (!range) return 'Select date range';
   const r = rangeLabel(range);
   if (compare.kind === 'off') return r;
   if (compare.kind === 'custom') return `${r} vs ${formatWindow(compare.window)}`;

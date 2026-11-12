@@ -187,6 +187,7 @@ test('a comparison window never ends after the anchor', () => {
 test('labels', () => {
   expect(controlLabel(P('cur_quarter'), PREV)).toBe('This quarter vs previous');
   expect(controlLabel(P('cur_quarter'), OFF)).toBe('This quarter');
+  expect(controlLabel(null, PREV)).toBe('Select date range');
   expect(controlLabel(P('cur_quarter'), { kind: 'preset', preset: 'year_before' })).toBe('This quarter vs last year');
   expect(controlLabel(P('cur_quarter'), { kind: 'custom', window: { from: '2026-07-01', to: '2026-08-02' } })).toBe('This quarter vs Jul 1 – Aug 2, 2026');
   expect(controlLabel({ kind: 'custom', window: { from: '2026-10-01', to: '2026-11-02' } }, OFF)).toBe('Oct 1 – Nov 2, 2026');

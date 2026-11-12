@@ -25,7 +25,7 @@ const data = (): FakeOwoxData => ({
   blendables: { [GID]: { availableSources: [], mainUniqueCountKeyFields: ['id'] } },
 });
 
-async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | 'stale' | 'none'; store?: CollectionsLike; inputHash?: string; withCustomers?: boolean } = {}) {
+async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | 'stale' | 'none'; store?: CollectionsLike; inputHash?: string; withCustomers?: boolean; range?: 'qtd' | 'none' | 'unset' } = {}) {
   const d = data();
   if (opts.withCustomers) {
     d.marts.push(mart(CID, 'Customers'));
@@ -49,6 +49,10 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
     };
     await saveCache(store, cacheKey({ kind: 'preset', preset: 'qtd' }, { kind: 'preset', preset: 'previous_period' }), doc);
   }
+  // most tests start on the flow view; 'none' is a member who cleared the range, 'unset' leaves the view settings to decide
+  const rangeOpt = opts.range ?? 'qtd';
+  if (rangeOpt === 'qtd') await savePreferences(store, { range: { kind: 'preset', preset: 'qtd' }, compare: { kind: 'preset', preset: 'previous_period' } });
+  if (rangeOpt === 'none') await savePreferences(store, { range: null, compare: { kind: 'preset', preset: 'previous_period' } });
   let clock = NOW.getTime();
   const deps: AppDeps = { owox, store, generate: opts.generate === undefined ? async () => goalAi : opts.generate, userId: 'u1', now: () => new Date(clock) };
   const tick = () => { clock += 60_000; };
@@ -454,7 +458,7 @@ test('the toolbar shows the cut windows when a comparison is cut short', async (
 
 test('the week start setting changes the cache key of a week preset', async () => {
   const mk = async (weekStart: 'monday' | 'sunday') => {
-    const { deps, store, traversals } = await setup({ cache: 'none' });
+    const { deps, store, traversals } = await setup({ cache: 'none', range: 'unset' });
     await saveViewSettings(store, { defaultPreset: 'wtd', comparisonDefault: false, weekStart });
     // a fresh doc under the Monday key only
     const monday = cacheKey({ kind: 'preset', preset: 'wtd' }, { kind: 'off' });
@@ -478,14 +482,14 @@ test('with a comparison the header shows the days so far, not the whole range', 
 });
 
 test('a projected range shows the whole period against the whole previous one', async () => {
-  const { deps, store } = await setup({ cache: 'none' });
+  const { deps, store } = await setup({ cache: 'none', range: 'unset' });
   await saveViewSettings(store, { defaultPreset: 'cur_month', comparisonDefault: true, weekStart: 'monday' });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–31 vs Sep 1–30, 2026 · /));
 });
 
 test('opens on the saved range and comparison', async () => {
-  const { deps, store } = await setup({ cache: 'none' });
+  const { deps, store } = await setup({ cache: 'none', range: 'unset' });
   await savePreferences(store, { range: { kind: 'preset', preset: 'last_month' }, compare: { kind: 'off' } });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   expect(await screen.findByRole('button', { name: 'Date range' })).toHaveTextContent(/^Last month$/);
@@ -508,7 +512,7 @@ test('a failed preferences save leaves the canvas working', async () => {
       return name === 'preferences' ? { ...c, put: async () => { throw new Error('boom'); } } : c;
     },
   };
-  const { deps } = await setup({ store, cache: 'none' });
+  const { deps } = await setup({ store, cache: 'none', range: 'unset' });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
   fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
@@ -788,4 +792,44 @@ describe('data quality icons', () => {
     expect(screen.queryByRole('button', { name: /Data quality/ })).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });
+});
+
+test('the first open shows the ontology view and queries nothing', async () => {
+  const { deps, traversals, owox } = await setup({ range: 'unset', cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  expect(await screen.findByRole('button', { name: 'Date range' })).toHaveTextContent('Select date range');
+  await new Promise((r) => setTimeout(r, 50));
+  expect(traversals()).toBe(0);
+  expect(owox.calls.some((c) => c.path.includes('quality'))).toBe(false);
+  expect(document.querySelector('.gy-header-sub')).toBeNull();
+  expect(screen.queryByText(/Loading metrics/)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+});
+
+test('choosing a range runs the queries; Clear goes back and keeps the comparison', async () => {
+  const { deps, traversals, store } = await setup({ range: 'unset', cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
+  expect(screen.getByLabelText('Compare')).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'This month' }));
+  expect(screen.getByLabelText('Compare')).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(traversals()).toBeGreaterThan(0));
+  expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent('This month vs previous');
+  fireEvent.click(screen.getByRole('button', { name: 'Date range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+  expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent('Select date range');
+  await waitFor(async () => expect(await loadPreferences(store)).toEqual({ range: null, compare: { kind: 'preset', preset: 'previous_period' } }));
+  expect(document.querySelector('.gy-header-sub')).toBeNull();
+  // choosing again restores the comparison
+  fireEvent.click(screen.getByRole('button', { name: 'Date range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent('Last month vs previous');
+});
+
+test('a member who cleared the range reopens on the ontology view', async () => {
+  const { deps } = await setup({ range: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  expect(await screen.findByRole('button', { name: 'Date range' })).toHaveTextContent('Select date range');
 });

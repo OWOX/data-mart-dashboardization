@@ -79,3 +79,15 @@ test('the default date range says it applies only to the member', () => {
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} />);
   expect(screen.getByLabelText('Default date range').closest('.gy-field')?.textContent).toContain('Only for you');
 });
+
+test('Settings offers None (ontology view) and it is selected when there is no default preset', () => {
+  const onSave = vi.fn();
+  render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={onSave} onBack={() => {}} />);
+  const select = screen.getByLabelText('Default date range') as HTMLSelectElement;
+  expect(select.options[0]!.textContent).toBe('None (ontology view)');
+  expect(select.value).toBe('');
+  fireEvent.change(select, { target: { value: 'mtd' } });
+  fireEvent.change(select, { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(onSave).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, defaultPreset: null });
+});

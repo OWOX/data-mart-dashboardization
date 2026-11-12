@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
-import { loadShared, memoryCollections } from './store/collections';
+import { loadShared, memoryCollections, savePreferences } from './store/collections';
 import { seedShared } from './test/fixtures';
 import { type Model } from './types';
 
@@ -34,6 +34,8 @@ async function setup() {
   const built = await buildModel({ owox, generate: async () => goalAi, userId: 'u1', now: NOW, existingCore: null, industry: null });
   if (!built.ok) throw new Error('fixture');
   await seedShared(store, built.model);
+  // these tests look at the flow view
+  await savePreferences(store, { range: { kind: 'preset', preset: 'qtd' }, compare: { kind: 'preset', preset: 'previous_period' } });
   const puts: Model[] = [];
   const spy = { collections: <T,>(name: string) => { const c = store.collections<T>(name); return { ...c, put: async (id: string, doc: T) => { if (name === 'ontology_project') puts.push(doc as Model); return c.put(id, doc); } }; } };
   const deps: AppDeps = { owox, store: spy, generate: async () => goalAi, userId: 'u1', now: () => NOW };

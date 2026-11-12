@@ -24,9 +24,11 @@ interface Props {
   status?: string | null;
   /** Broken references and the out-of-date notice; the icon shows while there is any. */
   notices?: Notices;
+  /** No date range is chosen: the title and the issues icon show, no period or update time. */
+  noRange?: boolean;
 }
 
-export function Header({ cache, now, period, status = null, notices }: Props) {
+export function Header({ cache, now, period, status = null, notices, noRange = false }: Props) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const layer = useRef<HTMLDivElement>(null);
@@ -47,7 +49,7 @@ export function Header({ cache, now, period, status = null, notices }: Props) {
             {open && <IssuesLayer notices={notices} layerRef={layer} triggerRef={trigger} onClose={close} />}
           </span>
         )}
-        <span className="gy-header-sub num" aria-live="polite">{windows ? `${windows} · ${updated}` : updated}</span>
+        {!noRange && <span className="gy-header-sub num" aria-live="polite">{windows ? `${windows} · ${updated}` : updated}</span>}
       </div>
     </header>
   );
@@ -58,15 +60,17 @@ export function Header({ cache, now, period, status = null, notices }: Props) {
  * level with the context chips.
  */
 export function RangeControls({ range, compare, now, weekStart = 'monday', refreshing = false, onChange, onRefresh, onSettings }: {
-  range: RangeChoice; compare: CompareChoice; now: Date; weekStart?: WeekStart; refreshing?: boolean;
-  onChange: (range: RangeChoice, compare: CompareChoice) => void; onRefresh: () => void; onSettings: () => void;
+  range: RangeChoice | null; compare: CompareChoice; now: Date; weekStart?: WeekStart; refreshing?: boolean;
+  onChange: (range: RangeChoice | null, compare: CompareChoice) => void; onRefresh: () => void; onSettings: () => void;
 }) {
   return (
     <div className="gy-range">
       <DateRangePicker range={range} compare={compare} now={now} weekStart={weekStart} onChange={onChange} />
-      <button type="button" className="gy-icon-btn" aria-label="Refresh" title="Refresh" onClick={onRefresh} disabled={refreshing}>
-        <RefreshCw size={16} className={refreshing ? 'gy-spin' : undefined} />
-      </button>
+      {range && (
+        <button type="button" className="gy-icon-btn" aria-label="Refresh" title="Refresh" onClick={onRefresh} disabled={refreshing}>
+          <RefreshCw size={16} className={refreshing ? 'gy-spin' : undefined} />
+        </button>
+      )}
       <button type="button" className="gy-icon-btn" aria-label="Settings" title="Settings" onClick={onSettings}>
         <SettingsIcon size={16} />
       </button>

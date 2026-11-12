@@ -76,7 +76,8 @@ const tabOf = (route: string | undefined): SettingsTab | null => {
   return path === ROUTES.ontology ? 'ontology' : path === ROUTES.checkup ? 'checkup' : path === ROUTES.general ? 'general' : null;
 };
 
-const rangeOf = (s: Settings): RangeChoice => ({ kind: 'preset', preset: s.defaultPreset ?? 'qtd' });
+/** No default preset means no range: the ontology view. */
+const rangeOf = (s: Settings): RangeChoice | null => (s.defaultPreset ? { kind: 'preset', preset: s.defaultPreset } : null);
 const compareOf = (s: Settings): CompareChoice => (s.comparisonDefault ? { kind: 'preset', preset: 'previous_period' } : { kind: 'off' });
 
 /** The previous doc for the key with the new cards laid over it, metric by metric; a spark is replaced once its new one arrives. */
@@ -105,7 +106,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const startTab = useRef(tabOf(ctx.route));
   const [model, setModel] = useState<Model | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [range, setRange] = useState<RangeChoice>(() => rangeOf(DEFAULT_SETTINGS));
+  const [range, setRange] = useState<RangeChoice | null>(() => rangeOf(DEFAULT_SETTINGS));
   const [compare, setCompare] = useState<CompareChoice>(() => compareOf(DEFAULT_SETTINGS));
   const [cache, setCache] = useState<CacheDoc | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -172,7 +173,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       }
       settingsNow.current = s;
       setSettings(s);
-      setRange(prefs?.range ?? rangeOf(s));
+      // a remembered null is a member who cleared the range
+      setRange(prefs ? prefs.range : rangeOf(s));
       setCompare(prefs?.compare ?? compareOf(s));
       setModel(m);
       const tab = startTab.current;
@@ -240,6 +242,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   );
 
   const periodShown = useMemo(() => {
+    if (!range) return undefined;
     const spec = resolveRange(range, compare, now(), settings.weekStart);
     // with a comparison, show the windows actually compared: the days so far (cut when it is shorter), not the whole range;
     // a projected range is compared whole, so it shows whole
@@ -258,7 +261,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const missingIds = useMemo(() => new Set(issuesNow.filter((i) => i.kind === 'mart_missing' && i.metricId === null).map((i) => i.classId)), [issuesNow]);
 
   const refresh = useCallback(async (force: boolean): Promise<boolean> => {
-    if (!model) return false;
+    if (!model || !range) return false;
     const id = ++refreshId.current;
     const current = () => id === refreshId.current;
     const at = now();
@@ -308,10 +311,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     fetchedFor.current = model;
     // without a cached doc the line shows from the first screen, not empty cards
     const probe = refreshId.current;
-    const probeKey = cacheKey(range, compare, settings.weekStart);
-    void (persistable(range, compare) ? loadCache(store, probeKey).catch(() => null) : Promise.resolve(null)).then((saved) => {
-      if (!saved && refreshId.current === probe) setLoading(true);
-    });
+    // with no range nothing is read from the cache and no loading line shows
+    if (range) {
+      const probeKey = cacheKey(range, compare, settings.weekStart);
+      void (persistable(range, compare) ? loadCache(store, probeKey).catch(() => null) : Promise.resolve(null)).then((saved) => {
+        if (!saved && refreshId.current === probe) setLoading(true);
+      });
+    }
     fetchInputs(owox).catch(() => null).then(async (data) => {
       // the check lands before the inputs, so the first refresh already knows what is broken
       const checked = data ? await checkHealth(owox, model, new Set(data.marts.map((m) => m.id))).catch(() => null) : null;
@@ -322,23 +328,26 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
 
   // data-quality icons: one call per canvas load, never cached; a failure leaves the cards without them
   useEffect(() => {
-    if (!inReady || !model || qualityFor.current === model) return;
+    if (!inReady || !model || !range || qualityFor.current === model) return;
     qualityFor.current = model;
     void fetchQuality(owox, [...new Set(model.classes.map((c) => c.martId))]).then((data) => { if (qualityFor.current === model) setQuality({ model, data }); });
-  }, [inReady, model, owox]);
+  }, [inReady, model, range, owox]);
 
   const inputsReady = inReady && !!inputs && inputs.model === model;
   useEffect(() => {
     if (!inputsReady || !inputs || !model) return;
-    // the out-of-date check waits for the refresh so the two don't compete for requests
-    void refresh(false).then(async (done) => {
+    const checkOutdated = async () => {
       const data = inputs.data;
-      if (!done || !data || !data.contextsOk || checkedFor.current === inputs) return;
+      if (!data || !data.contextsOk || checkedFor.current === inputs) return;
       checkedFor.current = inputs;
       const hash = await currentInputHash(owox, data, model.classes.map((c) => c.id), healthNow.current?.model === model ? healthNow.current.details : undefined).catch(() => null);
       if (hash !== null && modelNow.current === model) setOutdated(hash !== model.inputHash ? hash : null);
-    });
-  }, [inputsReady, inputs, model, owox, refresh]);
+    };
+    // with no range there is no refresh to wait for; the check reads schemas, not metrics
+    if (!range) { void checkOutdated(); return; }
+    // the out-of-date check waits for the refresh so the two don't compete for requests
+    void refresh(false).then((done) => { if (done) void checkOutdated(); });
+  }, [inputsReady, inputs, model, owox, refresh, range]);
 
   const openSettings = (tab: SettingsTab = 'general') => { ctx.ui?.setRoute?.(ROUTES[tab]); setSettingsError(null); setView({ name: 'settings', tab }); };
   const leaveSettings = () => {
@@ -348,7 +357,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   };
   const backToCanvas = model ? () => setView({ name: 'ready' }) : undefined;
   // Fire and forget: losing the remembered choice must not disturb the canvas.
-  const remember = (r: RangeChoice, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
+  const remember = (r: RangeChoice | null, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
+  const changeRange = (r: RangeChoice | null, c: CompareChoice) => {
+    // from no range, a comparison that is off takes the default; Clear keeps the choice so it comes back
+    const next = range === null && r !== null && c.kind === 'off' ? compareOf(settings) : c;
+    if (r === null) { refreshId.current++; setRefreshing(false); setLoading(false); setProgress(null); }
+    setRange(r); setCompare(next); remember(r, next);
+  };
   const saveOntologyAndLeave = async (m: Model) => {
     // a rebuild's core classes join the stored ones with the Apply
     const picks = rebuildCore.current;
@@ -437,7 +452,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       );
     case 'ready': {
       if (!model) return null;
-      const status = loading || refreshing ? (progress ? `Loading metrics ${progress.done} of ${progress.total}` : inputsReady ? 'Loading metrics…' : 'Reading Data Marts…') : null;
+      const status = range && (loading || refreshing) ? (progress ? `Loading metrics ${progress.done} of ${progress.total}` : inputsReady ? 'Loading metrics…' : 'Reading Data Marts…') : null;
       const showOutdated = isAdmin && outdated !== null && outdated !== model.inputHash && outdated !== dismissedHash;
       const notices = issuesNow.length > 0 || showOutdated ? {
         issues: issuesNow.map((i) => ({
@@ -450,22 +465,22 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       } : undefined;
       return (
         <main className="gy-main">
-          <Header cache={cache} now={now()} period={periodShown} status={status} notices={notices} />
+          <Header cache={cache} now={now()} period={periodShown} status={status} notices={notices} noRange={!range} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
           {coreNote && <p className="gy-muted">{coreNote}</p>}
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
           <Canvas
-            mode="flow"
-            tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}
+            mode={range ? 'flow' : 'ontology'}
+            tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={changeRange} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}
             model={model} cache={cache} visibleIds={visible} details={detailsNow} missingIds={missingIds} marts={marts}
-            compareLabel={compareLabel(range, compare, now(), settings.weekStart) ?? undefined}
+            compareLabel={range ? compareLabel(range, compare, now(), settings.weekStart) ?? undefined : undefined}
             progress={progress}
             quality={quality?.model === model ? quality.data : null}
             projectId={ctx.projectId}
             markdown={markdown}
             weekStart={settings.weekStart}
             onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}
-            comparisonOn={compare.kind !== 'off'} refreshing={refreshing || loading} onRetry={() => void refresh(true)}
+            comparisonOn={!!range && compare.kind !== 'off'} refreshing={refreshing || loading} onRetry={() => void refresh(true)}
           />
         </main>
       );

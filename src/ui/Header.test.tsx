@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Header, RangeControls } from './Header';
 
 const controls = (over: Partial<Parameters<typeof RangeControls>[0]> = {}) => (
@@ -133,4 +133,15 @@ describe('issues icon', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rebuild to see proposed changes' }));
     expect(onReview).toHaveBeenCalledTimes(2);
   });
+});
+
+test('no range: Refresh is hidden and the header has no period or update text', () => {
+  render(controls({ range: null }));
+  expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent('Select date range');
+  expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
+  cleanup();
+  const { container } = render(<Header cache={null} now={new Date()} noRange />);
+  expect(screen.getByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
+  expect(container.querySelector('.gy-header-sub')).toBeNull();
 });

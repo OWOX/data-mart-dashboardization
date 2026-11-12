@@ -295,3 +295,34 @@ describe('month and year lists in the calendar title', () => {
     expect(c.getByRole('button', { name: 'Year' })).toHaveTextContent('2020');
   });
 });
+
+describe('no range', () => {
+  test('reads Select date range, opens with no preset pressed and the comparison disabled', () => {
+    render(<DateRangePicker range={null} compare={PREV} now={now} onChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent('Select date range');
+    open();
+    expect(document.querySelectorAll('.gy-drp-preset[aria-pressed="true"]').length).toBe(0);
+    expect(screen.getByLabelText('Compare')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+    expect(within(screen.getByRole('group', { name: 'Range calendar' })).getByRole('button', { name: 'Month' })).toHaveTextContent('November');
+  });
+
+  test('picking a preset enables the comparison and applies with it', () => {
+    const onChange = vi.fn();
+    render(<DateRangePicker range={null} compare={PREV} now={now} onChange={onChange} />);
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
+    expect(screen.getByLabelText('Compare')).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(onChange).toHaveBeenCalledWith({ kind: 'preset', preset: 'last_month' }, PREV);
+  });
+
+  test('Clear empties the range and keeps the comparison', () => {
+    const onChange = setup(Q, PREV);
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(onChange).toHaveBeenCalledWith(null, PREV);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
