@@ -300,7 +300,7 @@ test('missing wins over noAccess; a plain noAccess keeps its text', () => {
   const { rerender } = render(<Card cls={cls} metrics={[arr]} cache={cache()} missing noAccess comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(screen.getByText('Data Mart not found or not accessible')).toBeInTheDocument();
   rerender(<Card cls={cls} metrics={[arr]} cache={cache()} noAccess comparisonOn refreshing={false} onRetry={() => {}} />);
-  expect(screen.getByText("You don't have access to this Data Mart")).toBeInTheDocument();
+  expect(screen.getByText("No access to this Data Mart")).toBeInTheDocument();
 });
 
 test('a new key metric on the class drops the swap', () => {
@@ -673,4 +673,13 @@ test('a forecast mart that is not on the canvas is named from the project mart l
   const marts = new Map([['other', { title: 'Plan 2026', description: null, icon: null }]]);
   const { container } = render(<Card cls={cls} metrics={[arr, uc]} cache={cache({ projection })} marts={marts} comparisonOn={false} refreshing={false} onRetry={() => {}} />);
   expect(container.querySelector('.gy-projnote [role="tooltip"]')!.textContent).toContain('From Plan 2026, arr_f');
+});
+
+test('an undated metric shows its value with no diff, sparkline or forecast', () => {
+  const only = { ...cls, keyMetricId: 'uc', metricIds: ['uc'] };
+  const { container } = render(<Card cls={only} metrics={[{ ...uc, dateField: null }]} cache={{ metrics: { uc: res({ fact: 7148, note: 'no_date_field', comparison: null, forecast: null, status: 'neutral' }) }, spark: null }} comparisonOn compareLabel="Last Month" refreshing={false} onRetry={() => {}} />);
+  expect(container.querySelector('.gy-big')!.textContent).toContain('7.15K');
+  expect(container.querySelector('.gy-compare')).toBeNull();
+  expect(container.querySelector('.gy-spark-slot')).toBeNull();
+  expect(container.querySelector('.gy-proj')).toBeNull();
 });

@@ -83,14 +83,14 @@ test('stale selection is dropped when the context disappears', () => {
 test('classes the member cannot see still render, as no-access cards', () => {
   render(<Canvas mode="flow" model={rich} visibleIds={new Set(['m', 'b'])} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(screen.getByText('Alpha')).toBeInTheDocument();
-  expect(screen.getAllByText("You don't have access to this Data Mart")).toHaveLength(1);
+  expect(screen.getAllByText("No access to this Data Mart")).toHaveLength(1);
 });
 
 test('an invisible main class shows the no-access card instead of metrics', () => {
   const cache = { cards: { m: { metrics: { k: { fact: 5, error: null, status: 'neutral' } }, spark: null } } } as never;
   render(<Canvas mode="flow" model={rich} visibleIds={new Set(['a'])} cache={cache} comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(screen.getByText('Main')).toBeInTheDocument();
-  expect(screen.getAllByText("You don't have access to this Data Mart")).toHaveLength(2);
+  expect(screen.getAllByText("No access to this Data Mart")).toHaveLength(2);
 });
 
 test('main sits alone in the Goal band; every other class shares the Drivers band', () => {
@@ -260,4 +260,24 @@ test.each([
   for (const p of sample(d)) {
     for (const bx of boxes) expect(p.x > bx.left + 0.5 && p.x < bx.right - 0.5 && p.y > bx.top + 0.5 && p.y < bx.bottom - 0.5).toBe(false);
   }
+});
+
+test('flow view: Goal, Core and Drivers bands; Core is omitted without core classes', () => {
+  const m = { ...rich, classes: rich.classes.map((c) => (c.id === 'a' ? { ...c, core: true, inbound: 1 } : { ...c, core: false, inbound: 0 })) } as unknown as Model;
+  const { container, rerender } = render(<Canvas mode="flow" model={m} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+  const ids = (b: Element) => [...b.querySelectorAll('[data-class-id]')].map((e) => e.getAttribute('data-class-id'));
+  let bands = [...container.querySelectorAll('.gy-band')];
+  expect(bands.map((b) => b.querySelector('.gy-band-title')!.textContent)).toEqual(['Goal', 'Core', 'Drivers']);
+  expect(bands.map(ids)).toEqual([['m'], ['a'], ['b']]);
+  rerender(<Canvas mode="flow" model={rich} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+  bands = [...container.querySelectorAll('.gy-band')];
+  expect(bands.map((b) => b.querySelector('.gy-band-title')!.textContent)).toEqual(['Goal', 'Drivers']);
+});
+
+test('a core class the member cannot access shows a lock card', () => {
+  const m = { ...rich, classes: rich.classes.map((c) => (c.id === 'a' ? { ...c, core: true, inbound: 1 } : c)) } as unknown as Model;
+  const { container } = render(<Canvas mode="flow" model={m} visibleIds={new Set(['m', 'b'])} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+  const a = container.querySelector('[data-class-id="a"]') as HTMLElement;
+  expect(a.textContent).toContain('No access to this Data Mart');
+  expect(a.querySelector('.gy-lock')).not.toBeNull();
 });

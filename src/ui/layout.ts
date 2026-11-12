@@ -6,8 +6,11 @@ import type { ClassNode, ContextRef, Model } from '../types';
  * calculated fields of `from` the line stands for; a dashed line crosses hidden marts and has none.
  */
 export interface Connector { from: string; to: string; dashed: boolean; join: boolean; fields: string[] }
-/** Two bands only: the main class alone on top, every other class below it. */
-export interface Layout { main: ClassNode | null; drivers: ClassNode[]; connectors: Connector[] }
+/** Three bands: the main class alone on top, the core classes in rank order, then every other class. */
+export interface Layout { main: ClassNode | null; core: ClassNode[]; drivers: ClassNode[]; connectors: Connector[] }
+
+/** Core classes rank by inbound references, then by title. */
+const byRank = (a: ClassNode, b: ClassNode) => b.inbound - a.inbound || a.title.localeCompare(b.title);
 
 /** selected empty means All. */
 export function layoutFor(model: Model, selected: ReadonlySet<string>): Layout {
@@ -18,8 +21,9 @@ export function layoutFor(model: Model, selected: ReadonlySet<string>): Layout {
   const visibleIds = new Set(visible.map((c) => c.id));
   const main = visible.find((c) => c.id === mainId) ?? null;
   // Closest to the goal first, so the drivers that feed it directly sit nearest the middle of the read.
+  const core = visible.filter((c) => c.core && c.id !== mainId).sort(byRank);
   const drivers = visible
-    .filter((c) => c.id !== mainId)
+    .filter((c) => !c.core && c.id !== mainId)
     .sort((a, b) => a.depth - b.depth || a.title.localeCompare(b.title));
 
   const next = new Map<string, string[]>();
@@ -55,7 +59,7 @@ export function layoutFor(model: Model, selected: ReadonlySet<string>): Layout {
   }
 
   const connectors = [...found.values()].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
-  return { main, drivers, connectors };
+  return { main, core, drivers, connectors };
 }
 
 export function contextsOf(model: Model): ContextRef[] {
@@ -73,7 +77,7 @@ export function ontologyLayout(model: Model, selected: ReadonlySet<string>): Ont
   const goal = model.classes.find((c) => c.id === goalId) ?? null;
   const core = model.classes
     .filter((c) => c.core && c.id !== goalId && (selected.size === 0 || c.contexts.some((x) => selected.has(x.id))))
-    .sort((a, b) => b.inbound - a.inbound || a.title.localeCompare(b.title));
+    .sort(byRank);
   const drawn = new Set([...(goal ? [goal.id] : []), ...core.map((c) => c.id)]);
   const found = new Map<string, Connector>();
   for (const e of model.edges) {

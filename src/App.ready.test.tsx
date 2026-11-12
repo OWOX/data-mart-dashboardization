@@ -746,7 +746,7 @@ test('a failed access check marks every class no-access rather than queried', as
   const owox = { ...o, dataMarts: { ...o.dataMarts, list: async () => { throw new Error('boom'); } } } as AppDeps['owox'];
   render(<App ctx={ctxWith().ctx} deps={{ ...s.deps, owox }} />);
   expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't check which Data Marts you can access");
-  expect(screen.getAllByText("You don't have access to this Data Mart").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("No access to this Data Mart").length).toBeGreaterThan(0);
 });
 
 test('a broken reference shows the icon with its count, and the layer link opens Settings', async () => {

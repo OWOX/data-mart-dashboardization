@@ -91,3 +91,15 @@ test('ontology ties on inbound break by title; chips filter core classes but the
   expect(l.goal?.id).toBe('g');
   expect(l.core.map((x) => x.id)).toEqual(['b']);
 });
+
+test('flow layout: goal, then core by inbound, then the rest by depth', () => {
+  const core = (id: string, depth: number, inbound: number): ClassNode => ({ ...c(id, depth), core: true, inbound });
+  const m = {
+    goal: { classId: 'g' },
+    classes: [c('g', 0), core('a', 1, 1), core('b', 1, 3), c('x', 2)],
+    edges: [{ from: 'g', to: 'a' }, { from: 'g', to: 'b' }, { from: 'a', to: 'x' }],
+  } as unknown as Model;
+  const l = layoutFor(m, new Set());
+  expect([l.main?.id, l.core.map((x) => x.id), l.drivers.map((x) => x.id)]).toEqual(['g', ['b', 'a'], ['x']]);
+  expect(l.connectors.map((x) => `${x.from}>${x.to}`)).toEqual(['a>x', 'g>a', 'g>b']);
+});

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Network, Target } from 'lucide-react';
+import { Boxes, Network, Target } from 'lucide-react';
 import type { CacheDoc, ClassNode, Model, Status, WeekStart } from '../types';
 import type { MartDetail } from '../owox/sources';
 import type { QualitySummary } from '../owox/quality';
@@ -295,6 +295,15 @@ export function Canvas({ mode, model: full, cache, comparisonOn, refreshing, vis
             </header>
             <div className="gy-band-main">{flow.main && card(flow.main)}</div>
           </section>
+          {flow.core.length > 0 && (
+            <section className="gy-band">
+              <header className="gy-band-head">
+                <span className="gy-band-icon"><Boxes size={16} /></span>
+                <h2 className="gy-band-title">Core</h2>
+              </header>
+              <div className="gy-band-grid">{flow.core.map(card)}</div>
+            </section>
+          )}
           <section className="gy-band">
             <header className="gy-band-head">
               <span className="gy-band-icon"><Network size={16} /></span>

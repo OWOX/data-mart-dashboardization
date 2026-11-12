@@ -57,19 +57,6 @@ export function buildEdges(nodes: MartNode[], visible: ReadonlySet<string>, allo
   return [...byKey.values()].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
 }
 
-export function chooseMain(args: { goalMartId: string; goalField: string; nodes: MartNode[]; visible: ReadonlySet<string> }): { id: string; viaFallback: boolean } | null {
-  const { goalMartId, goalField, nodes, visible } = args;
-  if (visible.has(goalMartId)) return { id: goalMartId, viaFallback: false };
-  // A mart two steps away needs a visible mart one step away, so only direct referrers can win.
-  const toGoal = buildEdges(nodes, visible, goalMartId).filter((e) => e.to === goalMartId);
-  if (!toGoal.length) return null;
-  const title = new Map(nodes.map((n) => [n.id, n.title]));
-  toGoal.sort((a, b) =>
-    Number(b.refFields.includes(goalField)) - Number(a.refFields.includes(goalField)) ||
-    (title.get(a.from) ?? a.from).localeCompare(title.get(b.from) ?? b.from));
-  return { id: toGoal[0]!.from, viaFallback: true };
-}
-
 /** Depths from the main class, walking only through Data Marts that can be classes; the main class is always in. */
 export function classDepths(mainId: string, edges: Edge[], classable: ReadonlySet<string>): Map<string, number> {
   const depth = new Map([[mainId, 0]]);

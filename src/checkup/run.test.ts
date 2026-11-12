@@ -89,34 +89,17 @@ test('a fact field missing from the schema fails the goal and the links', async 
   expect(c['project.links']).toMatchObject({ status: 'fail', detail: "Revenue: field nope isn't in Orders" });
 });
 
-test('a goal Data Mart you cannot access fails access but the goal stays reachable through a referrer', async () => {
+test('a goal Data Mart you cannot access fails access and reachability', async () => {
   const base = data();
   const c = byId(await run({ ...base, marts: base.marts.filter((m) => m.id !== G) }));
   expect(c['goal.access']!.status).toBe('fail');
   for (const id of ['goal.field', 'goal.pk', 'goal.date']) expect(c[id]!.status, id).toBe('skip');
-  expect(c['connections.reachable']!.status).toBe('ok');
-  expect(c['connections.reachable']!.detail).toContain('Customers');
+  expect(c['connections.reachable']).toMatchObject({ status: 'fail', detail: "You can't access the goal Data Mart" });
+  expect(c['connections.facts']!.status).toBe('skip');
 });
 
-test('a stand-in main Data Mart without a key or a date field still warns: no goal check covers it', async () => {
-  const base = data();
-  const bare = { ...base.details[C]!, fields: base.details[C]!.fields.filter((f) => f.name !== 'id' && f.name !== 'date') };
-  const c = byId(await run({ ...base, marts: base.marts.filter((m) => m.id !== G), details: { ...base.details, [C]: bare } }));
-  expect(c['connections.reachable']!.detail).toContain('Customers');
-  expect(c['connections.pk']).toMatchObject({ status: 'warn', detail: 'No primary key: Customers' });
-  expect(c['connections.date']).toMatchObject({ status: 'warn', detail: 'No date field: Customers (the main Data Mart)' });
-  expect(c['connections.facts']!.status).toBe('ok');
-});
-
-test('a stand-in main Data Mart with no fact link is still checked for a key and a date field', async () => {
-  const base = data();
-  const bare = { ...base.details[C]!, fields: base.details[C]!.fields.filter((f) => f.name !== 'id' && f.name !== 'date') };
-  // the context links its fact to Plan, so nothing links Customers
-  const contexts = [{ id: 'k1', name: 'Sales', description: table(`| Leading | Plan | [Plan](${url(P, 'revenue')}) | [Plan](${url(P, 'revenue')}) |`) }];
-  const c = byId(await run({ ...base, contexts, marts: base.marts.filter((m) => m.id !== G), details: { ...base.details, [C]: bare } }));
-  expect(c['connections.reachable']!.detail).toContain('Customers');
-  expect(c['connections.pk']).toMatchObject({ status: 'warn', detail: 'No primary key: Customers' });
-  expect(c['connections.date']).toMatchObject({ status: 'warn', detail: 'No date field: Customers (the main Data Mart)' });
+test('a goal Data Mart you can access is reachable', async () => {
+  expect(byId(await run(data()))['connections.reachable']!.status).toBe('ok');
 });
 
 test('a goal without a primary key or a date fails both', async () => {

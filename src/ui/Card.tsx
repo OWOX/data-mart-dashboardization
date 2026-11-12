@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { ExternalLink, Info, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert } from 'lucide-react';
+import { ExternalLink, Info, Lock, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert } from 'lucide-react';
 import { qualityBadge, type QualitySummary } from '../owox/quality';
 import type { CardCache, ClassNode, DateWindow, MetricDef, MetricResult, WeekStart } from '../types';
 import type { MartDetail } from '../owox/sources';
@@ -341,7 +341,7 @@ export function Card({ cls, mart, marts, metrics, cache, comparisonOn, refreshin
     return (
       <article className="gy-card" data-class-id={cls.id} data-status="empty">
         {header}
-        <p className="gy-muted">You don't have access to this Data Mart</p>
+        <p className="gy-muted gy-lock"><Lock size={14} aria-hidden="true" /> No access to this Data Mart</p>
       </article>
     );
   }

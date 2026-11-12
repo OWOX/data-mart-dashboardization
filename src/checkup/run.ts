@@ -1,6 +1,6 @@
 import type { Model } from '../types';
 import { allFieldPaths, DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields, type Inputs, type MartDetail, type OwoxLike } from '../owox/sources';
-import { buildEdges, chooseMain, classDepths, hasDateField, hasPrimaryKey, type MartNode } from '../model/graph';
+import { buildEdges, classDepths, hasDateField, hasPrimaryKey, type MartNode } from '../model/graph';
 import { checkHealth } from '../model/health';
 import { currentInputHash } from '../model/build';
 import { runPool } from '../lib/pool';
@@ -196,9 +196,9 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     }), 6);
     const edges = buildEdges(nodes, visible, goalId);
     const goalFix = martFix(goalId, titles.get(goalId));
-    const main = chooseMain({ goalMartId: goalId, goalField, nodes, visible });
-    if (!main) put('connections.reachable', 'fail', "No Data Mart you can access references the goal's Data Mart through a calculated field", goalFix);
-    else put('connections.reachable', 'ok', main.viaFallback ? `Through ${titles.get(main.id) ?? main.id}` : `You can access ${titles.get(main.id) ?? main.id}`);
+    const main = visible.has(goalId) ? goalId : null;
+    if (!main) put('connections.reachable', 'fail', "You can't access the goal Data Mart", goalFix);
+    else put('connections.reachable', 'ok', `You can access ${titles.get(main) ?? main}`);
     if (edges.length) put('connections.any', 'ok', `${edges.length} connections`);
     else put('connections.any', 'warn', 'No calculated field references another Data Mart', owoxFix('Data Marts', '/data-marts'));
 
@@ -206,16 +206,13 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     const names = (ids: string[]) => ids.map((id) => titles.get(id) ?? id).join(', ');
     // every Data Mart a warning names gets its own link, not only the first
     const martFixes = (ids: string[]) => ids.map((id) => martFix(id, titles.get(id)));
-    // a stand-in main is drawn whether or not a fact links it, and no goal check looks at it
-    const checked = main?.viaFallback && !factIds.includes(main.id) ? [...factIds, main.id] : factIds;
-    const lacking = (has: (d: MartDetail) => boolean) => checked.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !has(n.detail); });
-    // the main class stays on the canvas without a key or a date field; the goal checks report those, unless main stands in for a goal you can't access
-    const reported = main && !main.viaFallback ? main.id : null;
-    const noPk = lacking(hasPrimaryKey).filter((id) => id !== reported);
-    const noDate = lacking(hasDateField).filter((id) => id !== reported);
+    const lacking = (has: (d: MartDetail) => boolean) => factIds.filter((id) => { const n = nodes.find((x) => x.id === id); return n && !has(n.detail); });
+    // the goal class stays on the canvas without a key or a date field; the goal checks report those
+    const noPk = lacking(hasPrimaryKey).filter((id) => id !== main);
+    const noDate = lacking(hasDateField).filter((id) => id !== main);
     if (!main) skip('connections.facts', 'connections.reachable');
     else {
-      const depths = classDepths(main.id, edges, new Set(nodes.filter((n) => hasPrimaryKey(n.detail)).map((n) => n.id)));
+      const depths = classDepths(main, edges, new Set(nodes.filter((n) => hasPrimaryKey(n.detail)).map((n) => n.id)));
       // a Data Mart missing a primary key or a date field is reported by its own check, not as unconnected
       const off = factIds.filter((id) => !depths.has(id) && !noPk.includes(id) && !noDate.includes(id));
       if (off.length) put('connections.facts', 'warn', `Not connected to the goal, so not on the canvas: ${names(off)}`, martFixes(off));
@@ -223,9 +220,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     }
     if (noPk.length) put('connections.pk', 'warn', `No primary key: ${names(noPk)}`, martFixes(noPk));
     else put('connections.pk', 'ok');
-    // main stays on the canvas without one; it just can't take the date range
-    const offDate = noDate.filter((id) => id !== main?.id);
-    const dateText = [offDate.length ? `No date field, so not on the canvas: ${names(offDate)}` : '', noDate.includes(main?.id ?? '') ? `No date field: ${names([main!.id])} (the main Data Mart)` : ''].filter(Boolean).join('. ');
+    const dateText = `No date field, so not on the canvas: ${names(noDate)}`;
     if (noDate.length) put('connections.date', 'warn', dateText, martFixes(noDate));
     else put('connections.date', 'ok');
   });
