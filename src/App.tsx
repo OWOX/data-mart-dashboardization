@@ -66,14 +66,14 @@ export function depsFrom(ctx: PluginContext): AppDeps {
 }
 
 /** The model a member sees before an admin has saved the shared one: the 0.3 project model, with core classes chosen from the settings or the ranking. */
-function migrate(project: Model, settings: Settings): Model {
+function migrate(project: Model, settings: Settings): { model: Model; core: CoreClass[] } {
   const count = INDUSTRIES.find((i) => i.id === (settings.industry ?? 'other'))?.count ?? 3;
   const inbound = inboundCounts(project.edges);
   const core = settings.coreClasses
     ?? rankCore({ goalId: project.goal.classId, nodes: project.classes.map((c) => ({ id: c.id, title: c.title, singleKey: true })), edges: project.edges })
       .slice(0, count)
       .map((id): CoreClass => ({ martId: project.classes.find((c) => c.id === id)!.martId, why: '' }));
-  return applyCore(project, core, inbound);
+  return { model: applyCore(project, core, inbound), core };
 }
 
 const ROUTES: Record<SettingsTab, string> = { general: '/settings', checkup: '/settings/checkup' };
@@ -174,23 +174,36 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     rebuildCore.current = null;
     setCoreNote(null);
     try {
-      const [s, own, prefs, member] = await Promise.all([loadSettings(store), loadShared(store), loadPreferences(store).catch(() => null), fetchMember(owox)]);
+      let [s, own, prefs, member] = await Promise.all([loadSettings(store), loadShared(store), loadPreferences(store).catch(() => null), fetchMember(owox)]);
       editor.current = member.name;
       setIsAdmin(member.isAdmin);
       let m = own;
+      let coreNoteNow: string | null = null;
       if (!m) {
         // no shared model yet: the 0.3 project model carries over, with no AI call; only an admin writes it
         const project = await loadProjectModel(store);
         if (project) {
-          m = migrate(project, s);
+          const migrated = migrate(project, s);
+          m = migrated.model;
           if (member.isAdmin) {
             m = { ...m, editedBy: member.name ?? userId, editedAt: now().toISOString() };
+            let saved = true;
             try {
               await saveShared(store, null, m);
             } catch (e) {
               // another admin saved first: read theirs
               if (!(e instanceof ModelConflict)) throw e;
               m = await loadShared(store);
+              saved = false;
+            }
+            // the chosen list goes to the settings too, so Checkup and a later Rebuild see the same core
+            if (saved && !s.coreClasses) {
+              try {
+                await saveProjectSettings(store, { coreClasses: migrated.core });
+                s = { ...s, ...(await loadProjectSettings(store)) };
+              } catch (e) {
+                coreNoteNow = `Couldn't save the core classes: ${describeError(e)}`;
+              }
             }
           }
         }
@@ -211,6 +224,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       }
       settingsNow.current = s;
       setSettings(s);
+      setCoreNote(coreNoteNow);
       // every open starts on the member's default range (none by default: the ontology view); only the comparison choice is remembered
       setRange(rangeOf(s));
       setCompare(prefs?.compare ?? compareOf(s));

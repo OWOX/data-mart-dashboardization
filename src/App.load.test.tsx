@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App, type AppDeps } from './App';
 import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
-import { loadShared, memoryCollections } from './store/collections';
+import { loadSettings, loadShared, memoryCollections } from './store/collections';
 import { seedShared } from './test/fixtures';
 import type { Model } from './types';
 
@@ -52,9 +52,20 @@ test('an admin migrates the 0.3 project model without an AI call', async () => {
   expect(saved.builtBy).toBe('project');
   expect(saved.editedBy).toBe('Test Admin');
   expect(generate).not.toHaveBeenCalled();
-  // the project doc and the settings are left alone
+  // the project doc is left alone
   expect((await store.collections<Model>('model').get('current'))!.document.version).toBe(1);
-  expect(await store.collections<unknown>('settings').get('project')).toBeNull();
+});
+
+test('an admin migration saves the chosen core classes to the project settings', async () => {
+  const { deps, store, model } = await setup();
+  const two = { ...model, version: 1, classes: [...model.classes, { ...model.classes[0]!, id: 'b', martId: 'b', title: 'B' }], edges: [{ from: model.goal.classId, to: 'b' }] };
+  await store.collections<unknown>('model').put('current', two);
+  render(<App ctx={ctx} deps={deps} />);
+  expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
+  const core = (await loadShared(store))!.classes.filter((c) => c.core).map((c) => c.martId);
+  expect(core.length).toBeGreaterThan(0);
+  const settings = await loadSettings(store);
+  expect(settings.coreClasses?.map((c) => c.martId)).toEqual(core);
 });
 
 test('the migration takes core classes from the settings when they are set', async () => {
