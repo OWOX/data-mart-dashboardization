@@ -369,8 +369,7 @@ const build = (picks: { martId: string; why: string }[], over: { existingCore?: 
 
 test('the first build takes core classes from the description', async () => {
   const r = await build([{ martId: 'c', why: 'Who buys' }, { martId: 'nokey', why: 'x' }, { martId: GID, why: 'goal' }, { martId: 'ghost', why: 'y' }, { martId: 'c', why: 'again' }]);
-  expect(r.ok && r.core).toEqual({ classes: [{ martId: 'c', why: 'Who buys' }, ...(r.ok ? r.core.classes.slice(1) : [])], fromDescription: true });
-  expect(r.ok && r.core.classes[0]).toEqual({ martId: 'c', why: 'Who buys' });
+  expect(r.ok && r.core).toEqual({ classes: [{ martId: 'c', why: 'Who buys' }, { martId: 'p', why: '' }], fromDescription: true });
   expect(r.ok && r.model.classes.find((c) => c.id === 'c')!.core).toBe(true);
   expect(r.ok && r.model.classes.find((c) => c.id === GID)!.core).toBe(false);
 });
@@ -414,4 +413,10 @@ test('a core class the walk did not reach but that touches the goal is added at 
 test('the viaFallback path is gone: the goal metric stays on the goal class', async () => {
   const r = await build([]);
   expect(r.ok && r.model.goal).toMatchObject({ classId: GID, metricId: expect.any(String), viaFallback: false });
+});
+
+test('a pick not directly connected to the goal is dropped', async () => {
+  // Stores is two steps from Orders, through Customers
+  const r = await build([{ martId: 'st', why: 'Where it sells' }, { martId: 'c', why: 'Who buys' }, { martId: 'p', why: 'What is sold' }]);
+  expect(r.ok && r.core.classes.map((c) => c.martId)).toEqual(['c', 'p']);
 });

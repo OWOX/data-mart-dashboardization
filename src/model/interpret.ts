@@ -57,6 +57,8 @@ const RULES = [
   '10. coreClasses lists the Data Marts, by id from DATA MARTS, for the business entities the PROJECT DESCRIPTION describes as its business model: who buys, what is sold, where visitors come from. At most 7. Empty when the description doesn\'t describe the business model.',
 ].join('\n');
 
+const firstLine = (t: string | null): string => (t ?? '').trim().split('\n')[0]!.trim();
+
 export function buildPrompt(input: InterpretInput): string {
   const parts = [
     'You read an OWOX project\'s descriptions and list the metrics they define. Answer only from the text and the numbered links below. Never invent links or fields.',
@@ -64,7 +66,7 @@ export function buildPrompt(input: InterpretInput): string {
     ...input.contexts.filter((c) => c.description !== null).map((c) => `CONTEXT ${c.id} (${c.name}):\n${c.description}`),
     `LINKS:\n${input.links.map((l) => `${l.index}: [${l.text}] mart=${l.martId ?? 'PLACEHOLDER'} field=${l.field ?? 'none'} source=${l.source}`).join('\n')}`,
     `DATE FIELDS:\n${Object.entries(input.dateFields).map(([id, f]) => `${id}: ${f.join(', ')}`).join('\n')}`,
-    `DATA MARTS:\n${input.marts.map((m) => `${m.id}: ${m.title} - ${(m.description ?? '').trim().split('\n')[0]}`).join('\n')}`,
+    `DATA MARTS:\n${input.marts.map((m) => `${m.id}: ${m.title}${firstLine(m.description) ? ` - ${firstLine(m.description)}` : ''}`).join('\n')}`,
     RULES,
   ];
   return parts.join('\n\n');

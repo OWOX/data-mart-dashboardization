@@ -177,3 +177,18 @@ test('the first build failing to read the project says what failed', async () =>
   expect(await screen.findByText(/Couldn't read the project description and Data Marts: boom/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
 });
+
+test('a first-open build starts from the stored core classes', async () => {
+  const d = data();
+  d.marts.push(mart('c', 'Customers'));
+  // Customers references Orders and nothing references Customers, so the ranking never picks it
+  d.details.c = { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'o', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'MAX({{ref path="orders" field="revenue"}})', level: 'metric' } }] };
+  d.blendables.c = { availableSources: [{ aliasPath: 'orders', dataMartId: GID, title: 'Orders', isAccessibleForReporting: true }], mainUniqueCountKeyFields: ['id'] };
+  const store = memoryCollections();
+  await store.collections<unknown>('settings').put('project', { thresholdPct: 20, industry: 'saas', coreClasses: [{ martId: 'c', why: 'Who buys' }] });
+  render(<App ctx={ctx} deps={{ owox: fakeOwox(d), store, generate: async () => goalAi, userId: 'u1', now: () => NOW }} />);
+  expect(await screen.findByRole('heading', { name: 'Gyroscope' })).toBeInTheDocument();
+  const saved = (await loadShared(store))!;
+  // the AI named no core class, so the flag can only come from the stored list
+  expect(saved.classes.find((c) => c.id === 'c')!.core).toBe(true);
+});

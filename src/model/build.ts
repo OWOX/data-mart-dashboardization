@@ -217,15 +217,16 @@ export async function buildModel(args: {
   const inbound = inboundCounts(edges);
   const keyed = new Set(nodes.filter((n) => singleKey(n.detail)).map((n) => n.id));
   const ranked = rankCore({ goalId: main.id, nodes: nodes.map((n) => ({ id: n.id, title: n.title, singleKey: keyed.has(n.id) })), edges });
-  // picks the AI named that can't be core (not loaded, no single-column key, the goal) are dropped; a repeat collapses to the first
+  // picks the AI named that can't be core (not loaded, no single-column key, the goal, not connected to the goal) are dropped; a repeat collapses to the first
+  const touchesGoal = (id: string) => edges.some((e) => (e.from === main.id && e.to === id) || (e.from === id && e.to === main.id));
   const picks: CoreClass[] = [];
-  for (const p of ai.coreClasses) if (keyed.has(p.martId) && p.martId !== main.id && !picks.some((x) => x.martId === p.martId)) picks.push(p);
+  for (const p of ai.coreClasses) if (keyed.has(p.martId) && p.martId !== main.id && touchesGoal(p.martId) && !picks.some((x) => x.martId === p.martId)) picks.push(p);
   const count = INDUSTRIES.find((i) => i.id === (args.industry ?? 'other'))!.count;
   const core = mergeCore(args.existingCore, picks, ranked, count);
   // a core class the walk didn't reach is still drawn when it connects to the goal
   for (const c of core) {
     if (depths.has(c.martId) || !classable.has(c.martId)) continue;
-    if (edges.some((e) => (e.from === main.id && e.to === c.martId) || (e.from === c.martId && e.to === main.id))) depths.set(c.martId, 1);
+    if (touchesGoal(c.martId)) depths.set(c.martId, 1);
   }
 
   const rank = (m: MetricDef) => (m.role === 'critical' ? (m.source === 'project' ? 0 : 1) : m.role === 'leading' ? 2 : m.role === 'lagging' ? 3 : 4);
@@ -257,17 +258,16 @@ export async function buildModel(args: {
   });
 
   const model = applyCore({
-
-      version: 3,
-      inputHash: inputHash(inputs, nodes.filter((n) => depths.has(n.id))),
-      builtAt: now.toISOString(),
-      builtBy: userId,
-      editedAt: null,
-      editedBy: null,
-      goal: { classId: main.id, metricId: v.goal.metricId, goalMartId: v.goal.martId, viaFallback: false },
-      classes,
-      edges: edges.filter((e) => depths.has(e.from) && depths.has(e.to)).map((e) => ({ from: e.from, to: e.to, fields: e.fields })),
-      metrics,
+    version: 3,
+    inputHash: inputHash(inputs, nodes.filter((n) => depths.has(n.id))),
+    builtAt: now.toISOString(),
+    builtBy: userId,
+    editedAt: null,
+    editedBy: null,
+    goal: { classId: main.id, metricId: v.goal.metricId, goalMartId: v.goal.martId, viaFallback: false },
+    classes,
+    edges: edges.filter((e) => depths.has(e.from) && depths.has(e.to)).map((e) => ({ from: e.from, to: e.to, fields: e.fields })),
+    metrics,
   }, core, inbound);
   return { ok: true, model, core: { classes: core, fromDescription: picks.length > 0 } };
 }

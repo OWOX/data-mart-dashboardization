@@ -121,6 +121,9 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const qualityFor = useRef<Model | null>(null);
   const checkedFor = useRef<object | null>(null);
   const modelNow = useRef<Model | null>(null);
+  // written by load before it starts a build, which would otherwise read the settings of the previous render
+  const settingsNow = useRef<Settings>(DEFAULT_SETTINGS);
+  settingsNow.current = settings;
   modelNow.current = model;
   const cacheNow = useRef<CacheDoc | null>(null);
   cacheNow.current = cache;
@@ -154,6 +157,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           try { await saveShared(store, null, m); } catch { setSeedNote(SEED_NOTE); }
         }
       }
+      settingsNow.current = s;
       setSettings(s);
       setRange(prefs?.range ?? rangeOf(s));
       setCompare(prefs?.compare ?? compareOf(s));
@@ -179,7 +183,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     setView({ name: 'building' });
     setOutdated(null);
     try {
-      const result = await buildModel({ owox, generate, userId, now: now(), existingCore: settings.coreClasses, industry: settings.industry, onStep: (s) => setSteps((p) => [...p, s]) });
+      const result = await buildModel({ owox, generate, userId, now: now(), existingCore: settingsNow.current.coreClasses, industry: settingsNow.current.industry, onStep: (s) => setSteps((p) => [...p, s]) });
       if (!result.ok) { setView({ name: 'blocked', blocked: result.blocked }); return; }
       await saveShared(store, modelNow.current, result.model);
       setSeedNote(null);

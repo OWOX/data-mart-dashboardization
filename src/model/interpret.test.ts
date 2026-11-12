@@ -39,7 +39,7 @@ test('prompt lists the Data Marts with the first line of each description', () =
   expect(p).toContain('DATA MARTS:');
   expect(p).toContain('m1: Orders - All orders');
   expect(p).not.toContain('more');
-  expect(p).toContain('m2: Customers');
+  expect(p).toContain('\nm2: Customers\n');
   expect(p).toContain('10. coreClasses lists the Data Marts');
 });
 
