@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useId, useMemo, useRef, useState 
 import { ChevronDown, ChevronRight, GripVertical, Info } from 'lucide-react';
 import { normalizeCurrency } from '../lib/format';
 import { describeError } from '../lib/errors';
+import { conflictMessage } from '../lib/conflict';
+import { ModelConflict } from '../store/collections';
 import { runPool } from '../lib/pool';
 import { fetchMartDetail, type MartDetail, type OwoxLike } from '../owox/sources';
 import { uncomputable } from '../model/aggregations';
@@ -137,7 +139,7 @@ function Source({ label, detail, status, measure, dateField, noDate, noField = f
   );
 }
 
-export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss, hashOf }: {
+export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss, hashOf, readOnly = false, onReload }: {
   model: Model;
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
@@ -154,9 +156,14 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   onDismiss?: () => void;
   /** The input hash of a model's Data Marts as the out-of-date check computes it; null when it can't be told. */
   hashOf?: (m: Model) => Promise<string | null>;
+  /** A member who isn't a project admin: every input is disabled and nothing can be saved or rebuilt. */
+  readOnly?: boolean;
+  /** Reloads the shared model after a save found it changed by someone else. */
+  onReload?: () => void;
 }) {
   const [draft, setDraft] = useState<Model>(model);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rebuild, setRebuild] = useState<Rebuild>({ phase: 'idle' });
   // a proposal is judged against the saved model, so unsaved edits can't be kept alongside it
@@ -285,18 +292,24 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     setAnnouncement(`${nameOf(m)} moved to position ${d.drop + 1} of ${c.metricIds.length}`);
   };
 
+  const failSave = (e: unknown) => {
+    setConflict(e instanceof ModelConflict);
+    setError(e instanceof ModelConflict ? conflictMessage(e) : `Couldn't save the model: ${describeError(e)}`);
+    setSaving(false);
+  };
+
   const save = async () => {
     const next = deriveKeys(draft);
     const problem = validateDraft(next, new Map([...referenced].map((id) => [id, detailOf(id).detail])));
     // the named metric may sit in a folded class, so unfold them all
     if (problem) { setError(problem); setOpenIds(new Set(draft.classes.map((c) => c.id))); return; }
     setError(null);
+    setConflict(false);
     setSaving(true);
     try {
       await onSave({ ...next, editedAt: now().toISOString() });
     } catch (e) {
-      setError(`Couldn't save the model: ${describeError(e)}`);
-      setSaving(false);
+      failSave(e);
     }
   };
 
@@ -319,8 +332,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
       // the hash covers the resulting model's Data Marts, as the check does; unknown keeps the old one
       await onSave({ ...next, inputHash: (await hashOf?.(next)) ?? model.inputHash });
     } catch (e) {
-      setError(`Couldn't save the model: ${describeError(e)}`);
-      setSaving(false);
+      failSave(e);
     }
   };
   // no differences to pick: remember the new input hash, and the lines if the refs between classes moved, without calling it an edit
@@ -334,8 +346,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
       // lines don't feed the numbers, so editedAt stays and the cache with it
       await onSave({ ...(moved ? relinked : model), inputHash: hash ?? model.inputHash });
     } catch (e) {
-      setError(`Couldn't save the model: ${describeError(e)}`);
-      setSaving(false);
+      failSave(e);
     }
   };
   const closeRebuild = () => { setError(null); setRebuild({ phase: 'idle' }); };
@@ -358,8 +369,9 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
     <div className="gy-onto">
       <section className="dm-card gy-onto-intro">
         <p className="gy-onto-note">Your model. Changes here only affect what you see.</p>
+        {readOnly && <p className="dm-muted gy-form-note">Only a project admin can change the model</p>}
         {martsUnchecked && <p className="gy-bad-text">Couldn&apos;t check which Data Marts you can access; references aren&apos;t verified.</p>}
-        {onRebuild && (
+        {onRebuild && !readOnly && (
           <>
             <p className="dm-muted gy-form-note">
               Reads the project description and the Data Mart schemas again and proposes changes to your model.
@@ -396,6 +408,9 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         />
       )}
 
+      {conflict && onReload && <div className="gy-form-actions"><button type="button" className="gy-btn" onClick={onReload}>Reload</button></div>}
+
+      <fieldset className="gy-fieldset" disabled={readOnly}>
       {rebuild.phase === 'idle' && canvasOrder(draft).map((c) => {
         const goal = c.id === draft.goal.classId;
         const classMart = detailOf(c.martId);
@@ -580,13 +595,15 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         );
       })}
 
+      </fieldset>
+
       <div role="status" aria-live="polite" className="gy-sr-only">{announcement}</div>
 
       {rebuild.phase === 'idle' && (
         <>
           {error && <p role="alert" className="gy-form-error">{error}</p>}
           <div className="gy-form-actions">
-            <button type="button" className="gy-btn gy-btn-primary" onClick={() => void save()} disabled={saving}>Save</button>
+            {!readOnly && <button type="button" className="gy-btn gy-btn-primary" onClick={() => void save()} disabled={saving}>Save</button>}
             <button type="button" className="gy-btn" onClick={onCancel}>Cancel</button>
           </div>
         </>

@@ -80,20 +80,17 @@ test('stale selection is dropped when the context disappears', () => {
   expect(screen.getByText('Beta')).toBeInTheDocument();
 });
 
-test('classes the member cannot see are not rendered and are bridged', () => {
-  const { container } = render(<Canvas model={rich} visibleIds={new Set(['m', 'b'])} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
-  expect(screen.queryByText('Alpha')).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Growth' })).toBeNull();
-  const lines = container.querySelectorAll('path[data-from]');
-  expect(lines).toHaveLength(1);
-  expect(lines[0]).toHaveAttribute('data-dashed', 'true');
+test('classes the member cannot see still render, as no-access cards', () => {
+  render(<Canvas model={rich} visibleIds={new Set(['m', 'b'])} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByText('Alpha')).toBeInTheDocument();
+  expect(screen.getAllByText("You don't have access to this Data Mart")).toHaveLength(1);
 });
 
 test('an invisible main class shows the no-access card instead of metrics', () => {
   const cache = { cards: { m: { metrics: { k: { fact: 5, error: null, status: 'neutral' } }, spark: null } } } as never;
   render(<Canvas model={rich} visibleIds={new Set(['a'])} cache={cache} comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(screen.getByText('Main')).toBeInTheDocument();
-  expect(screen.getByText("You don't have access to this Data Mart")).toBeInTheDocument();
+  expect(screen.getAllByText("You don't have access to this Data Mart")).toHaveLength(2);
 });
 
 test('main sits alone in the Goal band; every other class shares the Drivers band', () => {

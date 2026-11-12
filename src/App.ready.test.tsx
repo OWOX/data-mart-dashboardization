@@ -382,12 +382,12 @@ test('a refused contexts call skips the out-of-date check', async () => {
   expect(screen.queryByRole('button', { name: /issue/ })).toBeNull();
 });
 
-test('a class whose mart the member cannot see is not rendered or queried', async () => {
+test('a class whose mart the member cannot see renders as a no-access card and is not queried', async () => {
   const { deps, d, owox } = await setup({ cache: 'none', withCustomers: true });
   d.marts = d.marts.filter((m) => m.id !== CID);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   await waitFor(() => expect(owox.calls.some((c) => c.path === `traverse:${GID}`)).toBe(true));
-  expect(screen.queryByText('Customers')).toBeNull();
+  expect(screen.getByText('Customers', { selector: '.gy-card-title' })).toBeInTheDocument();
   expect(owox.calls.some((c) => c.path === `traverse:${CID}`)).toBe(false);
 });
 
@@ -736,13 +736,12 @@ test('a custom range already on screen is not blanked by Settings and Back', asy
   expect(card()).toHaveTextContent('10K');
 });
 
-test('a failed access check shows no class rather than every class', async () => {
+test('a failed access check marks every class no-access rather than queried', async () => {
   const s = await setup({ withCustomers: true });
   const o = s.deps.owox;
   const owox = { ...o, dataMarts: { ...o.dataMarts, list: async () => { throw new Error('boom'); } } } as AppDeps['owox'];
   render(<App ctx={ctxWith().ctx} deps={{ ...s.deps, owox }} />);
   expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't check which Data Marts you can access");
-  expect(screen.queryByText('Customers', { selector: '.gy-card-title' })).toBeNull();
   expect(screen.getAllByText("You don't have access to this Data Mart").length).toBeGreaterThan(0);
 });
 

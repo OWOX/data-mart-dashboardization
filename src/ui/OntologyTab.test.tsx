@@ -699,3 +699,13 @@ describe('an info tip with an OWOX link', () => {
     expect(tip()).not.toBeVisible();
   });
 });
+
+test('a read-only tab disables every input, hides Save and Rebuild and says why', () => {
+  const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
+  render(<OntologyTab model={model()} details={DETAILS} marts={MARTS} owox={owox} now={() => new Date()} onSave={vi.fn()} onCancel={vi.fn()} onRebuild={vi.fn()} readOnly />);
+  openAll();
+  expect(screen.getByText('Only a project admin can change the model')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Rebuild model' })).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Customers' })).toBeDisabled();
+});

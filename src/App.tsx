@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AiCredentialHandle, PluginContext } from '@owox/plugin-sdk';
-import type { Blocked as BlockedInfo, CacheDoc, CardCache, CompareChoice, Model, RangeChoice, Settings } from './types';
+import type { Blocked as BlockedInfo, BuildResult, CacheDoc, CardCache, CompareChoice, CoreClass, Model, RangeChoice, Settings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { compareLabel, resolveRange } from './lib/dates';
 import { describeError } from './lib/errors';
-import { seedFrom, withoutUndated } from './model/seed';
+import { INDUSTRIES, applyCore, inboundCounts, mergeCore, rankCore } from './model/core';
+import { fetchMember } from './owox/role';
+import { conflictMessage } from './lib/conflict';
 import { shownModel } from './model/shown';
 import { checkHealth, type Issue } from './model/health';
 import { buildModel, currentInputHash, type BuildStep } from './model/build';
 import { aiGenerate, type Generate } from './model/interpret';
 import { fetchQuality, type QualitySummary } from './owox/quality';
-import { fetchInputs, fetchMartDetail, type Inputs, type MartDetail, type OwoxLike } from './owox/sources';
-import { runPool } from './lib/pool';
+import { fetchInputs, type Inputs, type MartDetail, type OwoxLike } from './owox/sources';
 import { cacheKey, persistable, refreshCanvas } from './metrics/refresh';
 import {
-  isStale, loadCache, loadPreferences, loadProjectModel, loadSettings, loadShared, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings, type CollectionsLike,
+  isStale, loadCache, loadPreferences, loadProjectModel, loadProjectSettings, loadSettings, loadShared, ModelConflict, saveCache, savePreferences, saveProjectSettings, saveShared, saveViewSettings, type CollectionsLike,
 } from './store/collections';
 import { Blocked } from './ui/Blocked';
 import { BuildProgress } from './ui/BuildProgress';
@@ -38,7 +39,8 @@ type View =
   | { name: 'loading' }
   | { name: 'building' }
   | { name: 'blocked'; blocked: BlockedInfo }
-  | { name: 'error'; message: string; retry: 'load' | 'build' }
+  | { name: 'error'; message: string; retry: 'load' | 'build' | 'reload' }
+  | { name: 'not_set_up' }
   | { name: 'ready' }
   | { name: 'settings'; tab: SettingsTab };
 
@@ -56,7 +58,16 @@ export function depsFrom(ctx: PluginContext): AppDeps {
   };
 }
 
-const SEED_NOTE = "Couldn't save your model; it will be saved next time.";
+/** The model a member sees before an admin has saved the shared one: the 0.3 project model, with core classes chosen from the settings or the ranking. */
+function migrate(project: Model, settings: Settings): Model {
+  const count = INDUSTRIES.find((i) => i.id === (settings.industry ?? 'other'))?.count ?? 3;
+  const inbound = inboundCounts(project.edges);
+  const core = settings.coreClasses
+    ?? rankCore({ goalId: project.goal.classId, nodes: project.classes.map((c) => ({ id: c.id, title: c.title, singleKey: true })), edges: project.edges })
+      .slice(0, count)
+      .map((id): CoreClass => ({ martId: project.classes.find((c) => c.id === id)!.martId, why: '' }));
+  return applyCore(project, core, inbound);
+}
 
 const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology', checkup: '/settings/checkup' };
 /** The settings tab a route opens; anything else opens the canvas. */
@@ -107,8 +118,11 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const [dismissedHash, setDismissedHash] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
-  // the seeded model couldn't be saved on first open; shown until a save goes through
-  const [seedNote, setSeedNote] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  // the editor's display name, stored as Model.editedBy
+  const editor = useRef<string | null>(null);
+  // the core classes of the last Rebuild candidate, saved with it on Apply
+  const rebuildCore = useRef<CoreClass[] | null>(null);
   // what this member can see, fetched once per model; data is null when the fetch failed
   const [inputs, setInputs] = useState<{ model: Model; data: Inputs | null } | null>(null);
   // the health check of the model against the Data Marts; the schemas it read are kept for the Ontology Model page
@@ -131,30 +145,25 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const load = useCallback(async () => {
     setView({ name: 'loading' });
     try {
-      const [s, own, prefs] = await Promise.all([loadSettings(store), loadShared(store), loadPreferences(store).catch(() => null)]);
+      const [s, own, prefs, member] = await Promise.all([loadSettings(store), loadShared(store), loadPreferences(store).catch(() => null), fetchMember(owox)]);
+      editor.current = member.name;
+      setIsAdmin(member.isAdmin);
       let m = own;
       if (!m) {
-        // first open: start from the project model cut to what this member can reach, with no AI call
+        // no shared model yet: the 0.3 project model carries over, with no AI call; only an admin writes it
         const project = await loadProjectModel(store);
         if (project) {
-          const accessible = await owox.dataMarts.list().then((x) => new Set(x.map((y) => y.id))).catch(() => null);
-          // without the access list the whole project model is the seed (the canvas filter still applies) and its hash stays
-          m = accessible ? seedFrom(project, accessible) : project;
-          // the kept classes hash differently from the project's; without this the first open would read as out of date
-          if (accessible) {
+          m = migrate(project, s);
+          if (member.isAdmin) {
+            m = { ...m, editedBy: member.name ?? userId, editedAt: now().toISOString() };
             try {
-              const inputs = await fetchInputs(owox);
-              // the project model may predate the date-field rule; its undated classes don't carry over
-              const details = new Map<string, MartDetail>();
-              const read = await runPool(m.classes.map((c) => async () => { details.set(c.martId, await fetchMartDetail(owox, c.martId)); }), 6);
-              m = withoutUndated(m, details);
-              // a hash taken without the contexts would read as out of date once they load; an unread schema may hide an
-              // undated class, so the project hash stays and the out-of-date check proposes the rebuild
-              if (inputs.contextsOk && read.every((r) => r.status === 'fulfilled')) m = { ...m, inputHash: await currentInputHash(owox, inputs, m.classes.map((c) => c.id), details) };
-            } catch { /* keep the project hash */ }
+              await saveShared(store, null, m);
+            } catch (e) {
+              // another admin saved first: read theirs
+              if (!(e instanceof ModelConflict)) throw e;
+              m = await loadShared(store);
+            }
           }
-          // a failed save keeps the seed in memory; the next save of the model writes it
-          try { await saveShared(store, null, m); } catch { setSeedNote(SEED_NOTE); }
         }
       }
       settingsNow.current = s;
@@ -166,14 +175,32 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       startTab.current = null;
       if (m) setView(tab ? { name: 'settings', tab } : { name: 'ready' });
       else if (tab === 'checkup') setView({ name: 'settings', tab });
-      else void buildRef.current();
+      else if (member.isAdmin) void buildRef.current();
+      else setView({ name: 'not_set_up' });
     } catch (e) {
       setView({ name: 'error', message: describeError(e), retry: 'load' });
     }
-  }, [store, owox]);
+  }, [store, owox, userId, now]);
 
   const buildRef = useRef<() => Promise<void>>(async () => undefined);
   useEffect(() => { void load(); }, [load]);
+
+  /** Stamps the editor, applies the core list and writes the shared doc; then the list to the project settings when it changed. Admin only. */
+  const commit = useCallback(async (next: Model, core: CoreClass[] | null, stamp: boolean): Promise<Model> => {
+    const withCore = core ? applyCore(next, core, inboundCounts(next.edges)) : next;
+    // a hash-only update (editedAt unchanged) isn't an edit, so the editor stays as it was
+    const edited = stamp || next.editedAt !== modelNow.current?.editedAt;
+    const saved: Model = { ...withCore, ...(edited ? { editedBy: editor.current ?? userId } : {}), ...(stamp ? { editedAt: now().toISOString() } : {}) };
+    await saveShared(store, modelNow.current, saved);
+    if (core && JSON.stringify(core) !== JSON.stringify(settingsNow.current.coreClasses)) {
+      await saveProjectSettings(store, { coreClasses: core });
+      // keep the local copy in step with what is stored, industry included
+      const stored = await loadProjectSettings(store);
+      settingsNow.current = { ...settingsNow.current, ...stored };
+      setSettings(settingsNow.current);
+    }
+    return saved;
+  }, [store, userId, now]);
 
   const build = useCallback(async () => {
     refreshId.current++;
@@ -185,15 +212,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     try {
       const result = await buildModel({ owox, generate, userId, now: now(), existingCore: settingsNow.current.coreClasses, industry: settingsNow.current.industry, onStep: (s) => setSteps((p) => [...p, s]) });
       if (!result.ok) { setView({ name: 'blocked', blocked: result.blocked }); return; }
-      await saveShared(store, modelNow.current, result.model);
-      setSeedNote(null);
-      setModel(result.model);
+      setModel(await commit(result.model, result.core.classes, true));
       setCache(null);
       setView({ name: 'ready' });
     } catch (e) {
-      setView({ name: 'error', message: describeError(e), retry: 'build' });
+      setView(e instanceof ModelConflict ? { name: 'error', message: conflictMessage(e), retry: 'reload' } : { name: 'error', message: describeError(e), retry: 'build' });
     }
-  }, [owox, generate, userId, now, store]);
+  }, [owox, generate, userId, now, store, commit]);
 
   buildRef.current = build;
 
@@ -307,17 +332,20 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   const openSettings = (tab: SettingsTab = 'general') => { ctx.ui?.setRoute?.(ROUTES[tab]); setSettingsError(null); setView({ name: 'settings', tab }); };
   const leaveSettings = () => {
     ctx.ui?.setRoute?.('/');
-    // without a model there is no canvas to go back to
-    if (modelNow.current) setView({ name: 'ready' }); else void build();
+    // without a model there is no canvas to go back to; only an admin builds one
+    if (modelNow.current) setView({ name: 'ready' }); else if (isAdmin) void build(); else setView({ name: 'not_set_up' });
   };
   const backToCanvas = model ? () => setView({ name: 'ready' }) : undefined;
   // Fire and forget: losing the remembered choice must not disturb the canvas.
   const remember = (r: RangeChoice, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
   const saveOntologyAndLeave = async (m: Model) => {
-    await saveShared(store, modelNow.current, m);
-    setSeedNote(null);
+    // a rebuild's core classes join the stored ones with the Apply
+    const picks = rebuildCore.current;
+    const count = INDUSTRIES.find((i) => i.id === (settings.industry ?? 'other'))?.count ?? 3;
+    const saved = await commit(m, picks ? mergeCore(settings.coreClasses, picks, [], count) : null, false);
+    rebuildCore.current = null;
     // a new model object re-runs the refresh; the cache is judged by editedAt
-    setModel(m);
+    setModel(saved);
     leaveSettings();
   };
   const ontologyDetails = useMemo(() => (health && health.model === model ? health.details : new Map<string, MartDetail>()), [health, model]);
@@ -336,7 +364,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     try {
       const { thresholdPct, industry: _i, coreClasses: _c, ...view } = s;
       await saveViewSettings(store, view);
-      if (thresholdPct !== settings.thresholdPct) await saveProjectSettings(store, { thresholdPct });
+      if (isAdmin && thresholdPct !== settings.thresholdPct) await saveProjectSettings(store, { thresholdPct });
     } catch (e) {
       setSettingsError(`Couldn't save settings: ${describeError(e)}`);
       return;
@@ -355,12 +383,20 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       return <BuildProgress steps={steps} />;
     case 'blocked':
       return <Blocked blocked={view.blocked} projectId={ctx.projectId} onRetry={() => void build()} onCheckup={() => openSettings('checkup')} onBack={backToCanvas} onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined} />;
+    case 'not_set_up':
+      return (
+        <main className="gy-main">
+          <h1>An admin hasn&apos;t set up Gyroscope yet</h1>
+          <p>Ask a project admin to open Gyroscope and build the model. Meanwhile you can run a checkup.</p>
+          <button type="button" className="gy-btn gy-btn-primary" onClick={() => openSettings('checkup')}>Run checkup</button>
+        </main>
+      );
     case 'error':
       return (
         <main className="gy-main">
           <h1>Something went wrong</h1>
           <p>{view.message}</p>
-          <button type="button" className="gy-btn gy-btn-primary" onClick={() => void (view.retry === 'load' ? load() : build())}>Retry</button>
+          <button type="button" className="gy-btn gy-btn-primary" onClick={() => void (view.retry === 'build' ? build() : load())}>{view.retry === 'reload' ? 'Reload' : 'Retry'}</button>
           {backToCanvas && <>{' '}<button type="button" className="gy-btn" onClick={backToCanvas}>Back to canvas</button></>}
         </main>
       );
@@ -374,11 +410,17 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           noModel={!model}
           checkup={{ run: (onUpdate) => runCheckup({ owox, hasAi: !!generate, model, projectId: ctx.projectId, onUpdate }), projectId: ctx.projectId, now }}
           onBack={leaveSettings}
-          onRebuild={(onStep) => buildModel({ owox, generate, userId, now: now(), existingCore: settings.coreClasses, industry: settings.industry, onStep })}
+          onRebuild={async (onStep) => {
+            const r: BuildResult = await buildModel({ owox, generate, userId, now: now(), existingCore: settings.coreClasses, industry: settings.industry, onStep });
+            rebuildCore.current = r.ok ? r.core.classes : null;
+            return r;
+          }}
+          isAdmin={isAdmin}
+          onReload={() => void load()}
           projectId={ctx.projectId}
-          onDismiss={() => setDismissedHash(outdated)}
+          onDismiss={() => { rebuildCore.current = null; setDismissedHash(outdated); }}
           onOpen={ctx.ui?.navigate ? (path) => ctx.ui.navigate(path) : undefined}
-          canRebuild={!!generate}
+          canRebuild={isAdmin && !!generate}
           error={settingsError}
           onSave={(s) => void saveSettingsAndLeave(s)}
         />
@@ -386,7 +428,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     case 'ready': {
       if (!model) return null;
       const status = loading || refreshing ? (progress ? `Loading metrics ${progress.done} of ${progress.total}` : inputsReady ? 'Loading metrics…' : 'Reading Data Marts…') : null;
-      const showOutdated = outdated !== null && outdated !== model.inputHash && outdated !== dismissedHash;
+      const showOutdated = isAdmin && outdated !== null && outdated !== model.inputHash && outdated !== dismissedHash;
       const notices = issuesNow.length > 0 || showOutdated ? {
         issues: issuesNow.map((i) => ({
           classTitle: model.classes.find((c) => c.id === i.classId)?.title ?? i.classId,
@@ -400,7 +442,6 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <main className="gy-main">
           <Header cache={cache} now={now()} period={periodShown} status={status} notices={notices} />
           {saveNote && <p className="gy-muted">{saveNote}</p>}
-          {seedNote && <p className="gy-muted">{seedNote}</p>}
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
           <Canvas
             tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={(r, c) => { setRange(r); setCompare(c); remember(r, c); }} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}

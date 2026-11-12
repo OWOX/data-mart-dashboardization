@@ -11,6 +11,8 @@ export interface FakeOwoxData {
   quality?: (ids: string[]) => unknown;
   /** Answers markdown.parseToHtml; omit and the fake has no markdown. Throw to simulate a failure. */
   markdown?: (markdown: string) => string | Promise<string>;
+  /** Roles served at /api/auth/context; defaults to ['admin'] so a build runs on open. */
+  roles?: string[];
   rows?: (id: string, options: Record<string, unknown>) => Record<string, unknown>[];
 }
 
@@ -21,6 +23,7 @@ export function fakeOwox(data: FakeOwoxData): OwoxLike & { calls: { path: string
     calls,
     async getJson<T>(path: string): Promise<T> {
       calls.push({ path });
+      if (path === '/api/auth/context') return { member: { userId: 'u1', fullName: 'Test Admin', email: 'u1@example.com', roles: data.roles ?? ['admin'] } } as T;
       if (path === '/api/contexts') return data.contexts as T;
       const blend = /^\/api\/data-marts\/([^/]+)\/blendable-schema$/.exec(path);
       if (blend) { const b = data.blendables[blend[1]!]; if (!b) throw miss(path); return b as T; }

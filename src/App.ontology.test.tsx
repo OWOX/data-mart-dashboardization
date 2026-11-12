@@ -174,3 +174,51 @@ test('the blocked view offers Run checkup, which opens the tab and sets the rout
   expect(await screen.findByRole('tab', { name: 'Checkup', selected: true })).toBeInTheDocument();
   expect(setRoute).toHaveBeenLastCalledWith('/settings/checkup');
 });
+
+test('two members with different access see the same classes', async () => {
+  const { deps } = await setup();
+  const admin = render(<App ctx={ctxWith().ctx} deps={deps} />);
+  await waitFor(() => expect(customersCard()).toBeInTheDocument());
+  const titles = (c: HTMLElement) => [...c.querySelectorAll('.gy-card-title')].map((e) => e.textContent);
+  const a = titles(admin.container);
+  admin.unmount();
+  const narrow = fakeOwox({ ...data(), marts: [mart(GID, 'Orders')], roles: ['viewer'] });
+  const member = render(<App ctx={ctxWith().ctx} deps={{ ...deps, owox: narrow }} />);
+  await waitFor(() => expect(customersCard()).toBeInTheDocument());
+  expect(titles(member.container)).toEqual(a);
+  expect(a).toContain('Customers');
+});
+
+test('a member sees the Metrics tab read-only', async () => {
+  const { deps } = await setup();
+  const owox = fakeOwox({ ...data(), roles: ['viewer'] });
+  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={{ ...deps, owox }} />);
+  expect(await screen.findByText('Only a project admin can change the model')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+});
+
+test('a save over a newer shared doc shows who changed it and when, and Reload reads theirs', async () => {
+  const { deps, store } = await setup();
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Metrics' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
+  const theirs = { ...(await loadShared(store))!, editedAt: '2026-10-24T11:30:00Z', editedBy: 'Anna' };
+  await seedShared(store, theirs);
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(await screen.findByText(/^Anna changed the model at \d\d:\d\d\. Reload to see their changes\.$/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Date range' })).toBeInTheDocument());
+});
+
+test('a first build stores the core classes and the editor name', async () => {
+  const store = memoryCollections();
+  const owox = fakeOwox(data());
+  render(<App ctx={ctxWith().ctx} deps={{ owox, store, generate: async () => goalAi, userId: 'u1', now: () => NOW }} />);
+  await screen.findByRole('button', { name: 'Date range' });
+  const saved = (await loadShared(store))!;
+  expect(saved.editedBy).toBe('Test Admin');
+  const stored = (await store.collections<{ coreClasses: unknown[] }>('settings').get('project'))!.document.coreClasses;
+  expect(stored.length).toBeGreaterThan(0);
+  expect(saved.classes.filter((c) => c.core).length).toBe(stored.length);
+});

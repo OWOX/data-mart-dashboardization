@@ -91,14 +91,8 @@ export function Canvas({ model: full, cache, comparisonOn, refreshing, visibleId
   // One switch for the whole canvas: pressing any diff chip flips every card between % and absolute.
   const [absolute, setAbsolute] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  // Classes the member can't see are dropped like filtered ones; the main card stays to say so.
-  const model = useMemo(
-    () => {
-      const m = shownModel(full, details);
-      return visibleIds ? { ...m, classes: m.classes.filter((c) => visibleIds.has(c.id) || c.id === m.goal.classId) } : m;
-    },
-    [full, visibleIds, details],
-  );
+  // Every member sees the same classes; the ones whose Data Mart they can't read render as no-access cards.
+  const model = useMemo(() => shownModel(full, details), [full, details]);
   const contexts = useMemo(() => contextsOf(model), [model]);
   const selected = useMemo(() => {
     const valid = new Set(contexts.map((x) => x.id));

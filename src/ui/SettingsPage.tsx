@@ -21,7 +21,7 @@ export interface OntologyProps {
   hashOf?: (m: Model) => Promise<string | null>;
 }
 
-export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, noModel = false }: {
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, noModel = false, isAdmin = true, onReload }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
   /** Reads the descriptions and schemas again into a candidate model; the Ontology tab shows it as a proposal. */
   onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void;
@@ -32,6 +32,10 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
   checkup?: CheckupProps | null;
   /** No model yet: the Metrics tab says so instead of waiting for Data Marts. */
   noModel?: boolean;
+  /** A member who isn't a project admin reads the model and edits only their own view settings. */
+  isAdmin?: boolean;
+  /** Reloads the shared model after a save found it changed by someone else. */
+  onReload?: () => void;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -71,7 +75,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
       <main>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-ontology" aria-labelledby="gy-tab-ontology" hidden={tab !== 'ontology'}>
           {ontology
-            ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} />
+            ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} readOnly={!isAdmin} onReload={onReload} />
             : noModel ? <p className="dm-muted gy-form-note">No model yet. It's built when you go back to the canvas.</p>
             : <><LoadingBar /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>}
         </div>
@@ -83,8 +87,8 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
             <p className="dm-muted gy-form-note">These settings apply to everyone in the project.</p>
             <div className="gy-field">
               <label htmlFor="gy-threshold">Red when below plan by more than (%)</label>
-              <input id="gy-threshold" className="gy-input" type="number" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-              <span className="dm-muted gy-field-hint">A card between plan and this threshold shows orange.</span>
+              <input id="gy-threshold" className="gy-input" type="number" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} disabled={!isAdmin} />
+              <span className="dm-muted gy-field-hint">{isAdmin ? 'A card between plan and this threshold shows orange.' : 'Only a project admin can change this'}</span>
             </div>
             <div className="gy-field">
               <label htmlFor="gy-default-range">Default date range</label>
