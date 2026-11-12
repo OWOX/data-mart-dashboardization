@@ -1,6 +1,7 @@
 import type { MartDetail, OwoxLike } from '../owox/sources';
 import { allFieldPaths, fetchMartDetail } from '../owox/sources';
 import { runPool } from '../lib/pool';
+import { statusesOf } from '../lib/errors';
 import type { Model } from '../types';
 
 export type IssueKind =
@@ -14,9 +15,10 @@ export interface Issue { kind: IssueKind; classId: string; martId: string; metri
 export const BLOCKING: ReadonlySet<IssueKind> = new Set<IssueKind>(['mart_missing', 'fact_field_missing', 'date_field_missing']);
 
 /**
- * Compares the model with the schemas of the Data Marts it references. A Data Mart the member can't
- * list, or whose schema fails to load, counts as missing. Returns the schemas it did read, so the
- * caller can reuse them. Never throws.
+ * Compares the model with the schemas of the Data Marts it references. A listed Data Mart whose schema
+ * fails to load counts as missing. One the member can't list is missing only when its detail says 404;
+ * otherwise it is a no-access case, not an issue, and its fields are not checked. Returns the schemas it
+ * did read, so the caller can reuse them. Never throws.
  */
 export async function checkHealth(
   owox: OwoxLike, model: Model, accessible: ReadonlySet<string>,
@@ -28,9 +30,17 @@ export async function checkHealth(
     if (m.plan) wanted.add(m.plan.martId);
     if (m.forecast) wanted.add(m.forecast.martId);
   }
-  const ids = [...wanted].filter((id) => accessible.has(id));
   const details = new Map<string, MartDetail>();
-  await runPool(ids.map((id) => async () => { details.set(id, await fetchMartDetail(owox, id)); }), 6);
+  // listed Data Marts that failed to load, and unlisted ones the server says are gone
+  const gone = new Set<string>();
+  const ids = [...wanted];
+  await runPool(ids.map((id) => async () => {
+    try {
+      details.set(id, await fetchMartDetail(owox, id));
+    } catch (e) {
+      if (accessible.has(id) || statusesOf(e).includes(404)) gone.add(id);
+    }
+  }), 6);
 
   const paths = new Map([...details].map(([id, d]) => [id, allFieldPaths(d.fields)]));
   const issues: Issue[] = [];
@@ -38,10 +48,10 @@ export async function checkHealth(
   for (const c of model.classes) for (const id of c.metricIds) classOf.set(id, c.id);
   const title = (id: string, fallback: string) => details.get(id)?.title ?? fallback;
 
-  const gone = new Set<string>();
+  const reported = new Set<string>();
   for (const c of model.classes) {
-    if (details.has(c.martId)) continue;
-    gone.add(c.martId);
+    if (!gone.has(c.martId)) continue;
+    reported.add(c.martId);
     issues.push({ kind: 'mart_missing', classId: c.id, martId: c.martId, metricId: null, text: 'Data Mart not found or not accessible' });
   }
 
@@ -50,7 +60,7 @@ export async function checkHealth(
     const name = model.classes.find((c) => c.id === classId)?.title ?? m.martId;
     const add = (kind: IssueKind, text: string) => issues.push({ kind, classId, martId: m.martId, metricId: m.id, text });
     // the class's own issue already says its Data Mart is gone
-    if (!details.has(m.martId)) { if (!gone.has(m.martId)) add('mart_missing', 'Data Mart not found or not accessible'); }
+    if (!details.has(m.martId)) { if (gone.has(m.martId) && !reported.has(m.martId)) add('mart_missing', 'Data Mart not found or not accessible'); }
     else {
       const set = paths.get(m.martId)!;
       const t = title(m.martId, name);
@@ -61,6 +71,8 @@ export async function checkHealth(
       if (!src) continue;
       const set = paths.get(src.martId);
       const t = title(src.martId, src.martId);
+      // no access to the source's Data Mart is not an issue
+      if (!set && !gone.has(src.martId)) continue;
       if (!set) { add(`${label}_mart_missing`, `The ${label} Data Mart was not found`); continue; }
       const missing = [src.measure.field, src.dateField].filter((f) => !set.has(f));
       if (missing.length) add(`${label}_field_missing`, `The ${label} field ${missing.join(', ')} no longer exists in ${t}`);

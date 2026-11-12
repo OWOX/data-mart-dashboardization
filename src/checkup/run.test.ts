@@ -66,7 +66,7 @@ test('an empty description fails and skips what needs it', async () => {
   expect(c['project.description']!.status).toBe('fail');
   for (const id of ['project.table', 'project.critical', 'project.fact', 'project.plan', 'goal.access', 'goal.field', 'goal.pk', 'goal.date']) expect(c[id]!.status, id).toBe('skip');
   for (const id of ['reachable', 'any', 'facts', 'pk', 'date']) expect(c[`connections.${id}`]!.status, id).toBe('skip');
-  expect(c['project.table']!.detail).toBe("Needs: The description isn't empty");
+  expect(c['project.table']!.detail).toBe("Fix Critical number first");
 });
 
 test('text without a Metrics table fails with the snippet fix', async () => {
@@ -186,6 +186,15 @@ test('a saved model with a missing class warns on health and freshness', async (
   const m = { ...savedModel, classes: [{ ...savedModel.classes[0]!, id: 'zz', martId: 'zz' }] };
   const c = byId(await run(data(), { model: m }));
   expect(c['model.health']).toMatchObject({ status: 'warn', detail: '1 broken reference', fix: { kind: 'tab', tab: 'ontology' } });
+  // a model Data Mart outside the access list: the hash can't be told
+  expect(c['model.fresh']).toMatchObject({ status: 'skip', detail: "Some Data Marts in the model aren't accessible to you" });
+});
+
+test('freshness warns when every model Data Mart is listed and the descriptions moved', async () => {
+  const m = { ...savedModel, inputHash: 'stale' };
+  const d = data();
+  const mm = { ...m, classes: [{ ...m.classes[0]!, id: G, martId: G }], metrics: [], goal: { ...m.goal, classId: G } };
+  const c = byId(await run(d, { model: mm }));
   expect(c['model.fresh']).toMatchObject({ status: 'warn', detail: 'The descriptions changed since the model was built' });
 });
 
@@ -281,7 +290,7 @@ test('the core section warns when no core classes are set', async () => {
 
 test('core checks skip when the critical number has no fact', async () => {
   const c = byId(await run(data({ projectDescription: 'We sell things.' })));
-  for (const id of ['business', 'industry', 'set', 'keys', 'toGoal', 'linked', 'count', 'missing']) expect(c[`core.${id}`], id).toMatchObject({ status: 'skip', detail: "Needs: The Critical number's fact links a Data Mart field" });
+  for (const id of ['business', 'industry', 'set', 'keys', 'toGoal', 'linked', 'count', 'missing']) expect(c[`core.${id}`], id).toMatchObject({ status: 'skip', detail: "Fix Critical number first" });
 });
 
 test('the industry check passes with its label; the set check needs 3 to 7', async () => {
@@ -324,7 +333,7 @@ test('core classes with no reference between them are a recommendation listing t
 });
 
 test('the core count is judged against the industry', async () => {
-  expect(byId(await run(rich(), withCore([C, Pr, St])))['core.count']).toMatchObject({ status: 'skip', detail: 'Needs: The industry is set' });
+  expect(byId(await run(rich(), withCore([C, Pr, St])))['core.count']).toMatchObject({ status: 'skip', detail: 'Fix Core classes first' });
   expect(byId(await run(rich(), withCore([C, Pr, St], 'ecommerce')))['core.count']!.status).toBe('recommend');
   expect(byId(await run(rich(), withCore([C, Pr, St], 'other')))['core.count']!.status).toBe('ok');
 });

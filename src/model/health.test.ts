@@ -39,8 +39,8 @@ test('a calculated field of level metric is checked by path', async () => {
   expect((await checkHealth(owox({ o: ['date'] }), model([m]), all)).issues[0]!.kind).toBe('fact_field_missing');
 });
 
-test('a class whose Data Mart is not accessible reports it once, not per metric', async () => {
-  const { issues } = await checkHealth(owox({ o: ['revenue', 'date'] }), model([metric('m')]), new Set());
+test('a class whose Data Mart is gone reports it once, not per metric', async () => {
+  const { issues } = await checkHealth(owox({}), model([metric('m')]), new Set());
   expect(issues).toEqual([{ kind: 'mart_missing', classId: 'o', martId: 'o', metricId: null, text: 'Data Mart not found or not accessible' }]);
 });
 
@@ -74,4 +74,16 @@ test('a hidden-for-reporting key still exists; a disconnected field is missing',
   const uc = metric('u', { measure: { field: 'id', fn: 'COUNT_DISTINCT' }, isUniqueCount: true });
   const { issues } = await checkHealth(o, model([uc, metric('m')]), all);
   expect(issues.map((i) => [i.metricId, i.kind])).toEqual([['m', 'fact_field_missing']]);
+});
+
+test('a Data Mart the viewer cannot list is no issue unless its detail says 404', async () => {
+  const forbidden = (path: string) => Object.assign(new Error(`403 ${path}`), { status: 403 });
+  const base = owox({ o: ['revenue', 'date'] });
+  const denied = { ...base, getJson: (async (path: string) => { if (path === '/api/data-marts/o') throw forbidden(path); return base.getJson(path); }) as typeof base.getJson };
+  const a = await checkHealth(denied, model([metric('m')]), new Set());
+  expect(a.issues).toEqual([]);
+  expect(a.details.size).toBe(0);
+  // an admin-less list with a deleted Data Mart: the 404 is the signal
+  const b = await checkHealth(owox({}), model([metric('m')]), new Set());
+  expect(b.issues.map((i) => i.kind)).toEqual(['mart_missing']);
 });

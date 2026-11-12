@@ -232,15 +232,15 @@ test('currentInputHash leaves a Data Mart that fails to fetch out, so the hash c
   expect(owox.calls.slice(calls).every((c) => c.path.endsWith('blendable-schema'))).toBe(true);
 });
 
-test('currentInputHash leaves out a mart missing from the access list, and throws on a transient failure', async () => {
+test('currentInputHash returns null for a mart missing from the access list, leaves out a not-found one, and throws on a transient failure', async () => {
   const owox = fakeOwox(data());
   const inputs = await fetchInputs(owox);
   const full = await currentInputHash(owox, inputs, [GID, 'c']);
-  // not in the access list: left out without a fetch
+  // not in the access list: the answer would depend on who looks, so it can't be told, and nothing is fetched
   const calls = owox.calls.length;
   const hidden = await currentInputHash(owox, { ...inputs, marts: inputs.marts.filter((m) => m.id !== 'c') }, [GID, 'c']);
-  expect(hidden).not.toBe(full);
-  expect(owox.calls.slice(calls).some((c) => c.path.includes('/c'))).toBe(false);
+  expect(hidden).toBeNull();
+  expect(owox.calls.length).toBe(calls);
   // not found: left out
   const notFound = { ...owox, getJson: (async (path: string) => { if (path === '/api/data-marts/c') throw new Error('Data Mart not found'); return owox.getJson(path); }) as typeof owox.getJson };
   expect(await currentInputHash(notFound, inputs, [GID, 'c'])).not.toBe(full);

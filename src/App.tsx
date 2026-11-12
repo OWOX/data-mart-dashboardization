@@ -370,6 +370,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       if (!data || !data.contextsOk || checkedFor.current === inputs) return;
       checkedFor.current = inputs;
       const hash = await currentInputHash(owox, data, model.classes.map((c) => c.id), healthNow.current?.model === model ? healthNow.current.details : undefined).catch(() => null);
+      // null: can't be told (a model Data Mart isn't in this member's list), so nothing is proposed
       if (hash !== null && modelNow.current === model) setOutdated(hash !== model.inputHash ? hash : null);
     };
     // with no range there is no refresh to wait for; the check reads schemas, not metrics

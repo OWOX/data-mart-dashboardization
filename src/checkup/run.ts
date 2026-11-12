@@ -9,7 +9,7 @@ import { describeError } from '../lib/errors';
 import { criticalRow, findMetricRows, isFieldLink, type MetricRow } from './tables';
 import { codeSuggestion, type SuggestContext } from './suggest';
 import { aiQuestion, isAiCheck } from './suggestAi';
-import type { Check, CheckStatus, Fix, GroupId } from './types';
+import { GROUPS, type Check, type CheckStatus, type Fix, type GroupId } from './types';
 
 export interface CheckupArgs {
   owox: OwoxLike; hasAi: boolean; model: Model | null; projectId: string; settings: ProjectSettings;
@@ -131,7 +131,11 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
     map.set(id, { ...rest, status, ...(detail !== undefined ? { detail } : {}), ...(fix ? { fix } : {}) });
     publish();
   };
-  const skip = (id: string, dep: string) => put(id, 'skip', `Needs: ${label(dep)}`);
+  /** A check that can't run until the section of `dep` is fixed. */
+  const skip = (id: string, dep: string) => {
+    const g = GROUPS.find((x) => x.id === map.get(dep)?.group);
+    put(id, 'skip', `Fix ${g ? g.label : label(dep)} first`);
+  };
   const failRunning = (match: (c: Check) => boolean, detail: string) => {
     for (const c of [...map.values()]) if (c.status === 'running' && match(c)) put(c.id, 'fail', detail);
   };
@@ -365,6 +369,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, settings,
     if (issues.length) put('model.health', 'warn', plural(issues.length, 'broken reference', 'broken references'), fix); else put('model.health', 'ok');
     if (!inputs.contextsOk) { put('model.fresh', 'skip', "Contexts couldn't be read"); return; }
     const hash = await currentInputHash(owox, inputs, model.classes.map((c) => c.id), known);
+    if (hash === null) { put('model.fresh', 'skip', "Some Data Marts in the model aren't accessible to you"); return; }
     if (hash !== model.inputHash) put('model.fresh', 'warn', 'The descriptions changed since the model was built', fix); else put('model.fresh', 'ok');
   });
 

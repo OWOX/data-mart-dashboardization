@@ -48,13 +48,15 @@ export function inputHash(inputs: Pick<Inputs, 'projectDescription' | 'contexts'
 const isNotFound = (e: unknown): boolean => statusesOf(e).includes(404) || /\b404\b|not found/i.test(describeError(e));
 
 /**
- * The hash as it would be computed now. A Data Mart missing from the access list, or one whose fetch says
- * not found, is left out, so the hash changes and the model reads as out of date. Any other failure throws:
- * the hash can't be told. `known` are schemas already read, not fetched again.
+ * The hash as it would be computed now, or null when it can't be told: a model Data Mart is missing from the
+ * viewer's access list, so the answer would depend on who looks. One whose fetch says not found is left out,
+ * so the hash changes and the model reads as out of date. Any other failure throws. `known` are schemas
+ * already read, not fetched again.
  */
-export async function currentInputHash(owox: OwoxLike, inputs: Inputs, martIds: string[], known?: ReadonlyMap<string, MartDetail>): Promise<string> {
+export async function currentInputHash(owox: OwoxLike, inputs: Inputs, martIds: string[], known?: ReadonlyMap<string, MartDetail>): Promise<string | null> {
   const listed = new Set(inputs.marts.map((m) => m.id));
-  const present = martIds.filter((id) => listed.has(id));
+  if (martIds.some((id) => !listed.has(id))) return null;
+  const present = martIds;
   const got = await runPool(present.map((id) => async (): Promise<HashMart> => ({
     id, detail: known?.get(id) ?? await fetchMartDetail(owox, id), blendable: await fetchBlendable(owox, id),
   })), POOL);

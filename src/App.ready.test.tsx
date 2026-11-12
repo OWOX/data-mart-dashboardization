@@ -408,7 +408,8 @@ test('an invisible main shows the no-access card', async () => {
   const { deps, d } = await setup({ cache: 'none', withCustomers: true });
   d.marts = d.marts.filter((m) => m.id !== GID);
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  expect(await screen.findByText('Data Mart not found or not accessible')).toBeInTheDocument();
+  expect((await screen.findAllByText('No access to this Data Mart')).length).toBeGreaterThan(0);
+  expect(screen.queryByText('Data Mart not found or not accessible')).toBeNull();
 });
 
 test('a failed cache save keeps the new values on screen and shows a note', async () => {
@@ -756,6 +757,21 @@ test('a failed access check marks every class no-access rather than queried', as
   render(<App ctx={ctxWith().ctx} deps={{ ...s.deps, owox }} />);
   expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't check which Data Marts you can access");
   expect(screen.getAllByText("No access to this Data Mart").length).toBeGreaterThan(0);
+});
+
+test('a member without access to a class sees a lock card, no issues badge and no broken health', async () => {
+  const s = await setup({ withCustomers: true });
+  // the member lists only Orders; the server refuses Customers' detail
+  const base = fakeOwox({ ...s.d, marts: [mart(GID, 'Orders')], roles: ['viewer'] });
+  const owox = { ...base, getJson: (async (path: string) => { if (path === `/api/data-marts/${CID}`) throw Object.assign(new Error('403'), { status: 403 }); return base.getJson(path); }) as typeof base.getJson } as AppDeps['owox'];
+  const { container } = render(<App ctx={ctxWith().ctx} deps={{ ...s.deps, owox }} />);
+  await waitFor(() => expect(container.querySelector(`[data-class-id="${CID}"]`)).toHaveTextContent('No access to this Data Mart'));
+  expect(container.querySelector(`[data-class-id="${CID}"]`)).not.toHaveTextContent('not found or not accessible');
+  await waitFor(() => expect(screen.queryByRole('button', { name: /issue/ })).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Checkup' }));
+  await screen.findByText(/^Checked /);
+  expect(screen.queryByText(/^\d+ broken references?$/)).toBeNull();
 });
 
 test('a broken reference shows the icon with its count, and the layer link opens Settings', async () => {
