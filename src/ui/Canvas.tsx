@@ -70,6 +70,31 @@ export function lineTone(c: Connector, model: Model, cache: CacheDoc | null): To
 interface Line extends Connector { d: string; tone: Tone }
 type Box = { left: number; right: number; top: number; bottom: number; width: number; height: number };
 
+/**
+ * A line between two non-goal cards on the orbit: bent away from the goal box so it never runs under it.
+ * The control point sits on the far side of the pair's midpoint from the goal centre (sideways when the goal lies between them),
+ * pushed by twice the goal's half diagonal plus 24px, so the curve's own midpoint clears the goal box.
+ */
+export function orbitCurve(a: Box, b: Box, goal: Box): string {
+  const mid = (r: Box) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  const ca = mid(a), cb = mid(b), g = mid(goal);
+  const m = { x: (ca.x + cb.x) / 2, y: (ca.y + cb.y) / 2 };
+  let dx = m.x - g.x, dy = m.y - g.y;
+  if (Math.hypot(dx, dy) < 1) { dx = -(cb.y - ca.y); dy = cb.x - ca.x; }
+  const len = Math.hypot(dx, dy) || 1;
+  const push = 2 * (Math.hypot(goal.width, goal.height) / 2 + 24);
+  const c = { x: m.x + (dx / len) * push, y: m.y + (dy / len) * push };
+  // Leave each card through the edge on the way to the control point.
+  const edge = (r: Box, p: { x: number; y: number }) => {
+    const o = mid(r);
+    const vx = p.x - o.x, vy = p.y - o.y;
+    const k = Math.min(vx ? r.width / 2 / Math.abs(vx) : Infinity, vy ? r.height / 2 / Math.abs(vy) : Infinity, 1);
+    return { x: o.x + vx * k, y: o.y + vy * k };
+  };
+  const s = edge(a, c), e = edge(b, c);
+  return `M${s.x} ${s.y} Q${c.x} ${c.y} ${e.x} ${e.y}`;
+}
+
 /** Leave each box from the side that faces the other one: down/up across bands, sideways within one. */
 export function curve(a: Box, b: Box): string {
   if (b.top - a.bottom > 8 || a.top - b.bottom > 8) {
@@ -99,7 +124,11 @@ export function Canvas({ mode, model: full, cache, comparisonOn, refreshing, vis
   const ref = useRef<HTMLDivElement>(null);
   // Every member sees the same classes; the ones whose Data Mart they can't read render as no-access cards.
   const model = useMemo(() => shownModel(full, details), [full, details]);
-  const contexts = useMemo(() => contextsOf(model), [model]);
+  // The ontology view lists only the contexts a core class belongs to.
+  const contexts = useMemo(
+    () => contextsOf(mode === 'ontology' ? { ...model, classes: model.classes.filter((c) => c.core) } : model),
+    [model, mode],
+  );
   const selected = useMemo(() => {
     const valid = new Set(contexts.map((x) => x.id));
     return new Set([...picked].filter((id) => valid.has(id)));
@@ -128,12 +157,13 @@ export function Canvas({ mode, model: full, cache, comparisonOn, refreshing, vis
           bottom: r.bottom - base.top, width: r.width, height: r.height,
         });
       });
+      const goalBox = mode === 'ontology' && onto.goal ? boxes.get(onto.goal.id) : undefined;
       const next: Line[] = [];
       for (const c of layout.connectors) {
         // Drawn the way data flows: from the referenced class into the one whose formula uses it.
         const a = boxes.get(c.to);
         const b = boxes.get(c.from);
-        if (a && b) next.push({ ...c, d: curve(a, b), tone: mode === 'ontology' ? 'none' : lineTone(c, model, cache) });
+        if (a && b) next.push({ ...c, d: goalBox && c.join ? orbitCurve(a, b, goalBox) : curve(a, b), tone: mode === 'ontology' ? 'none' : lineTone(c, model, cache) });
       }
       setLines(next);
     };
@@ -143,7 +173,7 @@ export function Canvas({ mode, model: full, cache, comparisonOn, refreshing, vis
     ro.observe(root);
     root.querySelectorAll('[data-class-id]').forEach((el) => ro.observe(el));
     return () => ro.disconnect();
-  }, [layout, model, cache, mode]);
+  }, [layout, onto, model, cache, mode]);
 
   const card = (cls: ClassNode) => (
     <div key={cls.id} className="gy-slot" onPointerEnter={() => setHover(cls.id)} onPointerLeave={() => setHover(null)}>
@@ -206,19 +236,19 @@ export function Canvas({ mode, model: full, cache, comparisonOn, refreshing, vis
           ))}
         </svg>
         {mode === 'ontology' ? (
-          <div className="gy-orbit" data-count={onto.core.length}>
+          <ul className="gy-orbit" data-count={onto.core.length}>
             {onto.goal && (
-              <div className="gy-orbit-cell" style={{ gridColumn: 2, gridRow: 2 }}>
+              <li className="gy-orbit-cell" style={{ gridColumn: 2, gridRow: 2 }}>
                 <OntologyCard cls={onto.goal} mart={marts?.get(onto.goal.id)} goal />
-              </div>
+              </li>
             )}
             {onto.core.slice(0, SPOTS.length).map((c, i) => (
-              <div key={c.id} className="gy-orbit-cell" style={{ gridColumn: SPOTS[i]![0], gridRow: SPOTS[i]![1] }}>
+              <li key={c.id} className="gy-orbit-cell" style={{ gridColumn: SPOTS[i]![0], gridRow: SPOTS[i]![1] }}>
                 <OntologyCard cls={c} mart={marts?.get(c.id)} goal={false} />
-              </div>
+              </li>
             ))}
-            {onto.core.length === 0 && <p className="gy-muted gy-empty gy-orbit-empty">No core classes yet. An admin can set them in Settings, Checkup.</p>}
-          </div>
+            {onto.core.length === 0 && <li className="gy-muted gy-empty gy-orbit-empty">No core classes yet. An admin can set them in Settings, Checkup.</li>}
+          </ul>
         ) : (
         <div className="gy-bands">
           <section className="gy-band">

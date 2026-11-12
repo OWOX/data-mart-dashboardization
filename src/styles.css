@@ -70,7 +70,7 @@ h2 { margin: 0; }
 .gy-band-grid { display: grid; gap: 3.75rem; grid-template-columns: repeat(auto-fill, 22rem); justify-content: center; }
 .gy-empty { margin: 0; font-size: 0.8125rem; }
 /* The ontology view: the goal in the middle of a 3x3 grid, its core classes around it. */
-.gy-orbit { display: grid; gap: 48px; grid-template-columns: repeat(3, minmax(0, 14rem)); justify-content: center; padding: 1rem 0; }
+.gy-orbit { display: grid; margin: 0; list-style: none; gap: 48px; grid-template-columns: repeat(3, minmax(0, 14rem)); justify-content: center; padding: 1rem 0; }
 .gy-orbit-cell { position: relative; z-index: 2; display: flex; }
 .gy-orbit-empty { grid-column: 1 / -1; grid-row: 3; text-align: center; }
 .gy-ocard {

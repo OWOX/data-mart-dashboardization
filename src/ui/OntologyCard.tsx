@@ -7,7 +7,7 @@ export function OntologyCard({ cls, mart, goal }: { cls: ClassNode; mart?: MartI
   return (
     <div className="gy-ocard" data-class-id={cls.id} data-goal={String(goal)}>
       <span className="gy-logo"><MartIcon icon={mart?.icon} size={goal ? 28 : 22} /></span>
-      <span className="gy-ocard-title">{cls.title}</span>
+      <span className="gy-ocard-title">{goal && <span className="gy-sr">Goal: </span>}{cls.title}</span>
     </div>
   );
 }

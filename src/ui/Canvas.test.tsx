@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '../test-host';
-import { Canvas } from './Canvas';
-import type { Model } from '../types';
+import { Canvas, orbitCurve } from './Canvas';
+import type { CacheDoc, Model } from '../types';
 
 const model = {
   goal: { classId: 'm' },
@@ -153,7 +153,9 @@ const onto = {
 } as unknown as Model;
 
 test('the ontology mode shows names only', () => {
-  const { container } = render(<Canvas mode="ontology" model={onto} cache={null} comparisonOn refreshing onRetry={() => {}} />);
+  const withNumbers = { cards: { m: { metrics: { k: { status: 'above', value: 1240000, display: '$1.24M', series: [1, 2, 3] } } } } } as unknown as CacheDoc;
+  const { container } = render(<Canvas mode="ontology" model={onto} cache={withNumbers} comparisonOn refreshing onRetry={() => {}} />);
+  expect(screen.queryByText('$1.24M')).toBeNull();
   expect(screen.getByText('Customers')).toBeInTheDocument();
   expect(screen.getByText('Orders')).toBeInTheDocument();
   expect(screen.queryByText('Hidden')).toBeNull();
@@ -167,4 +169,65 @@ test('the ontology mode with no core classes says so', () => {
   const none = { ...onto, classes: onto.classes.map((x) => ({ ...x, core: false })) } as Model;
   render(<Canvas mode="ontology" model={none} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
   expect(screen.getByText('No core classes yet. An admin can set them in Settings, Checkup.')).toBeInTheDocument();
+});
+
+const orbitOf = (n: number) => ({
+  goal: { classId: 'g' },
+  classes: [
+    { id: 'g', martId: 'g', title: 'Goal class', depth: 0, keyMetricId: null, metricIds: [], core: false, inbound: 0, contexts: [] },
+    ...Array.from({ length: n }, (_, i) => ({ id: `c${i}`, martId: `c${i}`, title: `Core ${i}`, depth: 1, keyMetricId: null, metricIds: [], core: true, inbound: 10 - i, contexts: [{ id: i === 0 ? 'only' : 'other', name: i === 0 ? 'Only' : 'Other' }] })),
+  ],
+  edges: [{ from: 'g', to: 'c0' }],
+  metrics: [],
+}) as unknown as Model;
+
+const cell = (c: Element, id: string) => c.querySelector(`[data-class-id="${id}"]`)!.parentElement as HTMLElement;
+
+test('core cards sit top, right, bottom, left, then the corners around the centered goal', () => {
+  const spots = ['2/1', '3/2', '2/3', '1/2', '3/1', '3/3', '1/3', '1/1'];
+  for (const n of [3, 7]) {
+    const { container, unmount } = render(<Canvas mode="ontology" model={orbitOf(n)} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+    expect(container.querySelector('ul.gy-orbit')).not.toBeNull();
+    const g = cell(container, 'g');
+    expect([g.style.gridColumn, g.style.gridRow]).toEqual(['2', '2']);
+    for (let i = 0; i < n; i++) {
+      const el = cell(container, `c${i}`);
+      expect(`${el.style.gridColumn}/${el.style.gridRow}`).toBe(spots[i]);
+    }
+    expect(container.querySelector('[data-goal="true"] .gy-sr')?.textContent).toBe('Goal: ');
+    unmount();
+  }
+});
+
+test('ontology lines are solid and uncoloured', () => {
+  const { container } = render(<Canvas mode="ontology" model={orbitOf(3)} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+  const lines = container.querySelectorAll('path[data-from]');
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toHaveAttribute('data-tone', 'none');
+  expect(lines[0]).toHaveAttribute('data-dashed', 'false');
+});
+
+test('the ontology chips list only contexts of core classes', () => {
+  const m = orbitOf(2);
+  m.classes[0]!.contexts = [{ id: 'goalonly', name: 'GoalOnly' }];
+  render(<Canvas mode="ontology" model={m} cache={null} comparisonOn refreshing={false} onRetry={() => {}} />);
+  expect(screen.getByRole('button', { name: 'Only' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'GoalOnly' })).toBeNull();
+});
+
+test('an orbit line between opposite cards bends clear of the goal box', () => {
+  const box = (left: number, top: number, w: number, h: number) => ({ left, top, right: left + w, bottom: top + h, width: w, height: h });
+  const top = box(300, 0, 200, 100);
+  const bottom = box(300, 500, 200, 100);
+  const goal = box(250, 200, 300, 200);
+  const d = orbitCurve(top, bottom, goal);
+  const [sx, sy, cx, cy, ex, ey] = d.match(/-?\d+(\.\d+)?/g)!.map(Number) as number[];
+  expect(cx !== undefined && cy !== undefined).toBe(true);
+  const inside = (x: number, y: number) => x > goal.left && x < goal.right && y > goal.top && y < goal.bottom;
+  expect(inside(cx!, cy!)).toBe(false);
+  for (let t = 0; t <= 1.0001; t += 0.05) {
+    const x = (1 - t) ** 2 * sx! + 2 * (1 - t) * t * cx! + t * t * ex!;
+    const y = (1 - t) ** 2 * sy! + 2 * (1 - t) * t * cy! + t * t * ey!;
+    expect(inside(x, y)).toBe(false);
+  }
 });
