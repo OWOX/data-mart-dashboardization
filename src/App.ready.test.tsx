@@ -795,12 +795,13 @@ describe('data quality icons', () => {
 });
 
 test('the first open shows the ontology view and queries nothing', async () => {
-  const { deps, traversals, owox } = await setup({ range: 'unset', cache: 'none' });
+  const { deps, traversals, owox, d } = await setup({ range: 'unset', cache: 'none' });
+  d.quality = () => ({ summaries: [] });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   expect(await screen.findByRole('button', { name: 'Date range' })).toHaveTextContent('Select date range');
   await new Promise((r) => setTimeout(r, 50));
   expect(traversals()).toBe(0);
-  expect(owox.calls.some((c) => c.path.includes('quality'))).toBe(false);
+  expect(owox.calls.some((c) => c.path.includes('data-quality'))).toBe(false);
   expect(document.querySelector('.gy-header-sub')).toBeNull();
   expect(screen.queryByText(/Loading metrics/)).toBeNull();
   expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
@@ -832,4 +833,32 @@ test('a member who cleared the range reopens on the ontology view', async () => 
   const { deps } = await setup({ range: 'none' });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
   expect(await screen.findByRole('button', { name: 'Date range' })).toHaveTextContent('Select date range');
+});
+
+test('with no range an admin still gets the out-of-date notice', async () => {
+  const { deps } = await setup({ range: 'unset', cache: 'none', inputHash: 'old' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: '1 issue' }));
+  expect(screen.getByText('The descriptions changed since this model was built.')).toBeInTheDocument();
+});
+
+test('from no range, a preset applied without touching Compare brings the comparison default', async () => {
+  const { deps, store } = await setup({ range: 'unset', cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'This month' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent('This month vs previous');
+  await waitFor(async () => expect((await loadPreferences(store))?.compare).toEqual({ kind: 'preset', preset: 'previous_period' }));
+});
+
+test('from no range, unchecking Compare in the panel keeps it off', async () => {
+  const { deps, store } = await setup({ range: 'unset', cache: 'none' });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'This month' }));
+  fireEvent.click(screen.getByLabelText('Compare'));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent(/^This month$/);
+  await waitFor(async () => expect(await loadPreferences(store)).toEqual({ range: { kind: 'preset', preset: 'cur_month' }, compare: { kind: 'off' } }));
 });

@@ -359,8 +359,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   // Fire and forget: losing the remembered choice must not disturb the canvas.
   const remember = (r: RangeChoice | null, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
   const changeRange = (r: RangeChoice | null, c: CompareChoice) => {
-    // from no range, a comparison that is off takes the default; Clear keeps the choice so it comes back
-    const next = range === null && r !== null && c.kind === 'off' ? compareOf(settings) : c;
+    // Clear keeps the compare choice so it comes back
+    const next = c;
     if (r === null) { refreshId.current++; setRefreshing(false); setLoading(false); setProgress(null); }
     setRange(r); setCompare(next); remember(r, next);
   };
@@ -471,7 +471,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           {inputs && inputs.model === model && !inputs.data && <p className="gy-muted" role="alert">Couldn't check which Data Marts you can access. Reopen Gyroscope to try again.</p>}
           <Canvas
             mode={range ? 'flow' : 'ontology'}
-            tools={<RangeControls range={range} compare={compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={changeRange} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}
+            tools={<RangeControls range={range} compare={range === null && compare.kind === 'off' ? compareOf(settings) : compare} now={now()} weekStart={settings.weekStart} refreshing={refreshing} onChange={changeRange} onRefresh={() => void refresh(true)} onSettings={() => openSettings()} />}
             model={model} cache={cache} visibleIds={visible} details={detailsNow} missingIds={missingIds} marts={marts}
             compareLabel={range ? compareLabel(range, compare, now(), settings.weekStart) ?? undefined : undefined}
             progress={progress}
