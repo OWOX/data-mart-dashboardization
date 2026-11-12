@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '../test-host';
-import { Canvas, orbitCurve } from './Canvas';
+import { Canvas, orbitRoute } from './Canvas';
 import type { CacheDoc, Model } from '../types';
 
 const model = {
@@ -215,19 +215,49 @@ test('the ontology chips list only contexts of core classes', () => {
   expect(screen.queryByRole('button', { name: 'GoalOnly' })).toBeNull();
 });
 
-test('an orbit line between opposite cards bends clear of the goal box', () => {
-  const box = (left: number, top: number, w: number, h: number) => ({ left, top, right: left + w, bottom: top + h, width: w, height: h });
-  const top = box(300, 0, 200, 100);
-  const bottom = box(300, 500, 200, 100);
-  const goal = box(250, 200, 300, 200);
-  const d = orbitCurve(top, bottom, goal);
-  const [sx, sy, cx, cy, ex, ey] = d.match(/-?\d+(\.\d+)?/g)!.map(Number) as number[];
-  expect(cx !== undefined && cy !== undefined).toBe(true);
-  const inside = (x: number, y: number) => x > goal.left && x < goal.right && y > goal.top && y < goal.bottom;
-  expect(inside(cx!, cy!)).toBe(false);
-  for (let t = 0; t <= 1.0001; t += 0.05) {
-    const x = (1 - t) ** 2 * sx! + 2 * (1 - t) * t * cx! + t * t * ex!;
-    const y = (1 - t) ** 2 * sy! + 2 * (1 - t) * t * cy! + t * t * ey!;
-    expect(inside(x, y)).toBe(false);
+// Real grid geometry: 224px cells, 48px gaps, goal 224x144, other cards 112 tall and centred on their row.
+const gb = (col: number, row: number, h: number, rowTop: number, rowH: number) => {
+  const left = col * (224 + 48), top = rowTop + (rowH - h) / 2;
+  return { left, top, right: left + 224, bottom: top + h, width: 224, height: h };
+};
+const rows = [[0, 112], [160, 144], [352, 112]] as const;
+const spot = (col: number, row: number) => (col === 1 && row === 1 ? gb(1, 1, 144, rows[1][0], rows[1][1]) : gb(col, row, 112, rows[row]![0], rows[row]![1]));
+
+/** Points along an `M/L/Q` path, every ~2px. */
+function sample(d: string) {
+  const tok = d.match(/[MLQ]|-?\d+(?:\.\d+)?/g)!;
+  const pts: { x: number; y: number }[] = [];
+  let cur = { x: 0, y: 0 };
+  for (let i = 0; i < tok.length;) {
+    const cmd = tok[i++]!;
+    const n = cmd === 'Q' ? 4 : 2;
+    const v = tok.slice(i, i + n).map(Number);
+    i += n;
+    const end = { x: v[n - 2]!, y: v[n - 1]! };
+    if (cmd === 'M') pts.push(end);
+    else {
+      const len = Math.hypot(end.x - cur.x, end.y - cur.y);
+      for (let k = 1; k <= Math.max(1, Math.ceil(len / 2)); k++) {
+        const t = k / Math.max(1, Math.ceil(len / 2));
+        if (cmd === 'L') pts.push({ x: cur.x + (end.x - cur.x) * t, y: cur.y + (end.y - cur.y) * t });
+        else pts.push({ x: (1 - t) ** 2 * cur.x + 2 * (1 - t) * t * v[0]! + t * t * end.x, y: (1 - t) ** 2 * cur.y + 2 * (1 - t) * t * v[1]! + t * t * end.y });
+      }
+    }
+    cur = end;
+  }
+  return pts;
+}
+
+test.each([
+  ['top to bottom', [1, 0], [1, 2]],
+  ['left to right', [0, 1], [2, 1]],
+  ['top to right', [1, 0], [2, 1]],
+  ['top-left to bottom-right', [0, 0], [2, 2]],
+  ['bottom-left to top', [0, 2], [1, 0]],
+] as const)('an orbit route %s crosses no card', (_n, a, b) => {
+  const boxes = [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]].map(([c, r]) => spot(c!, r!));
+  const d = orbitRoute(spot(a[0], a[1]), spot(b[0], b[1]), spot(1, 1));
+  for (const p of sample(d)) {
+    for (const bx of boxes) expect(p.x > bx.left + 0.5 && p.x < bx.right - 0.5 && p.y > bx.top + 0.5 && p.y < bx.bottom - 0.5).toBe(false);
   }
 });

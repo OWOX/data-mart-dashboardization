@@ -70,29 +70,64 @@ export function lineTone(c: Connector, model: Model, cache: CacheDoc | null): To
 interface Line extends Connector { d: string; tone: Tone }
 type Box = { left: number; right: number; top: number; bottom: number; width: number; height: number };
 
+/** The orbit grid's gap in px. Keep in sync with `gap: 48px` on `.gy-orbit` in styles.css. */
+export const ORBIT_GAP = 48;
+
 /**
- * A line between two non-goal cards on the orbit: bent away from the goal box so it never runs under it.
- * The control point sits on the far side of the pair's midpoint from the goal centre (sideways when the goal lies between them),
- * pushed by twice the goal's half diagonal plus 24px, so the curve's own midpoint clears the goal box.
+ * A line between two non-goal orbit cards, routed through the gutters around the goal so it crosses no card.
+ * Spots are derived from the boxes' positions relative to the goal; R is the goal box grown by half the gap.
  */
-export function orbitCurve(a: Box, b: Box, goal: Box): string {
-  const mid = (r: Box) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-  const ca = mid(a), cb = mid(b), g = mid(goal);
-  const m = { x: (ca.x + cb.x) / 2, y: (ca.y + cb.y) / 2 };
-  let dx = m.x - g.x, dy = m.y - g.y;
-  if (Math.hypot(dx, dy) < 1) { dx = -(cb.y - ca.y); dy = cb.x - ca.x; }
-  const len = Math.hypot(dx, dy) || 1;
-  const push = 2 * (Math.hypot(goal.width, goal.height) / 2 + 24);
-  const c = { x: m.x + (dx / len) * push, y: m.y + (dy / len) * push };
-  // Leave each card through the edge on the way to the control point.
-  const edge = (r: Box, p: { x: number; y: number }) => {
-    const o = mid(r);
-    const vx = p.x - o.x, vy = p.y - o.y;
-    const k = Math.min(vx ? r.width / 2 / Math.abs(vx) : Infinity, vy ? r.height / 2 / Math.abs(vy) : Infinity, 1);
-    return { x: o.x + vx * k, y: o.y + vy * k };
+export function orbitRoute(a: Box, b: Box, goal: Box): string {
+  const h = ORBIT_GAP / 2;
+  const R = { left: goal.left - h, right: goal.right + h, top: goal.top - h, bottom: goal.bottom + h };
+  const gx = goal.left + goal.width / 2, gy = goal.top + goal.height / 2;
+  const W = R.right - R.left, H = R.bottom - R.top, P = 2 * (W + H);
+  const corners = [{ x: R.left, y: R.top }, { x: R.right, y: R.top }, { x: R.right, y: R.bottom }, { x: R.left, y: R.bottom }];
+  const cornerAt = [0, W, W + H, 2 * W + H];
+  // Where a card meets R (port) and where it touches the line (edge), by the side of the goal it sits on.
+  const spot = (r: Box) => {
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const col = cx < goal.left ? -1 : cx > goal.right ? 1 : 0;
+    const row = cy < goal.top ? -1 : cy > goal.bottom ? 1 : 0;
+    const port = { x: col < 0 ? R.left : col > 0 ? R.right : gx, y: row < 0 ? R.top : row > 0 ? R.bottom : gy };
+    const edge = {
+      x: col === 0 ? gx : col < 0 ? r.right : r.left,
+      y: row === 0 ? gy : row < 0 ? r.bottom : r.top,
+    };
+    return { port, edge };
   };
-  const s = edge(a, c), e = edge(b, c);
-  return `M${s.x} ${s.y} Q${c.x} ${c.y} ${e.x} ${e.y}`;
+  const along = (q: { x: number; y: number }) => {
+    if (q.y === R.top) return q.x - R.left;
+    if (q.x === R.right) return W + (q.y - R.top);
+    if (q.y === R.bottom) return W + H + (R.right - q.x);
+    return 2 * W + H + (R.bottom - q.y);
+  };
+  const sa = spot(a), sb = spot(b);
+  const pa = along(sa.port), pb = along(sb.port);
+  const fwd = (pb - pa + P) % P;
+  const clockwise = fwd <= P - fwd;
+  const turns: { x: number; y: number }[] = [];
+  const order = clockwise ? [0, 1, 2, 3] : [3, 2, 1, 0];
+  const span = clockwise ? fwd : P - fwd;
+  // Corners strictly between the two ports, in travel order.
+  const between = order
+    .map((k) => ({ k, d: clockwise ? (cornerAt[k]! - pa + P) % P : (pa - cornerAt[k]! + P) % P }))
+    .filter((c) => c.d > 0 && c.d < span)
+    .sort((x, y) => x.d - y.d);
+  for (const c of between) turns.push(corners[c.k]!);
+  const pts = [sa.edge, sa.port, ...turns, sb.port, sb.edge].filter((q, i, all) => i === 0 || q.x !== all[i - 1]!.x || q.y !== all[i - 1]!.y);
+  const r = 8;
+  let d = `M${pts[0]!.x} ${pts[0]!.y}`;
+  for (let k = 1; k < pts.length; k++) {
+    const v = pts[k]!;
+    const prev = pts[k - 1]!;
+    const next = pts[k + 1];
+    if (!next) { d += ` L${v.x} ${v.y}`; break; }
+    const l1 = Math.hypot(prev.x - v.x, prev.y - v.y), l2 = Math.hypot(next.x - v.x, next.y - v.y);
+    const t = Math.min(r, l1 / 2, l2 / 2);
+    d += ` L${v.x + ((prev.x - v.x) / l1) * t} ${v.y + ((prev.y - v.y) / l1) * t} Q${v.x} ${v.y} ${v.x + ((next.x - v.x) / l2) * t} ${v.y + ((next.y - v.y) / l2) * t}`;
+  }
+  return d;
 }
 
 /** Leave each box from the side that faces the other one: down/up across bands, sideways within one. */
@@ -158,12 +193,14 @@ export function Canvas({ mode, model: full, cache, comparisonOn, refreshing, vis
         });
       });
       const goalBox = mode === 'ontology' && onto.goal ? boxes.get(onto.goal.id) : undefined;
+      // Stacked (narrow) orbit: every card sits over the goal's column, so plain curves do.
+      const stacked = !!goalBox && [...boxes.values()].every((x) => x.left + x.width / 2 >= goalBox.left && x.left + x.width / 2 <= goalBox.right);
       const next: Line[] = [];
       for (const c of layout.connectors) {
         // Drawn the way data flows: from the referenced class into the one whose formula uses it.
         const a = boxes.get(c.to);
         const b = boxes.get(c.from);
-        if (a && b) next.push({ ...c, d: goalBox && c.join ? orbitCurve(a, b, goalBox) : curve(a, b), tone: mode === 'ontology' ? 'none' : lineTone(c, model, cache) });
+        if (a && b) next.push({ ...c, d: goalBox && c.join && !stacked ? orbitRoute(a, b, goalBox) : curve(a, b), tone: mode === 'ontology' ? 'none' : lineTone(c, model, cache) });
       }
       setLines(next);
     };
