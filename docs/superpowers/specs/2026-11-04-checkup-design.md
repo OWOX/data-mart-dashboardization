@@ -1,6 +1,6 @@
 # Checkup tab: design
 
-Date: 2026-11-04. Status: approved in chat (2026-11-04); the user chose to parse the Metrics tables, with no AI call.
+Date: 2026-11-04. Status: approved in chat (2026-11-04); the user chose to parse the Metrics tables, with no AI call. Sections, statuses and one-click fixes are superseded by [Shared ontology](2026-11-11-shared-ontology-design.md), section 8.
 
 ## What the user asked for
 

@@ -13,7 +13,7 @@ The [shared ontology spec](docs/superpowers/specs/2026-11-11-shared-ontology-des
 2. An AI Credential is mapped when the plugin is installed. Gyroscope uses it to build the model of classes and metrics.
 3. Calculated fields in your Data Marts reference other Data Marts. Gyroscope draws a connection for each reference.
 
-Settings, then Checkup, checks each of these live and links to the page where a failing one is fixed.
+Settings, then Checkup, sets a project up from scratch or adjusts an existing one. Its sections (critical number, core classes, contexts, connections, metrics, housekeeping) show blockers, warnings and recommendations. A check that isn't filled asks a question, suggests an answer and applies it with one click.
 
 ## Develop
 
