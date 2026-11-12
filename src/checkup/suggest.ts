@@ -2,8 +2,7 @@ import type { ProjectSettings, Edge, CoreClass } from '../types';
 import { DATE_TYPES, flattenFields, type Inputs } from '../owox/sources';
 import { hasDateField, hasPrimaryKey, type MartNode } from '../model/graph';
 import { INDUSTRIES, inboundCounts, rankCore, singleKey } from '../model/core';
-import { metricsSnippet } from '../ui/Blocked';
-import { criticalRow, findMetricRows, withCriticalPlan } from './tables';
+import { criticalRow, findMetricRows } from './tables';
 import type { Option, Suggestion } from './types';
 
 /** What a run loaded; code suggestions read it and never fetch. */
@@ -29,13 +28,6 @@ export interface FieldPick { martId: string; title: string; field: string; label
 export const fieldLink = (projectId: string, martId: string, field: string, text: string) =>
   `[${text}](https://app.owox.com/ui/${projectId}/data-marts/${martId}/data-setup?field=${encodeURIComponent(field)})`;
 
-/** The copy-ready Metrics table with the Critical number row filled in. */
-export function metricsTable(projectId: string, metric: string, fact: FieldPick): string {
-  return metricsSnippet(projectId).replace(/^## Metrics\n/, '')
-    .replace('| ARR |', `| ${metric} |`)
-    .replace(/\[ARR\]\([^)]*\)/, fieldLink(projectId, fact.martId, fact.field, metric));
-}
-
 const bySuffix = (checkId: string): string => (checkId.startsWith('context:') ? `context.${checkId.slice(checkId.indexOf('.') + 1)}` : checkId);
 export const contextOf = (checkId: string): string | null => (checkId.startsWith('context:') ? checkId.slice(8, checkId.indexOf('.')) : null);
 
@@ -54,6 +46,9 @@ export function moneyFields(nodes: MartNode[], edges: Edge[]): FieldPick[] {
     .slice(0, MAX_FIELDS);
 }
 
+/** The metric's name: the field's alias or name. */
+export const metricOf = (p: FieldPick): string => (p.label.split(' (')[0] ?? p.field).trim() || p.field;
+
 const pickOptions = (picks: FieldPick[]): Option[] => picks.map((p, i) => ({ label: p.label, value: p, recommended: i === 0 }));
 
 const criticalMetric = (ctx: SuggestContext): string => criticalRow(findMetricRows(ctx.inputs.projectDescription, 'project'))?.metric || 'the critical number';
@@ -67,8 +62,7 @@ function criticalNumber(ctx: SuggestContext): Suggestion | null {
     ai: false,
     target: (o) => {
       const p = o.value as FieldPick;
-      const metric = (p.label.split(' (')[0] ?? p.field).trim() || p.field;
-      return { kind: 'description', mode: 'metrics_table', text: metricsTable(ctx.projectId, metric, p) };
+      return { kind: 'critical_fact', scope: 'project', metric: metricOf(p), factLink: fieldLink(ctx.projectId, p.martId, p.field, metricOf(p)) };
     },
   };
 }
@@ -92,9 +86,7 @@ function plan(ctx: SuggestContext): Suggestion {
     target: (o) => {
       const p = o.value as FieldPick | null;
       if (!p) return { kind: 'settings', patch: {} };
-      const cell = fieldLink(ctx.projectId, p.martId, p.field, `Plan · ${metric}`);
-      const table = withCriticalPlan(ctx.inputs.projectDescription, cell);
-      return { kind: 'description', mode: 'metrics_table', text: table ?? metricsSnippet(ctx.projectId).replace(/^## Metrics\n/, '').replace(/\| \[Plan[^|]*\|/, `| ${cell} |`) };
+      return { kind: 'critical_plan', scope: 'project', planLink: fieldLink(ctx.projectId, p.martId, p.field, `Plan · ${metric}`) };
     },
   };
 }
@@ -154,16 +146,14 @@ function contextMarts(ctx: SuggestContext, id: string): Suggestion | null {
   const c = ctx.inputs.contexts.find((x) => x.id === id);
   if (!c) return null;
   const cw = words(c.name);
+  const titleIn = (martId: string) => ctx.inputs.marts.find((m) => m.id === martId)?.title ?? martId;
   const marts = ctx.inputs.marts.filter((m) => !m.contexts.some((x) => x.id === id) && [...words(m.title)].some((w) => cw.has(w))).slice(0, 4);
   if (!marts.length) return null;
   return {
     question: `Which Data Marts belong to ${c.name}?`,
     options: marts.map((m, i) => ({ label: m.title, value: m.id, recommended: i === 0 })),
     ai: false,
-    target: (o) => {
-      const m = ctx.inputs.marts.find((x) => x.id === o.value)!;
-      return { kind: 'mart_contexts', martId: m.id, contextIds: [...m.contexts.map((x) => x.id), id] };
-    },
+    target: (o) => ({ kind: 'mart_add_context', martId: o.value as string, contextId: id, martTitle: titleIn(o.value as string), contextName: c.name }),
   };
 }
 
@@ -175,6 +165,8 @@ export function codeSuggestion(checkId: string, ctx: SuggestContext): Suggestion
     case 'core.set': case 'core.count': return coreSet(ctx);
     case 'core.missing': return coreMissing(ctx);
     case 'contexts.exist': return contextsExist(ctx);
+    case 'model.built': return { question: 'Build the model?', options: [{ label: 'Build the model', value: 'build', recommended: true }], ai: false, target: () => ({ kind: 'model', action: 'build' }) };
+    case 'model.fresh': return { question: 'Bring the model up to date?', options: [{ label: 'Rebuild and review the changes', value: 'rebuild', recommended: true }], ai: false, target: () => ({ kind: 'model', action: 'rebuild' }) };
     case 'context.marts': return contextMarts(ctx, contextOf(checkId)!);
     default: return null;
   }

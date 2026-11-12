@@ -2,8 +2,8 @@ import { z } from 'zod';
 import type { GenerateWith } from '../model/interpret';
 import { DATE_TYPES, flattenFields } from '../owox/sources';
 import { INDUSTRIES } from '../model/core';
-import { upsertMetricsTable } from './tables';
-import { contextOf, industryOf, metricsTable, PLAN, ranked, titleOf, type FieldPick, type SuggestContext } from './suggest';
+import { contextOf, industryOf, fieldLink, metricOf, PLAN, ranked, titleOf, type FieldPick, type SuggestContext } from './suggest';
+import type { Industry } from '../types';
 import type { Option, Suggestion } from './types';
 
 /** Check ids the AI can suggest for; per-context checks are listed as `context.<kind>`. */
@@ -52,13 +52,13 @@ export async function aiSuggestion(checkId: string, ctx: SuggestContext, generat
   switch (keyOf(checkId)) {
     case 'project.description': {
       const r = await ask(generate, `Write two sentences for a project description: what the business sells and to whom. ${FORMAT}\n\nDATA MARTS:\n${martList(ctx)}`, TextSchema);
-      return r && one(question, r.text, (o) => ({ kind: 'description', mode: 'append', text: o.value as string }));
+      return r && one(question, r.text, (o) => ({ kind: 'description_append', scope: 'project', text: o.value as string }));
     }
     case 'core.business': {
       const core = ctx.settings.coreClasses?.map((c) => c.martId) ?? ranked(ctx).slice(0, industryOf(ctx).count);
       const titles = core.map((id) => titleOf(ctx, id)).join(', ') || '(none yet)';
       const r = await ask(generate, `Write one paragraph that says what the business sells, to whom and through which channels, naming these core Data Marts by title: ${titles}. ${FORMAT}\n\nPROJECT DESCRIPTION:\n${desc}\n\nDATA MARTS:\n${martList(ctx)}`, TextSchema);
-      return r && one(question, r.text, (o) => ({ kind: 'description', mode: 'append', text: o.value as string }));
+      return r && one(question, r.text, (o) => ({ kind: 'description_append', scope: 'project', text: o.value as string }));
     }
     case 'core.industry': {
       const r = await ask(generate, `Pick the business model closest to this project. Allowed values: ${INDUSTRIES.map((i) => `${i.id} (${i.label})`).join(', ')}.\n\nPROJECT DESCRIPTION:\n${desc}\n\nDATA MARTS:\n${martList(ctx)}`, IndustrySchema);
@@ -66,15 +66,16 @@ export async function aiSuggestion(checkId: string, ctx: SuggestContext, generat
       return {
         question, ai: true,
         options: INDUSTRIES.map((i): Option => ({ label: i.label, value: i.id, recommended: i.id === r.industry })),
-        target: (o) => ({ kind: 'settings', patch: { industry: o.value as never } }),
+        target: (o) => ({ kind: 'settings', patch: { industry: o.value as Industry } }),
       };
     }
     case 'context.description': {
       const c = ctx.inputs.contexts.find((x) => x.id === contextOf(checkId));
-      if (!c) return null;
+      // an existing description is the user's: Apply only fills an empty one
+      if (!c || c.description?.trim()) return null;
       const ids = ctx.inputs.marts.filter((m) => m.contexts.some((x) => x.id === c.id)).map((m) => m.id);
       const r = await ask(generate, `Write one or two sentences describing what the ${c.name} team or area owns, from its Data Marts. ${FORMAT}\n\nDATA MARTS IN ${c.name}:\n${martList(ctx, ids.length ? ids : undefined)}`, TextSchema);
-      return r && one(question, r.text, (o) => ({ kind: 'context_update', id: c.id, name: c.name, description: o.value as string }));
+      return r && one(question, r.text, (o) => ({ kind: 'description_append', scope: { contextId: c.id }, text: o.value as string }));
     }
     case 'context.fact': {
       const c = ctx.inputs.contexts.find((x) => x.id === contextOf(checkId));
@@ -93,8 +94,7 @@ export async function aiSuggestion(checkId: string, ctx: SuggestContext, generat
         options: picks.map((p, i) => ({ label: p.label, value: p, recommended: i === 0 })),
         target: (o) => {
           const p = o.value as FieldPick;
-          const metric = (p.label.split(' (')[0] ?? p.field).trim() || p.field;
-          return { kind: 'context_update', id: c.id, name: c.name, description: upsertMetricsTable(c.description, metricsTable(ctx.projectId, metric, p)) };
+          return { kind: 'critical_fact', scope: { contextId: c.id }, metric: metricOf(p), factLink: fieldLink(ctx.projectId, p.martId, p.field, metricOf(p)) };
         },
       };
     }

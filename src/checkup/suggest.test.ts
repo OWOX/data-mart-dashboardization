@@ -21,8 +21,7 @@ test('the critical number suggestion prefers a revenue field in a dated Data Mar
   // Marketing leads has sales but no key; refund_amount is a STRING
   expect(s.options.map((o) => o.label)).toEqual(['Revenue (Orders)']);
   const t = s.target(s.options[0]!);
-  expect(t).toMatchObject({ kind: 'description', mode: 'metrics_table' });
-  expect((t as { text: string }).text).toContain(`[Revenue](https://app.owox.com/ui/p/data-marts/${O}/data-setup?field=revenue)`);
+  expect(t).toEqual({ kind: 'critical_fact', scope: 'project', metric: 'Revenue', factLink: `[Revenue](https://app.owox.com/ui/p/data-marts/${O}/data-setup?field=revenue)` });
   expect(codeSuggestion('project.table', ctxWith())).not.toBeNull();
   expect(codeSuggestion('project.critical', ctxWith())).not.toBeNull();
 });
@@ -32,9 +31,7 @@ test('the plan suggestion offers plan-like fields and No plan yet', () => {
   expect(s.question).toBe('Where is the plan for Revenue?');
   expect(s.options.map((o) => o.label)).toEqual(['revenue_plan (Plan)', 'target (Plan)', 'No plan yet']);
   expect(s.target(s.options[2]!)).toEqual({ kind: 'settings', patch: {} });
-  const t = s.target(s.options[0]!) as { kind: string; text: string };
-  expect(t.kind).toBe('description');
-  expect(t.text).toContain(`data-marts/${PL}/data-setup?field=revenue_plan`);
+  expect(s.target(s.options[0]!)).toEqual({ kind: 'critical_plan', scope: 'project', planLink: `[Plan · Revenue](https://app.owox.com/ui/p/data-marts/${PL}/data-setup?field=revenue_plan)` });
 });
 
 test('contexts are suggested by industry, skipping ones that exist', () => {
@@ -48,7 +45,7 @@ test('contexts are suggested by industry, skipping ones that exist', () => {
 test('a context gets the Data Marts whose title shares a word with its name', () => {
   const s = codeSuggestion('context:k1.marts', ctxWith())!;
   expect(s.options.map((o) => o.label)).toEqual(['Marketing leads']);
-  expect(s.target(s.options[0]!)).toEqual({ kind: 'mart_contexts', martId: L, contextIds: ['k1'] });
+  expect(s.target(s.options[0]!)).toEqual({ kind: 'mart_add_context', martId: L, contextId: 'k1', martTitle: 'Marketing leads', contextName: 'Marketing' });
 });
 
 test('core.missing offers the dictionary Data Marts to add', () => {
@@ -60,4 +57,13 @@ test('core.missing offers the dictionary Data Marts to add', () => {
 test('unknown checks have no code suggestion', () => {
   expect(codeSuggestion('goal.pk', ctxWith())).toBeNull();
   expect(codeSuggestion('project.description', ctxWith())).toBeNull();
+});
+
+test('an unbuilt or stale model offers Build and Rebuild', () => {
+  const b = codeSuggestion('model.built', ctxWith())!;
+  expect(b.options.map((o) => o.label)).toEqual(['Build the model']);
+  expect(b.target(b.options[0]!)).toEqual({ kind: 'model', action: 'build' });
+  const r = codeSuggestion('model.fresh', ctxWith())!;
+  expect(r.options.map((o) => o.label)).toEqual(['Rebuild and review the changes']);
+  expect(r.target(r.options[0]!)).toEqual({ kind: 'model', action: 'rebuild' });
 });

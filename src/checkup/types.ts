@@ -5,13 +5,16 @@ export type GroupId = 'critical' | 'core' | 'contexts' | 'connections' | 'metric
 /** Where a check is fixed: an OWOX page (path from /ui/...) or a tab of this plugin. */
 export type Fix = { kind: 'owox'; label: string; path: string } | { kind: 'tab'; label: string; tab: 'ontology' } | { kind: 'snippet'; label: string };
 export interface Option { label: string; value: unknown; recommended: boolean }
-/** What Apply writes. */
+/** Whose description a write goes to: the project's, or one context's. */
+export type Scope = 'project' | { contextId: string };
+/** What Apply writes. Targets carry intent; Apply reads the current text or state right before writing. */
 export type ApplyTarget =
   | { kind: 'settings'; patch: Partial<ProjectSettings> }
-  | { kind: 'description'; mode: 'append' | 'metrics_table'; text: string }
+  | { kind: 'description_append'; scope: Scope; text: string }
+  | { kind: 'critical_fact'; scope: Scope; metric: string; factLink: string }
+  | { kind: 'critical_plan'; scope: Scope; planLink: string }
   | { kind: 'context_create'; name: string; description: string }
-  | { kind: 'context_update'; id: string; name: string; description: string }
-  | { kind: 'mart_contexts'; martId: string; contextIds: string[] }
+  | { kind: 'mart_add_context'; martId: string; contextId: string; martTitle: string; contextName: string }
   | { kind: 'model'; action: 'build' | 'rebuild' };
 /** A question under a check that isn't filled, with a recommended answer and what Apply does with the chosen one. */
 export interface Suggestion { question: string; options: Option[]; ai: boolean; target: (o: Option) => ApplyTarget }

@@ -42,7 +42,7 @@ test('isFieldLink rejects placeholders and links without a field', () => {
   expect(criticalRow([])).toBeNull();
 });
 
-import { upsertMetricsTable, withCriticalPlan } from './tables';
+import { setCriticalFact, setCriticalPlan, upsertMetricsTable } from './tables';
 
 test('upsertMetricsTable replaces only the Metrics table', () => {
   const md = 'Intro.\n\n| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Old | | |\n\nOutro.';
@@ -64,9 +64,33 @@ test('upsertMetricsTable ignores tables without Role, Plan and Fact', () => {
   expect(upsertMetricsTable(md, 'T')).toBe(`${md}\n\nT`);
 });
 
-test('withCriticalPlan rewrites only the plan cell of the Critical number row', () => {
-  const md = `x\n\n| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Revenue | | ${link(ID, 'rev')} |\n| Leading | Leads | | ${link(ID, 'leads')} |\n\ny`;
-  const out = withCriticalPlan(md, link(PLAN, 'plan'))!;
-  expect(out).toBe(`| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Revenue | ${link(PLAN, 'plan')} | ${link(ID, 'rev')} |\n| Leading | Leads | | ${link(ID, 'leads')} |`);
-  expect(withCriticalPlan('no table', 'L')).toBeNull();
+const PH = '[Revenue](https://app.owox.com/ui/p/data-marts/<id>/data-setup?field=revenue)';
+const DESC = `Intro.\n\n## Metrics\n| Role | Metric | Owner | Plan | Fact |\n|---|---|---|---|---|\n| Critical number | Revenue | Ann | ${link(PLAN, 'p')} | ${PH} |\n| Leading | Leads | Bo | | ${link(ID, 'leads')} |\n| Lagging | Churn | Cy | | ${link(ID, 'churn')} |\n\nOutro.`;
+
+test('setCriticalFact changes only the Fact cell of the Critical row', () => {
+  const out = setCriticalFact(DESC, 'Revenue', link(ID, 'rev', 'Revenue'));
+  expect(out).toBe(DESC.replace(PH, link(ID, 'rev', 'Revenue')));
+});
+
+test('setCriticalFact fills an empty Metric cell and keeps a filled one', () => {
+  const md = `| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | | | |`;
+  expect(setCriticalFact(md, 'Sales', 'L')).toContain('| Critical number | Sales | | L |');
+  expect(setCriticalFact(md.replace('| |', '| Mine |'), 'Sales', 'L')).toContain('| Critical number | Mine |');
+});
+
+test('setCriticalFact inserts a Critical row when the table has none', () => {
+  const md = `Intro.\n\n| Role | Metric | Owner | Plan | Fact |\n|---|---|---|---|---|\n| Leading | Leads | Bo | | x |\n\nOutro.`;
+  expect(setCriticalFact(md, 'Revenue', 'L')).toBe(`Intro.\n\n| Role | Metric | Owner | Plan | Fact |\n|---|---|---|---|---|\n| Critical number | Revenue | | | L |\n| Leading | Leads | Bo | | x |\n\nOutro.`);
+});
+
+test('setCriticalFact appends a table when there is none', () => {
+  expect(setCriticalFact('Just text.', 'Revenue', 'L')).toBe('Just text.\n\n## Metrics\n| Role | Metric | Owner | Plan | Fact |\n|---|---|---|---|---|\n| Critical number | Revenue | | | L |');
+  expect(setCriticalFact(null, 'R', 'L')).toBe('## Metrics\n| Role | Metric | Owner | Plan | Fact |\n|---|---|---|---|---|\n| Critical number | R | | | L |');
+});
+
+test('setCriticalPlan finds the Critical row in a later table and changes only its Plan cell', () => {
+  const md = `| A | B |\n|---|---|\n| 1 | 2 |\n\n| Role | Plan | Fact |\n|---|---|---|\n| Leading | | f |\n\n| Role | Plan | Fact |\n|---|---|---|\n| Critical number | | g |\n\nEnd`;
+  expect(setCriticalPlan(md, 'P')).toBe(md.replace('| Critical number | | g |', '| Critical number | P | g |'));
+  expect(setCriticalPlan('| Role | Plan | Fact |\n|---|---|---|\n| Leading | | f |', 'P')).toBeNull();
+  expect(setCriticalPlan('none', 'P')).toBeNull();
 });

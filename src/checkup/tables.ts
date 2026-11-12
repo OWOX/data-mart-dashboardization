@@ -46,45 +46,71 @@ export const criticalRow = (rows: MetricRow[]): MetricRow | null => rows.find((r
 /** A link that names a real Data Mart field: not a placeholder, with a Data Mart id and a field. */
 export const isFieldLink = (l: MartLink): boolean => !l.placeholder && !!l.martId && !!l.field;
 
-interface Located { start: number; end: number; lines: string[]; role: number; plan: number }
+interface Located { lines: string[]; starts: number[]; role: number; plan: number; fact: number; metric: number }
 
-// the first table with Role, Plan and Fact columns; start and end are character offsets (end excludes the last line's break)
-function locateMetricsTable(markdown: string): Located | null {
-  const lines = markdown.split('\n');
+// every table with Role, Plan and Fact columns; `starts[i]` is the offset of lines[i] (without a trailing \r) in the text
+function locateMetricsTables(markdown: string): Located[] {
+  const raw = markdown.split('\n');
+  const starts: number[] = [];
   let pos = 0;
-  const offsets = lines.map((l) => { const o = pos; pos += l.length + 1; return o; });
+  for (const l of raw) { starts.push(pos); pos += l.length + 1; }
+  const lines = raw.map((l) => l.replace(/\r$/, ''));
+  const out: Located[] = [];
   for (let i = 0; i + 1 < lines.length; i++) {
     if (!lines[i]!.includes('|') || !isSeparator(lines[i + 1]!)) continue;
     const head = cells(lines[i]!).map((c) => c.toLowerCase());
-    const [role, plan, fact] = ['role', 'plan', 'fact'].map((n) => head.indexOf(n)) as [number, number, number];
-    if (role < 0 || plan < 0 || fact < 0) continue;
+    const [role, plan, fact, metric] = ['role', 'plan', 'fact', 'metric'].map((n) => head.indexOf(n)) as [number, number, number, number];
     const leading = lines[i]!.trim().startsWith('|');
     let last = i + 1;
     while (last + 1 < lines.length && isRow(lines[last + 1]!, leading)) last++;
-    const end = offsets[last]! + lines[last]!.replace(/\r$/, '').length;
-    return { start: offsets[i]!, end, lines: lines.slice(i, last + 1).map((l) => l.replace(/\r$/, '')), role, plan };
+    if (role >= 0 && plan >= 0 && fact >= 0) out.push({ lines: lines.slice(i, last + 1), starts: starts.slice(i, last + 1), role, plan, fact, metric });
+    i = last;
   }
-  return null;
+  return out;
 }
+const rowText = (c: string[]) => `|${c.map((x) => (x ? ` ${x.replace(/\|/g, '\\|')} ` : ' ')).join('|')}|`;
+const eolOf = (md: string) => (md.includes('\r\n') ? '\r\n' : '\n');
 
 /** Replaces the first Metrics table in the description, or appends one; the rest of the text stays byte for byte. */
 export function upsertMetricsTable(markdown: string | null, table: string): string {
   const headed = table.startsWith('|') ? `## Metrics\n${table}` : table;
   if (!markdown?.trim()) return headed;
-  const at = locateMetricsTable(markdown);
-  return at ? markdown.slice(0, at.start) + table + markdown.slice(at.end) : `${markdown}\n\n${headed}`;
+  const at = locateMetricsTables(markdown)[0];
+  if (!at) return `${markdown}\n\n${headed}`;
+  const end = at.starts[at.lines.length - 1]! + at.lines[at.lines.length - 1]!.length;
+  return markdown.slice(0, at.starts[0]!) + table + markdown.slice(end);
 }
 
-/** The first Metrics table with the plan cell of its Critical number row set to `planCell`; null without such a row. */
-export function withCriticalPlan(markdown: string | null, planCell: string): string | null {
-  const at = markdown ? locateMetricsTable(markdown) : null;
-  if (!at) return null;
-  const i = at.lines.findIndex((l, n) => n >= 2 && /critical/i.test(cells(l)[at.role] ?? ''));
-  if (i < 0) return null;
-  const row = cells(at.lines[i]!);
-  while (row.length <= at.plan) row.push('');
-  row[at.plan] = planCell;
-  const lines = [...at.lines];
-  lines[i] = `| ${row.map((c) => c.replace(/\|/g, '\\|')).join(' | ')} |`;
-  return lines.join('\n');
+// swaps one body row's cells in place; nothing else in the text moves
+function editCritical(markdown: string, edit: (row: string[], t: Located) => void): string | null {
+  for (const t of locateMetricsTables(markdown)) {
+    const i = t.lines.findIndex((l, n) => n >= 2 && /critical/i.test(cells(l)[t.role] ?? ''));
+    if (i < 0) continue;
+    const row = cells(t.lines[i]!);
+    while (row.length <= Math.max(t.plan, t.fact)) row.push('');
+    edit(row, t);
+    return markdown.slice(0, t.starts[i]!) + rowText(row) + markdown.slice(t.starts[i]! + t.lines[i]!.length);
+  }
+  return null;
 }
+
+/** The Fact cell of the Critical number row (and its Metric cell when empty). No such row: inserts one as the first body row of the first Metrics table, or appends a new table. */
+export function setCriticalFact(markdown: string | null, metric: string, factLink: string): string {
+  const md = markdown ?? '';
+  const edited = editCritical(md, (row, t) => { row[t.fact] = factLink; if (t.metric >= 0 && !row[t.metric]) row[t.metric] = metric; });
+  if (edited !== null) return edited;
+  const first = locateMetricsTables(md)[0];
+  if (first) {
+    const row = Array.from({ length: cells(first.lines[0]!).length }, () => '');
+    row[first.role] = 'Critical number'; row[first.fact] = factLink;
+    if (first.metric >= 0) row[first.metric] = metric;
+    const at = first.starts[1]! + first.lines[1]!.length;
+    return md.slice(0, at) + eolOf(md) + rowText(row) + md.slice(at);
+  }
+  const table = `## Metrics\n| Role | Metric | Owner | Plan | Fact |\n|---|---|---|---|---|\n| Critical number | ${metric.replace(/\|/g, '\\|')} | | | ${factLink} |`;
+  return md.trim() ? `${md}\n\n${table}` : table;
+}
+
+/** Sets only the Plan cell of the Critical number row, in whichever Metrics table has one; null when there is no such row. */
+export const setCriticalPlan = (markdown: string | null, planLink: string): string | null =>
+  markdown ? editCritical(markdown, (row, t) => { row[t.plan] = planLink; }) : null;

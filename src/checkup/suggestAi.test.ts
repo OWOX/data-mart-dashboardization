@@ -18,22 +18,23 @@ test('an unreadable or throwing AI answer gives no suggestion', async () => {
 test('description drafts append to the project description', async () => {
   const s = (await aiSuggestion('project.description', ctxWith(), async () => ({ text: 'We sell shoes.' })))!;
   expect(s.question).toBe('What does the business sell, and to whom?');
-  expect(s.target(s.options[0]!)).toEqual({ kind: 'description', mode: 'append', text: 'We sell shoes.' });
+  expect(s.target(s.options[0]!)).toEqual({ kind: 'description_append', scope: 'project', text: 'We sell shoes.' });
   const b = (await aiSuggestion('core.business', ctxWith(), async () => ({ text: 'Orders, Customers.' })))!;
   expect(b.question).toBe('What does the business sell, to whom, and through which channels?');
 });
 
-test('a context description updates that context', async () => {
+test('a context description fills an empty one and leaves a written one alone', async () => {
   const s = (await aiSuggestion('context:k1.description', ctxWith(), async () => ({ text: 'Owns campaigns.' })))!;
-  expect(s.target(s.options[0]!)).toEqual({ kind: 'context_update', id: 'k1', name: 'Marketing', description: 'Owns campaigns.' });
+  expect(s.target(s.options[0]!)).toEqual({ kind: 'description_append', scope: { contextId: 'k1' }, text: 'Owns campaigns.' });
+  const filled = ctxWith();
+  filled.inputs.contexts[0]!.description = 'Already written.';
+  expect(await aiSuggestion('context:k1.description', filled, async () => ({ text: 'x' }))).toBeNull();
 });
 
-test('a context fact offers the AI picks as a Metrics table in the context', async () => {
+test('a context fact offers the AI picks as the context critical fact', async () => {
   const s = (await aiSuggestion('context:k1.fact', ctxWith(), async () => ({ picks: [0] })))!;
   expect(s.question).toBe('Which number shows Marketing is doing its job?');
-  const t = s.target(s.options[0]!);
-  expect(t).toMatchObject({ kind: 'context_update', id: 'k1' });
-  expect((t as { description: string }).description).toContain('data-marts/' + 'aaaaaaaa-0000-0000-0000-000000000001');
+  expect(s.target(s.options[0]!)).toEqual({ kind: 'critical_fact', scope: { contextId: 'k1' }, metric: 'Revenue', factLink: '[Revenue](https://app.owox.com/ui/p/data-marts/aaaaaaaa-0000-0000-0000-000000000001/data-setup?field=revenue)' });
   expect(await aiSuggestion('context:k1.fact', ctxWith(), async () => ({ picks: [9] }))).toBeNull();
 });
 
