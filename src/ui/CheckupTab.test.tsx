@@ -305,3 +305,37 @@ test('applying a rebuild opens the Metrics section', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true'));
 });
+
+test('a core-list Apply waits while the Metrics editor has unsaved edits', async () => {
+  const apply = vi.fn().mockResolvedValue({ ok: true });
+  render(<CheckupTab run={instant([core('core.set', 'warn', { suggestion: suggestion() })])} projectId="p1" now={now} isAdmin apply={apply} metricsDirty />);
+  expect(await screen.findByRole('button', { name: 'Apply' })).toBeDisabled();
+  expect(screen.getByText('Save or discard your Metrics edits first')).toBeInTheDocument();
+});
+
+test('a clean editor does not hold Apply', async () => {
+  render(<CheckupTab run={instant([core('core.set', 'warn', { suggestion: suggestion() })])} projectId="p1" now={now} isAdmin apply={vi.fn()} />);
+  expect(await screen.findByRole('button', { name: 'Apply' })).toBeEnabled();
+});
+
+test('an AI ask that comes back empty can be tried again', async () => {
+  const suggestAi = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(suggestion({ ai: true }));
+  render(<CheckupTab run={instant([aiCheck()])} projectId="p1" now={now} isAdmin apply={vi.fn()} suggestAi={suggestAi} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Suggest an answer' }));
+  await screen.findByText(/Couldn't suggest an answer/);
+  fireEvent.click(screen.getByRole('button', { name: 'Suggest an answer' }));
+  await screen.findByRole('radio', { name: /Orders/ });
+  expect(suggestAi).toHaveBeenCalledTimes(2);
+});
+
+test('a section where everything is skipped says Skipped; an empty Metrics section has no count', async () => {
+  render(<CheckupTab run={instant([core('a', 'skip'), core('b', 'skip')])} projectId="p1" now={now} metrics={<p>editor</p>} />);
+  expect(await screen.findByRole('heading', { name: /Core classes.*Skipped/ })).toBeInTheDocument();
+  const metrics = screen.getByRole('heading', { name: /^Metrics/ });
+  expect(metrics.querySelector('.gy-ck-count')).toHaveTextContent('');
+});
+
+test('the heading keeps a status word for screen readers', async () => {
+  render(<CheckupTab run={instant([core('a', 'fail'), core('b', 'ok')])} projectId="p1" now={now} />);
+  expect(await screen.findByRole('heading', { name: /Core classes.*blocker/ })).toBeInTheDocument();
+});

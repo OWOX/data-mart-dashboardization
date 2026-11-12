@@ -23,6 +23,10 @@ export interface CheckupProps {
   metrics?: ReactNode;
   /** No model yet: every section opens. */
   noModel?: boolean;
+  /** Runs a checkup each time it turns true; the tab stays mounted while hidden. Default true. */
+  active?: boolean;
+  /** The Metrics editor holds unsaved edits, so an answer that replaces the model's core classes waits. */
+  metricsDirty?: boolean;
   /** This section opens on the first result and scrolls into view. */
   openSection?: GroupId;
 }
@@ -33,6 +37,7 @@ const WORD: Record<CheckStatus, string> = { ok: 'passed', fail: 'failed', warn: 
 // worst first
 const SEVERITY: CheckStatus[] = ['fail', 'warn', 'recommend', 'running', 'ok', 'skip'];
 
+const HEAD_WORD: Record<CheckStatus, string> = { fail: 'blocker', warn: 'warning', recommend: 'recommendation', ok: 'passed', skip: 'skipped', running: 'checking' };
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 function summarize(checks: Check[], running: boolean): string {
@@ -49,6 +54,8 @@ function summarize(checks: Check[], running: boolean): string {
 
 /** The section heading's count: "1 warning, 1 recommendation", or "All passed" when nothing needs a look. */
 function countText(checks: Check[]): string {
+  if (checks.length === 0) return '';
+  if (checks.every((c) => c.status === 'skip')) return 'Skipped';
   const n = (st: CheckStatus) => checks.filter((c) => c.status === st).length;
   const parts = [
     n('fail') > 0 && `${n('fail')} failed`,
@@ -66,7 +73,7 @@ const sectionId = (g: GroupId) => `gy-ck-sec-${g}`;
 const scrollTo = (g: GroupId) => { document.getElementById(sectionId(g))?.scrollIntoView?.({ block: 'start' }); };
 const recommendedIndex = (s: Suggestion) => Math.max(0, s.options.findIndex((o) => o.recommended));
 
-export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply, suggestAi, metrics, noModel = false, openSection }: CheckupProps) {
+export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply, suggestAi, metrics, noModel = false, openSection, active = true, metricsDirty = false }: CheckupProps) {
   const [checks, setChecks] = useState<Check[]>([]);
   const [running, setRunning] = useState(true);
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
@@ -88,7 +95,9 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [results, setResults] = useState<Record<string, ApplyResult>>({});
   // AI answers per check for the session; null: the AI had none
-  const [aiAnswers, setAiAnswers] = useState<Record<string, Suggestion | null>>({});
+  const [aiAnswers, setAiAnswers] = useState<Record<string, Suggestion>>({});
+  // asks that came back empty; the button shows again
+  const [aiFailed, setAiFailed] = useState<ReadonlySet<string>>(new Set());
   const [aiBusy, setAiBusy] = useState<ReadonlySet<string>>(new Set());
   const asked = useRef(new Set<string>());
   const suggestRef = useRef(suggestAi);
@@ -117,9 +126,10 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
   }, []);
 
   useEffect(() => {
+    if (!active) return;
     start();
     return () => { runId.current++; };
-  }, [start]);
+  }, [start, active]);
 
   // the section a request names scrolls into view once its card is on the page
   const scrolled = useRef(false);
@@ -146,10 +156,12 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
   const suggest = async (c: Check) => {
     if (!suggestRef.current || asked.current.has(c.id)) return;
     asked.current.add(c.id);
+    setAiFailed((p) => { const n = new Set(p); n.delete(c.id); return n; });
     setAiBusy((p) => new Set(p).add(c.id));
     const s = await suggestRef.current(c.id).catch(() => null);
     setAiBusy((p) => { const n = new Set(p); n.delete(c.id); return n; });
-    setAiAnswers((p) => ({ ...p, [c.id]: s }));
+    if (s) setAiAnswers((p) => ({ ...p, [c.id]: s }));
+    else { asked.current.delete(c.id); setAiFailed((p) => new Set(p).add(c.id)); }
   };
 
   const renderQuestion = (c: Check) => {
@@ -158,6 +170,12 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
     const needsAi = base.ai && base.options.length === 0;
     const answered = needsAi && c.id in aiAnswers;
     const sug = needsAi ? aiAnswers[c.id] ?? null : base;
+    const failed = aiFailed.has(c.id);
+    // a new core list replaces the model's flags under a Metrics draft that has edits
+    const waits = metricsDirty && !!sug && sug.options.length > 0 && (() => {
+      const t = sug.target(sug.options[picked[c.id] ?? recommendedIndex(sug)]!);
+      return t.kind === 'settings' && 'coreClasses' in t.patch;
+    })();
     const question = sug?.question ?? base.question;
     const result = results[c.id];
     return (
@@ -181,12 +199,13 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
               {aiBusy.has(c.id) && <Loader2 size={14} className="gy-spin" aria-hidden="true" />}Suggest an answer
             </button>
           : <p className="dm-muted gy-ck-note">Map an AI credential to get a suggested answer</p>)}
-        {isAdmin && answered && !sug && <p className="dm-muted gy-ck-note">Couldn&apos;t suggest an answer. Fix it from the link, or try again later.</p>}
+        {isAdmin && failed && !answered && <p className="dm-muted gy-ck-note">Couldn&apos;t suggest an answer. Try again, or fix it from the link.</p>}
         {isAdmin && sug && sug.options.length > 0 && apply && (
-          <button type="button" className="gy-btn gy-btn-primary" disabled={busy.has(c.id)} aria-busy={busy.has(c.id)} onClick={() => void doApply(c, sug)}>
+          <button type="button" className="gy-btn gy-btn-primary" disabled={busy.has(c.id) || waits} aria-busy={busy.has(c.id)} onClick={() => void doApply(c, sug)}>
             {busy.has(c.id) && <Loader2 size={14} className="gy-spin" aria-hidden="true" />}Apply
           </button>
         )}
+        {isAdmin && waits && <p className="dm-muted gy-ck-note">Save or discard your Metrics edits first</p>}
         {result && !result.ok && !result.refused && <p role="alert" className="gy-form-error">{result.error}</p>}
         {result && !result.ok && result.refused && (
           <div className="gy-ck-refused">
@@ -245,7 +264,7 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
         return (
           <section key={g.id} id={sectionId(g.id)} aria-labelledby={`gy-ck-${g.id}`} className="gy-ck-group">
             <CollapsibleCard variant="section" icon={GROUP_ICON[g.id]} label={g.label} collapsed={fold} attention={attention.has(g.id)}
-              title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label}<span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span><span className="gy-ck-count">{countText(inGroup)}</span></h3>}>
+              title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label}<span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span>{inGroup.length > 0 && <span className="gy-sr">, {HEAD_WORD[w]}</span>}<span className="gy-ck-count">{countText(inGroup)}</span></h3>}>
             {plain.length > 0 && <div className="dm-card-block"><ul className="gy-build-list">{plain.map(renderCheck)}</ul></div>}
             {contexts.length > 0 && <div className="gy-ck-contexts">
             {contexts.map((ctx) => {

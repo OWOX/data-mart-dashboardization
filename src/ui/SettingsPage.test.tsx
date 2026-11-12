@@ -41,7 +41,7 @@ test('the tabs are General and Checkup, a tablist that arrow keys move through',
   expect(general).toHaveFocus();
 });
 
-test('the Checkup panel mounts only while selected', () => {
+test('the Checkup panel stays mounted behind General and runs each time it becomes active', () => {
   const run = vi.fn(() => Promise.resolve([]));
   const checkup = { run, projectId: 'p', now: () => new Date() };
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} checkup={checkup} />);
@@ -50,7 +50,10 @@ test('the Checkup panel mounts only while selected', () => {
   expect(run).toHaveBeenCalledTimes(1);
   expect(document.getElementById('gy-panel-checkup')).not.toHaveAttribute('hidden');
   fireEvent.click(screen.getByRole('tab', { name: 'General' }));
-  expect(document.getElementById('gy-panel-checkup')!.childElementCount).toBe(0);
+  expect(document.getElementById('gy-panel-checkup')).toHaveAttribute('hidden');
+  expect(document.getElementById('gy-panel-checkup')!.childElementCount).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('tab', { name: 'Checkup' }));
+  expect(run).toHaveBeenCalledTimes(2);
 });
 
 test('General has a Your view fieldset and a Project fieldset', () => {

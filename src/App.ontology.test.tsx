@@ -279,3 +279,46 @@ test('a member never sees Apply or Suggest an answer in Checkup', async () => {
   expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Suggest an answer' })).toBeNull();
 });
+
+test('switching to General and back keeps the Metrics draft', async () => {
+  const { deps } = await setup();
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  await openMetrics();
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'General' }));
+  await openMetrics();
+  expect(screen.getByRole('checkbox', { name: 'Customers' })).not.toBeChecked();
+});
+
+async function coreSetup() {
+  const { deps: base, store, model } = await setup();
+  const fact = `[Revenue](https://app.owox.com/ui/p/data-marts/${GID}/data-setup?field=revenue)`;
+  const owox = fakeOwox({ ...data(), projectDescription: `## Metrics\n| Role | Metric | Plan | Fact |\n|---|---|---|---|\n| Critical number | Revenue | | ${fact} |` });
+  await seedShared(store, { ...model, classes: model.classes.map((c) => ({ ...c, core: false })) });
+  await saveProjectSettings(store, { coreClasses: null });
+  return { deps: { ...base, owox }, store };
+}
+
+test('a core Apply keeps a clean Metrics editor mounted, with no loading placeholder', async () => {
+  const { deps, store } = await coreSetup();
+  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
+  const box = await screen.findByRole('checkbox', { name: 'Customers' });
+  await screen.findByText(/^Checked /);
+  const section = screen.getByRole('group', { name: 'Core classes' });
+  fireEvent.click(within(section).getByRole('button', { name: 'Apply' }));
+  expect(screen.queryByText('Reading Data Marts…')).toBeNull();
+  await waitFor(async () => expect((await loadShared(store))!.classes.some((c) => c.core)).toBe(true));
+  expect(screen.queryByText('Reading Data Marts…')).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Customers' })).toBe(box);
+});
+
+test('a core Apply waits for unsaved Metrics edits', async () => {
+  const { deps } = await coreSetup();
+  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
+  await screen.findByText(/^Checked /);
+  const section = screen.getByRole('group', { name: 'Core classes' });
+  expect(within(section).getByRole('button', { name: 'Apply' })).toBeDisabled();
+  expect(within(section).getByText('Save or discard your Metrics edits first')).toBeInTheDocument();
+});

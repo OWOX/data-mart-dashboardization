@@ -77,6 +77,12 @@ function migrate(project: Model, settings: Settings): Model {
 }
 
 const ROUTES: Record<SettingsTab, string> = { general: '/settings', checkup: '/settings/checkup' };
+/** True when two models differ only in which classes are core, and who edited when. */
+const sameBesideCore = (a: Model | null, b: Model): boolean => {
+  if (!a) return false;
+  const strip = (m: Model) => JSON.stringify({ ...m, editedAt: null, editedBy: null, classes: m.classes.map((c) => ({ ...c, core: false, inbound: 0 })) });
+  return strip(a) === strip(b);
+};
 const ROUTES_METRICS = '/settings/ontology';
 /** The settings tab (and Checkup section) a route opens; anything else opens the canvas. /settings/ontology is the 0.3 route of the Metrics tab. */
 const tabOf = (route: string | undefined): { tab: SettingsTab; section?: GroupId } | null => {
@@ -153,6 +159,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   // the latest Checkup run's facts, which an AI suggestion reads; and the Metrics editor's Rebuild trigger
   const checkupCtx = useRef<SuggestContext | null>(null);
   const rebuildRef = useRef<(() => void) | null>(null);
+  const runSeq = useRef(0);
   const cacheNow = useRef<CacheDoc | null>(null);
   cacheNow.current = cache;
 
@@ -210,6 +217,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     const saved: Model = { ...withCore, ...(edited ? { editedBy: editor.current ?? userId } : {}), ...(stamp ? { editedAt: now().toISOString() } : {}) };
     await saveShared(store, modelNow.current, saved);
     // the model is saved: hold it now, so a failure below never leaves a stale base behind
+    // a core-only change keeps the Data Mart reads: the open Metrics editor stays, with its schemas
+    const before = modelNow.current;
+    if (sameBesideCore(before, saved) && fetchedFor.current === before) {
+      fetchedFor.current = saved;
+      setInputs((i) => (i && i.model === before ? { ...i, model: saved } : i));
+      setHealth((h) => (h && h.model === before ? { ...h, model: saved } : h));
+    }
     modelNow.current = saved;
     setModel(saved);
     setCoreNote(null);
@@ -414,6 +428,10 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
 
   /** One Checkup answer. A core list also moves the core flags of the shared model, so the canvas shows the new set; an admin's write. */
   const applyAnswer = async (t: ApplyTarget): Promise<ApplyResult> => {
+    if (!isAdmin) return { ok: false, refused: false, error: 'Only a project admin can change this' };
+    if (t.kind === 'model' && t.action === 'rebuild' && !rebuildRef.current) {
+      return { ok: false, refused: false, error: generate ? 'Save or discard your Metrics edits first' : 'Map an AI credential to rebuild' };
+    }
     const { thresholdPct, industry, coreClasses } = settingsNow.current;
     const r = await applyTarget(t, {
       owox, store, settings: { thresholdPct, industry, coreClasses },
@@ -473,9 +491,10 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
             // read at call time: an Apply reruns the checkup before this render lands
             run: (onUpdate) => {
               const { thresholdPct, industry, coreClasses } = settingsNow.current;
-              return runCheckup({ owox, hasAi: !!generate, settings: { thresholdPct, industry, coreClasses }, model: modelNow.current, projectId: ctx.projectId, onUpdate, onContext: (c) => { checkupCtx.current = c; } });
+              const seq = ++runSeq.current;
+              return runCheckup({ owox, hasAi: !!generate, settings: { thresholdPct, industry, coreClasses }, model: modelNow.current, projectId: ctx.projectId, onUpdate, onContext: (c) => { if (seq === runSeq.current) checkupCtx.current = c; } });
             },
-            projectId: ctx.projectId, now, apply: applyAnswer,
+            projectId: ctx.projectId, now, apply: isAdmin ? applyAnswer : undefined,
             suggestAi: isAdmin && generateWith
               ? async (id) => (checkupCtx.current ? aiSuggestion(id, checkupCtx.current, generateWith) : null)
               : undefined,

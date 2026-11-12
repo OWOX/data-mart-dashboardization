@@ -30,7 +30,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
   onDismiss?: () => void; error?: string | null;
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
   /** What the Checkup tab runs; the tab is mounted only while selected, so each visit starts a run. */
-  checkup?: Omit<CheckupProps, 'metrics' | 'isAdmin' | 'noModel' | 'openSection'> | null;
+  checkup?: Omit<CheckupProps, 'metrics' | 'isAdmin' | 'noModel' | 'openSection' | 'active' | 'metricsDirty'> | null;
   /** The Checkup section that opens on arrival, e.g. 'metrics' for the old /settings/ontology route. */
   openSection?: GroupId;
   /** Filled with a function that starts the Metrics section's Rebuild. */
@@ -43,6 +43,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
   onReload?: () => void;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
+  const [metricsDirty, setMetricsDirty] = useState(false);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const go = (t: SettingsTab) => { setTab(t); onTabChange?.(t); };
   const onTabKey = (e: KeyboardEvent, i: number) => {
@@ -64,7 +65,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
   };
 
   const metrics = ontology
-    ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} readOnly={!isAdmin} onReload={onReload} rebuildRef={rebuildRef} />
+    ? <OntologyTab {...ontology} onCancel={onBack} onRebuild={onRebuild} canRebuild={canRebuild} projectId={projectId} onOpen={onOpen} onDismiss={onDismiss} readOnly={!isAdmin} onReload={onReload} rebuildRef={rebuildRef} onDirty={setMetricsDirty} />
     : noModel ? <p className="dm-muted gy-form-note">No model yet. It&apos;s built when you go back to the canvas.</p>
     : <><LoadingBar /><p className="dm-muted gy-form-note">Reading Data Marts…</p></>;
 
@@ -84,8 +85,9 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
       </div>
       <main>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-checkup" aria-labelledby="gy-tab-checkup" hidden={tab !== 'checkup'}>
-          {tab === 'checkup' && checkup && (
-            <CheckupTab {...checkup} onOpen={onOpen} isAdmin={isAdmin} noModel={noModel} openSection={openSection} metrics={metrics} />
+          {/* mounted once there is a checkup, so an unsaved Metrics draft survives a visit to General; each visit starts a run */}
+          {checkup && (
+            <CheckupTab {...checkup} active={tab === 'checkup'} onOpen={onOpen} isAdmin={isAdmin} noModel={noModel} openSection={openSection} metrics={metrics} metricsDirty={metricsDirty} />
           )}
         </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>

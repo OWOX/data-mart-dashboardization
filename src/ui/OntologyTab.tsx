@@ -98,7 +98,7 @@ function Source({ label, detail, status, measure, dateField, noDate, noField = f
   );
 }
 
-export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss, hashOf, readOnly = false, onReload, rebuildRef }: {
+export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel, onRebuild, canRebuild = true, projectId = '', onOpen, onDismiss, hashOf, readOnly = false, onReload, rebuildRef, onDirty }: {
   model: Model;
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
@@ -121,6 +121,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   onReload?: () => void;
   /** Filled with a function that starts a Rebuild, for a Checkup answer that asks for one. */
   rebuildRef?: MutableRefObject<(() => void) | null>;
+  /** Tells the page whether the draft holds unsaved edits. */
+  onDirty?: (dirty: boolean) => void;
 }) {
   const [draft, setDraft] = useState<Model>(model);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +139,14 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   // folded by default; local, never saved
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
   const toggleOpen = (id: string) => setOpenIds((p) => { const n = new Set(p); if (!n.delete(id)) n.add(id); return n; });
+  // a model that changed under a clean draft (a core list applied from Checkup) replaces it; edits are kept
+  const prevModel = useRef(model);
+  useEffect(() => {
+    const prev = prevModel.current;
+    prevModel.current = model;
+    if (prev !== model) setDraft((d) => (JSON.stringify(d) === JSON.stringify(prev) ? model : d));
+  }, [model]);
+  useEffect(() => { onDirty?.(dirty); }, [dirty, onDirty]);
   const original = useMemo(() => new Map(model.metrics.map((m) => [m.id, m])), [model]);
   // a forecast list was opened: every accessible Data Mart's schema is read to fill it
   const [browseAll, setBrowseAll] = useState(false);
