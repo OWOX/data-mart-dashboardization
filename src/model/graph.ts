@@ -23,9 +23,6 @@ export const hasPrimaryKey = (detail: MartDetail): boolean => primaryKeyPaths(de
 /** A reportable date field, as the metrics see one: hidden and disconnected fields don't count. */
 export const hasDateField = (detail: MartDetail): boolean => flattenFields(detail.fields).some((x) => DATE_TYPES.has(x.field.type.toUpperCase()));
 
-/** A class needs a primary key to count and a date field to apply the date range to. */
-export const canBeClass = (detail: MartDetail): boolean => hasPrimaryKey(detail) && hasDateField(detail);
-
 function resolveTarget(path: string, b: Blendable, visible: ReadonlySet<string>, allowHiddenTarget?: string): string | null {
   const segs = path.split('.');
   let target: string | null = null;

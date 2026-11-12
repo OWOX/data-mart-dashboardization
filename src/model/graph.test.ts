@@ -40,3 +40,7 @@ test('hasPrimaryKey looks at nested fields too', () => {
   expect(hasPrimaryKey({ id: 'x', title: 'X', fields: [{ name: 'r', type: 'RECORD', isPrimaryKey: false, fields: [{ name: 'k', type: 'STRING', isPrimaryKey: true }] }] })).toBe(true);
   expect(hasPrimaryKey({ id: 'x', title: 'X', fields: [] })).toBe(false);
 });
+
+test('a Data Mart with a primary key and no date field has a primary key, so it can be a class', () => {
+  expect(hasPrimaryKey({ id: 'x', title: 'X', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }] })).toBe(true);
+});

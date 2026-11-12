@@ -37,15 +37,15 @@ test('builds main on top and a connected class below', async () => {
   expect(orders.metricIds).toHaveLength(2); // Revenue, then unique count
 });
 
-test('a Data Mart without a date field is not a class, and the walk stops there', async () => {
+test('a Data Mart without a primary key is not a class, and the walk stops there', async () => {
   const base = data();
-  // Customers lose their date field and reference Products, which has one
+  // Customers lose their primary key and reference Products, which has one
   const d = {
     ...base,
     marts: [...base.marts, mart('p', 'Products')],
     details: {
       ...base.details,
-      c: { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: true }, { name: 'top', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'MAX({{ref path="products" field="price"}})', level: 'metric' as const } }] },
+      c: { id: 'c', title: 'Customers', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: false }, { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false }, { name: 'top', type: 'FLOAT', isPrimaryKey: false, calculated: { formula: 'MAX({{ref path="products" field="price"}})', level: 'metric' as const } }] },
       p: { id: 'p', title: 'Products', fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, { name: 'added', type: 'DATE', isPrimaryKey: false }] },
     },
     blendables: {

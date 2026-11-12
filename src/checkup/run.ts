@@ -1,6 +1,6 @@
 import type { Model } from '../types';
 import { allFieldPaths, DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields, type Inputs, type MartDetail, type OwoxLike } from '../owox/sources';
-import { buildEdges, canBeClass, chooseMain, classDepths, hasDateField, hasPrimaryKey, type MartNode } from '../model/graph';
+import { buildEdges, chooseMain, classDepths, hasDateField, hasPrimaryKey, type MartNode } from '../model/graph';
 import { checkHealth } from '../model/health';
 import { currentInputHash } from '../model/build';
 import { runPool } from '../lib/pool';
@@ -215,7 +215,7 @@ export async function runCheckup({ owox: raw, hasAi, model, projectId, onUpdate 
     const noDate = lacking(hasDateField).filter((id) => id !== reported);
     if (!main) skip('connections.facts', 'connections.reachable');
     else {
-      const depths = classDepths(main.id, edges, new Set(nodes.filter((n) => canBeClass(n.detail)).map((n) => n.id)));
+      const depths = classDepths(main.id, edges, new Set(nodes.filter((n) => hasPrimaryKey(n.detail)).map((n) => n.id)));
       // a Data Mart missing a primary key or a date field is reported by its own check, not as unconnected
       const off = factIds.filter((id) => !depths.has(id) && !noPk.includes(id) && !noDate.includes(id));
       if (off.length) put('connections.facts', 'warn', `Not connected to the goal, so not on the canvas: ${names(off)}`, martFixes(off));

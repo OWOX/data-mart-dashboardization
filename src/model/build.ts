@@ -6,7 +6,7 @@ import { describeError } from '../lib/errors';
 import { runPool } from '../lib/pool';
 import { DATE_TYPES, fetchBlendable, fetchInputs, fetchMartDetail, flattenFields } from '../owox/sources';
 import type { Blendable, Inputs, MartDetail, OwoxLike } from '../owox/sources';
-import { buildEdges, canBeClass, chooseMain, classDepths, primaryKeyPaths } from './graph';
+import { buildEdges, chooseMain, classDepths, hasPrimaryKey, primaryKeyPaths } from './graph';
 import type { MartNode } from './graph';
 import { interpret } from './interpret';
 import type { AiMetric, Generate } from './interpret';
@@ -207,8 +207,8 @@ export async function buildModel(args: { owox: OwoxLike; generate: Generate | nu
   if (!nodes.some((n) => n.id === main.id)) throw buildFailed(main.id, failures.get(main.id));
 
   const edges = buildEdges(nodes, visible);
-  // a Data Mart without a date field can't take the date range, so it is neither drawn nor walked through
-  const classable = new Set(nodes.filter((n) => canBeClass(n.detail)).map((n) => n.id));
+  // a Data Mart without a primary key is neither drawn nor walked through
+  const classable = new Set(nodes.filter((n) => hasPrimaryKey(n.detail)).map((n) => n.id));
   const depths = classDepths(main.id, edges, classable);
 
   const rank = (m: MetricDef) => (m.role === 'critical' ? (m.source === 'project' ? 0 : 1) : m.role === 'leading' ? 2 : m.role === 'lagging' ? 3 : 4);

@@ -83,11 +83,11 @@ test('seeding drops classes the member cannot access and rehashes for the kept o
   await waitFor(() => expect(screen.queryByRole('button', { name: /issue/ })).toBeNull());
 });
 
-test('seeding drops a class whose Data Mart has no date field, from a project model built before the rule', async () => {
+test('seeding drops a class whose Data Mart has no primary key, from a project model built before the rule', async () => {
   const { deps, store, model } = await setup();
   const d = data();
   d.marts.push(mart('p', 'Products'));
-  d.details.p = { id: 'p', title: 'Products', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: true }] };
+  d.details.p = { id: 'p', title: 'Products', fields: [{ name: 'id', type: 'INTEGER', isPrimaryKey: false }, { name: 'at', type: 'DATE', isPrimaryKey: false }] };
   d.blendables.p = { availableSources: [], mainUniqueCountKeyFields: ['id'] };
   const owox = fakeOwox(d);
   const products = { ...model.classes[0]!, id: 'p', martId: 'p', title: 'Products', depth: 1 };

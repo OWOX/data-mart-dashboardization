@@ -27,9 +27,9 @@ test('the goal class stays when the member cannot access it', () => {
   expect(s.metrics.map((x) => x.martId)).toEqual(['g', 'b']);
 });
 
-const schema = (id: string, dated: boolean): MartDetail => ({ id, title: id, fields: [{ name: 'id', type: 'STRING', isPrimaryKey: true }, ...(dated ? [{ name: 'at', type: 'timestamp', isPrimaryKey: false }] : [])] });
+const schema = (id: string, keyed: boolean): MartDetail => ({ id, title: id, fields: [{ name: 'id', type: 'STRING', isPrimaryKey: keyed }, { name: 'at', type: 'timestamp', isPrimaryKey: false }] });
 
-test('withoutUndated drops classes without a date field; the goal class and classes with no schema to hand stay', () => {
+test('withoutUndated drops classes without a primary key; the goal class and classes with no schema to hand stay', () => {
   const s = withoutUndated(project, new Map([['g', schema('g', false)], ['a', schema('a', false)]]));
   expect(s.classes.map((x) => x.id)).toEqual(['g', 'b']);
   expect(s.edges).toEqual([{ from: 'g', to: 'b' }]);

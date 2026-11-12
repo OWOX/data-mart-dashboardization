@@ -1,6 +1,6 @@
 import type { Model } from '../types';
 import type { MartDetail } from '../owox/sources';
-import { canBeClass } from './graph';
+import { hasPrimaryKey } from './graph';
 
 /** A member's first ontology: the project model cut to the classes whose Data Marts they can reach, plus the goal class. */
 export function seedFrom(project: Model, accessible: ReadonlySet<string>): Model {
@@ -13,9 +13,9 @@ export function seedFrom(project: Model, accessible: ReadonlySet<string>): Model
   };
 }
 
-/** The model without the classes whose Data Mart can't be a class any more (no date field); a class with no schema to hand, and the goal class, stay. */
+/** The model without the classes whose Data Mart can't be a class any more (no primary key); a class with no schema to hand, and the goal class, stay. */
 export function withoutUndated(model: Model, details: ReadonlyMap<string, MartDetail>): Model {
-  const drop = new Set(model.classes.filter((c) => c.id !== model.goal.classId && details.has(c.martId) && !canBeClass(details.get(c.martId)!)).map((c) => c.id));
+  const drop = new Set(model.classes.filter((c) => c.id !== model.goal.classId && details.has(c.martId) && !hasPrimaryKey(details.get(c.martId)!)).map((c) => c.id));
   if (drop.size === 0) return model;
   return {
     ...model,
