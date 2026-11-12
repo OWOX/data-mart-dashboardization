@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useBelow } from './anchor';
+import { useReadOnly } from './readOnly';
 
 export interface SelectOption { value: string; label: string; disabled?: boolean }
 
@@ -16,6 +17,7 @@ export function Select({ label, value, options, className = '', invalid, describ
   onChange: (v: string) => void;
 }) {
   const id = useId();
+  const locked = useReadOnly();
   const [open, setOpen] = useState(false);
   // the highlighted option by value, so it stays put while the options change under an open list
   const [activeValue, setActiveValue] = useState<string | null>(null);
@@ -50,11 +52,11 @@ export function Select({ label, value, options, className = '', invalid, describ
   return (
     <>
       <div
-        ref={anchor} tabIndex={0} role="combobox" aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${id}-list` : undefined}
+        ref={anchor} tabIndex={locked ? undefined : 0} aria-disabled={locked || undefined} role="combobox" aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${id}-list` : undefined}
         aria-activedescendant={open && active >= 0 ? optId(active) : undefined} aria-invalid={invalid || undefined} aria-describedby={describedBy}
         title={title} data-value={value} className={`gy-input gy-pick ${className}`.trim()}
-        onClick={() => (open ? close() : show())} onBlur={close}
-        onKeyDown={(e) => {
+        onClick={locked ? undefined : () => (open ? close() : show())} onBlur={close}
+        onKeyDown={locked ? undefined : (e) => {
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
             if (!open) show();

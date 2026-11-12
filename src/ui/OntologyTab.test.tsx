@@ -700,7 +700,7 @@ describe('an info tip with an OWOX link', () => {
   });
 });
 
-test('a read-only tab lets a member unfold a class, disables the inputs, hides Save and Rebuild and says why', () => {
+test("a read-only tab says the changes are the project's, lets a member unfold a class, and locks every editing control", () => {
   const owox = fakeOwox({ projectDescription: null, contexts: [], marts: [], details: Object.fromEntries(DETAILS), blendables: {} });
   render(<OntologyTab model={model()} details={DETAILS} marts={MARTS} owox={owox} now={() => new Date()} onSave={vi.fn()} onCancel={vi.fn()} onRebuild={vi.fn()} readOnly />);
   expect(screen.getByText('The model of this project. Only a project admin can change it.')).toBeInTheDocument();
@@ -712,7 +712,19 @@ test('a read-only tab lets a member unfold a class, disables the inputs, hides S
   fireEvent.click(fold);
   expect(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).toBeInTheDocument();
   expect(screen.getByRole('checkbox', { name: 'Customers' })).toBeDisabled();
-  expect(screen.getAllByRole('checkbox', { name: 'Shown' }).every((e) => (e as HTMLInputElement).disabled)).toBe(true);
+  for (const b of screen.getAllByRole('checkbox', { name: 'Shown' })) expect(b).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Reorder Revenue' })).toBeDisabled();
-  expect(within(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).getAllByRole('combobox').every((e) => (e as HTMLButtonElement).disabled)).toBe(true);
+  // the Select is a div: locked through aria-disabled, no click or key opens or changes it
+  const format = within(screen.getByRole('rowgroup', { name: 'Metric Revenue' })).getByRole('combobox', { name: 'Format' });
+  const before = format.getAttribute('data-value');
+  expect(format).toHaveAttribute('aria-disabled', 'true');
+  expect(format).not.toHaveAttribute('tabindex');
+  fireEvent.click(format);
+  expect(screen.queryByRole('listbox')).toBeNull();
+  fireEvent.keyDown(format, { key: 'ArrowDown' });
+  fireEvent.keyDown(format, { key: 'c' });
+  expect(screen.queryByRole('listbox')).toBeNull();
+  expect(format.getAttribute('data-value')).toBe(before);
+  // the source picker is a real input
+  for (const p of screen.getAllByRole('combobox', { name: /Fact source|Plan source/ })) expect(p).toBeDisabled();
 });

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, GripVertical, Info } from 'lucide-react';
 import { normalizeCurrency } from '../lib/format';
 import { describeError } from '../lib/errors';
@@ -22,6 +22,7 @@ import { RebuildProposal } from './RebuildProposal';
 import { AGGS, FieldPicker, dateFields, fieldOptions, martFields, valueFields, type Option } from './FieldPicker';
 import { SourcePicker, type FieldGroup } from './SourcePicker';
 import { Select } from './Select';
+import { ReadOnly } from './readOnly';
 
 const FORMATS: { value: MetricFormat; label: string }[] = [{ value: 'number', label: 'Number' }, { value: 'percent', label: 'Percent' }, { value: 'currency', label: 'Currency' }];
 const SHAPES: PlanShape[] = ['daily', 'cumulative', 'level'];
@@ -164,11 +165,6 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   const [draft, setDraft] = useState<Model>(model);
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
-  // read-only disables the editing controls only; fold and info buttons stay usable
-  const root = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (readOnly) root.current?.querySelectorAll<HTMLElement & { disabled: boolean }>('input, select, textarea, [role="combobox"], .gy-onto-grip').forEach((el) => { el.disabled = true; });
-  });
   const [saving, setSaving] = useState(false);
   const [rebuild, setRebuild] = useState<Rebuild>({ phase: 'idle' });
   // a proposal is judged against the saved model, so unsaved edits can't be kept alongside it
@@ -371,7 +367,8 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
 
   return (
     <OpenPath.Provider value={onOpen}>
-    <div className="gy-onto" ref={root}>
+    <ReadOnly value={readOnly}>
+    <div className="gy-onto">
       <section className="dm-card gy-onto-intro">
         <p className="gy-onto-note">{readOnly ? 'The model of this project. Only a project admin can change it.' : 'The model of this project. Changes apply to everyone in the project.'}</p>
         {readOnly && <p className="dm-muted gy-form-note">Only a project admin can change the model</p>}
@@ -436,7 +433,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
             <div className="gy-onto-class-head">
               <label className="gy-check" title={goal ? 'The goal is always shown' : undefined}>
                 <input
-                  type="checkbox" aria-label={c.title} checked={goal || c.shown !== false} disabled={goal}
+                  type="checkbox" aria-label={c.title} checked={goal || c.shown !== false} disabled={goal || readOnly}
                   onChange={(e) => patchClass(c.id, (x) => ({ ...x, shown: e.target.checked }))}
                 />
               </label>
@@ -505,14 +502,14 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                     return (
                       <tbody key={m.id} aria-label={`Metric ${label}`} data-metric-id={m.id} className={`gy-onto-metric${dragging?.id === m.id ? ' is-dragging' : ''}${dropMark === m.id ? ' is-drop-before' : ''}${dropEnd === m.id ? ' is-drop-end' : ''}`}>
                         <tr>
-                          <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" checked={m.shown !== false} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, shown: e.target.checked }))} /></span></td>
+                          <td rowSpan={3}><span className="gy-onto-first"><input type="checkbox" className="gy-onto-check" aria-label="Shown" disabled={readOnly} checked={m.shown !== false} onChange={(e) => patchMetric(m.id, (x) => ({ ...x, shown: e.target.checked }))} /></span></td>
                           <td rowSpan={3}><span className="gy-onto-first"><span className="gy-onto-name" title={label}>{label}</span></span></td>
                           <td rowSpan={3}>
                             <span className="gy-onto-stack">
                               <Select className="gy-onto-format" label="Format" value={m.format} options={FORMATS} onChange={(v) => patchMetric(m.id, (x) => ({ ...x, format: v as MetricFormat, currency: v === 'currency' ? x.currency : null }))} />
                               {m.format === 'currency' && (
                                 <input
-                                  className="gy-input gy-onto-cur" aria-label="Currency code" placeholder="USD" maxLength={3} value={m.currency ?? ''}
+                                  className="gy-input gy-onto-cur" aria-label="Currency code" disabled={readOnly} placeholder="USD" maxLength={3} value={m.currency ?? ''}
                                   onChange={(e) => patchMetric(m.id, (x) => ({ ...x, currency: e.target.value.toUpperCase() || null }))}
                                 />
                               )}
@@ -534,9 +531,10 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                             <span className="gy-onto-first">
                               <button
                                 type="button" className="gy-onto-grip" aria-label={`Reorder ${label}`} title="Drag to reorder, or use the arrow keys" data-handle={m.id}
-                                onPointerDown={(e) => startDrag(e, c, m)} onPointerMove={overDrag}
-                                onPointerUp={() => endDrag(true, c, m)} onPointerCancel={() => endDrag(false, c, m)} onLostPointerCapture={() => endDrag(false, c, m)}
-                                onKeyDown={(e) => {
+                                disabled={readOnly}
+                                onPointerDown={readOnly ? undefined : (e) => startDrag(e, c, m)} onPointerMove={readOnly ? undefined : overDrag}
+                                onPointerUp={readOnly ? undefined : () => endDrag(true, c, m)} onPointerCancel={readOnly ? undefined : () => endDrag(false, c, m)} onLostPointerCapture={readOnly ? undefined : () => endDrag(false, c, m)}
+                                onKeyDown={readOnly ? undefined : (e) => {
                                   if (e.key === 'Escape' && dragRef.current) { endDrag(false, c, m); return; }
                                   if (dragRef.current) return;
                                   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); nudge(c, m, e.key === 'ArrowUp' ? -1 : 1); }
@@ -611,6 +609,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
         </>
       )}
     </div>
+    </ReadOnly>
     </OpenPath.Provider>
   );
 }

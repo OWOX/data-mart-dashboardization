@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useBelow } from './anchor';
+import { useReadOnly } from './readOnly';
 import type { Option } from './FieldPicker';
 
 export interface FieldGroup {
@@ -77,6 +78,7 @@ export function SourcePicker({ label, noneLabel, martId, field, groups, missing,
   // only for the keyboard: scrolling under a hovering pointer would move the next option beneath it
   const byKeys = useRef(false);
   useEffect(() => { if (open && active >= 0 && byKeys.current) document.getElementById(`${id}-o${active}`)?.scrollIntoView?.({ block: 'nearest' }); }, [open, active, id]);
+  const locked = useReadOnly();
   const optId = (i: number) => `${id}-o${i}`;
 
   const show = () => { if (!open) { setOpen(true); setActiveKey(keyOf(martId === null ? null : { martId, field })); onOpen(); } };
@@ -88,7 +90,7 @@ export function SourcePicker({ label, noneLabel, martId, field, groups, missing,
   return (
     <span className="gy-combo">
       <input
-        ref={anchor} className={`gy-input gy-onto-pick${missing ? ' gy-bad' : ''}`} role="combobox" aria-label={label}
+        ref={anchor} disabled={locked} className={`gy-input gy-onto-pick${missing ? ' gy-bad' : ''}`} role="combobox" aria-label={label}
         aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-invalid={missing || undefined}
         aria-activedescendant={open && active >= 0 ? optId(active) : undefined} title={missing ? `${current} no longer exists` : undefined}
         value={query ?? current} onClick={show} onBlur={close}
