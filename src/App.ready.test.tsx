@@ -4,7 +4,7 @@ import { buildModel } from './model/build';
 import { fakeOwox, type FakeOwoxData } from './owox/fake';
 import { cacheKey } from './metrics/refresh';
 import { rangeFor } from './lib/dates';
-import { loadShared, loadPreferences, memoryCollections, saveCache, savePreferences, saveViewSettings, type CollectionsLike } from './store/collections';
+import { loadShared, loadPreferences, loadViewSettings, memoryCollections, saveCache, savePreferences, saveViewSettings, type CollectionsLike } from './store/collections';
 import { seedShared } from './test/fixtures';
 import { type CacheDoc, type Model } from './types';
 
@@ -49,10 +49,9 @@ async function setup(opts: { generate?: AppDeps['generate']; cache?: 'fresh' | '
     };
     await saveCache(store, cacheKey({ kind: 'preset', preset: 'qtd' }, { kind: 'preset', preset: 'previous_period' }), doc);
   }
-  // most tests start on the flow view; 'none' is a member who cleared the range, 'unset' leaves the view settings to decide
+  // most tests start on the flow view through the member's default range; 'none' and 'unset' leave it empty: the ontology view
   const rangeOpt = opts.range ?? 'qtd';
-  if (rangeOpt === 'qtd') await savePreferences(store, { range: { kind: 'preset', preset: 'qtd' }, compare: { kind: 'preset', preset: 'previous_period' } });
-  if (rangeOpt === 'none') await savePreferences(store, { range: null, compare: { kind: 'preset', preset: 'previous_period' } });
+  if (rangeOpt === 'qtd') await saveViewSettings(store, { defaultPreset: 'qtd', comparisonDefault: true, weekStart: 'monday' });
   let clock = NOW.getTime();
   const deps: AppDeps = { owox, store, generate: opts.generate === undefined ? async () => goalAi : opts.generate, userId: 'u1', now: () => new Date(clock) };
   const tick = () => { clock += 60_000; };
@@ -498,11 +497,20 @@ test('a projected range shows the whole period against the whole previous one', 
   await waitFor(() => expect(document.querySelector('.gy-header-sub')!.textContent).toMatch(/^Oct 1–31 vs Sep 1–30, 2026 · /));
 });
 
-test('opens on the saved range and comparison', async () => {
+test('opens on the default range, never the last applied one; the comparison choice is remembered', async () => {
   const { deps, store } = await setup({ cache: 'none', range: 'unset' });
+  await saveViewSettings(store, { defaultPreset: 'cur_month', comparisonDefault: true, weekStart: 'monday' });
+  // a 0.4 doc that still carries the last applied range
   await savePreferences(store, { range: { kind: 'preset', preset: 'last_month' }, compare: { kind: 'off' } });
   render(<App ctx={ctxWith().ctx} deps={deps} />);
-  expect(await screen.findByRole('button', { name: 'Date range' })).toHaveTextContent(/^Last month$/);
+  expect(await screen.findByRole('button', { name: 'Date range' })).toHaveTextContent(/^This month$/);
+});
+
+test('with no default range every open is the ontology view, even after a range was applied', async () => {
+  const { deps, store } = await setup({ cache: 'none', range: 'unset' });
+  await savePreferences(store, { range: { kind: 'preset', preset: 'last_month' }, compare: { kind: 'preset', preset: 'previous_period' } });
+  render(<App ctx={ctxWith().ctx} deps={deps} />);
+  expect(await screen.findByRole('button', { name: 'Date range' })).toHaveTextContent('Select date range');
 });
 
 test('applying a range saves it as the member preference', async () => {
@@ -511,7 +519,8 @@ test('applying a range saves it as the member preference', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Date range' }));
   fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  await waitFor(async () => expect(await loadPreferences(store)).toEqual({ range: { kind: 'preset', preset: 'last_month' }, compare: { kind: 'preset', preset: 'previous_period' } }));
+  // the range itself is not remembered; the comparison is
+  await waitFor(async () => expect(await loadPreferences(store)).toEqual({ range: null, compare: { kind: 'preset', preset: 'previous_period' } }));
 });
 
 test('a failed preferences save leaves the canvas working', async () => {
@@ -537,7 +546,8 @@ test('changing the default range in settings resets the choice and saves it', as
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   fireEvent.change(screen.getByLabelText(/Default date range/i), { target: { value: 'last_month' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await waitFor(async () => expect((await loadPreferences(store))?.range).toEqual({ kind: 'preset', preset: 'last_month' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent('Last month'));
+  expect((await loadViewSettings(store)).defaultPreset).toBe('last_month');
 });
 
 // holds the mart list and every traversal until released, so a test can look at the steps in between
@@ -887,5 +897,5 @@ test('from no range, unchecking Compare in the panel keeps it off', async () => 
   fireEvent.click(screen.getByLabelText('Compare'));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(screen.getByRole('button', { name: 'Date range' })).toHaveTextContent(/^This month$/);
-  await waitFor(async () => expect(await loadPreferences(store)).toEqual({ range: { kind: 'preset', preset: 'cur_month' }, compare: { kind: 'off' } }));
+  await waitFor(async () => expect(await loadPreferences(store)).toEqual({ range: null, compare: { kind: 'off' } }));
 });

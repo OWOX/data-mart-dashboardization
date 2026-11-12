@@ -207,8 +207,8 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       }
       settingsNow.current = s;
       setSettings(s);
-      // a remembered null is a member who cleared the range
-      setRange(prefs ? prefs.range : rangeOf(s));
+      // every open starts on the member's default range (none by default: the ontology view); only the comparison choice is remembered
+      setRange(rangeOf(s));
       setCompare(prefs?.compare ?? compareOf(s));
       setModel(m);
       const tab = startTab.current;
@@ -400,13 +400,13 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     if (modelNow.current) setView({ name: 'ready' }); else if (isAdmin) void build(); else setView({ name: 'not_set_up' });
   };
   const backToCanvas = model ? () => setView({ name: 'ready' }) : undefined;
-  // Fire and forget: losing the remembered choice must not disturb the canvas.
-  const remember = (r: RangeChoice | null, c: CompareChoice) => { void savePreferences(store, { range: r, compare: c }).catch(() => undefined); };
+  // Fire and forget: losing the remembered choice must not disturb the canvas. The doc keeps its 0.4 shape; its range is always null.
+  const remember = (c: CompareChoice) => { void savePreferences(store, { range: null, compare: c }).catch(() => undefined); };
   const changeRange = (r: RangeChoice | null, c: CompareChoice) => {
     // Clear keeps the compare choice so it comes back
     const next = c;
     if (r === null) { refreshId.current++; setRefreshing(false); setLoading(false); setProgress(null); }
-    setRange(r); setCompare(next); remember(r, next);
+    setRange(r); setCompare(next); remember(next);
   };
   const saveOntologyAndLeave = async (m: Model) => {
     // a rebuild's core classes join the stored ones with the Apply
@@ -440,7 +440,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     }
     const nextRange = s.defaultPreset !== settings.defaultPreset ? rangeOf(s) : range;
     const nextCompare = s.comparisonDefault !== settings.comparisonDefault ? compareOf(s) : compare;
-    if (nextRange !== range || nextCompare !== compare) { setRange(nextRange); setCompare(nextCompare); remember(nextRange, nextCompare); }
+    if (nextRange !== range || nextCompare !== compare) { setRange(nextRange); setCompare(nextCompare); remember(nextCompare); }
     setSettings(s);
     leaveSettings();
   };
