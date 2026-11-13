@@ -68,7 +68,6 @@ const worst = (checks: Check[]): CheckStatus => SEVERITY.find((s) => checks.some
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 const sectionId = (g: GroupId) => `gy-ck-sec-${g}`;
-const scrollTo = (g: GroupId) => { document.getElementById(sectionId(g))?.scrollIntoView?.({ block: 'start' }); };
 const recommendedIndex = (s: Suggestion) => Math.max(0, s.options.findIndex((o) => o.recommended));
 
 export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply, suggestAi, onOpenTab, noModel = false, active = true, metricsDirty = false }: CheckupProps) {

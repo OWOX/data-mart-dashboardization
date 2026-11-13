@@ -90,7 +90,7 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
         <div className="dm-page-content" role="tabpanel" id="gy-panel-checkup" aria-labelledby="gy-tab-checkup" hidden={tab !== 'checkup'}>
           {/* mounted once there is a checkup; each visit starts a run */}
           {checkup && (
-            <CheckupTab {...checkup} active={tab === 'checkup'} onOpen={onOpen} onOpenTab={(t) => go(t)} isAdmin={isAdmin} noModel={noModel} metricsDirty={metricsDirty} />
+            <CheckupTab {...checkup} active={tab === 'checkup'} onOpen={onOpen} onOpenTab={(t) => { go(t); tabRefs.current[t]?.focus(); }} isAdmin={isAdmin} noModel={noModel} metricsDirty={metricsDirty} />
           )}
         </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>
