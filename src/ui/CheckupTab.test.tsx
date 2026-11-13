@@ -64,15 +64,11 @@ test('a warning naming several Data Marts links each of them', async () => {
   expect(screen.getByRole('button', { name: 'Open Orders' })).toBeInTheDocument();
 });
 
-test('tab fix opens the Metrics section', async () => {
-  const list = [ck('a', 'warn', { group: 'core', fix: { kind: 'tab', label: 'Open Metrics', tab: 'ontology' } }), ck('m', 'ok', { group: 'metrics' })];
-  render(<CheckupTab run={instant(list)} projectId="p1" now={now} metrics={<p>editor</p>} />);
-  const metrics = await screen.findByRole('group', { name: 'Metrics' });
-  await screen.findByText(/Checked/);
-  await act(async () => {});
-  expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'false');
-  fireEvent.click(screen.getByRole('button', { name: 'Open Metrics' }));
-  expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true');
+test('tab fix goes to the Metrics tab', async () => {
+  const onOpenTab = vi.fn();
+  render(<CheckupTab run={instant([ck('a', 'warn', { group: 'core', fix: { kind: 'tab', label: 'Open Metrics', tab: 'ontology' } })])} projectId="p1" now={now} onOpenTab={onOpenTab} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Open Metrics' }));
+  expect(onOpenTab).toHaveBeenCalledWith('ontology');
 });
 
 test('snippet fix copies the Metrics table and shows it', async () => {
@@ -286,24 +282,16 @@ test('a member sees an AI question with Ask a project admin', async () => {
   expect(screen.getByText('Ask a project admin')).toBeInTheDocument();
 });
 
-test('the Metrics section holds the editor under its checks; openSection opens it', async () => {
-  const list = [ck('model.built', 'ok', { group: 'metrics' })];
-  render(<CheckupTab run={instant(list)} projectId="p1" now={now} metrics={<p>the editor</p>} openSection="metrics" />);
-  const metrics = await screen.findByRole('group', { name: 'Metrics' });
-  expect(within(metrics).getByText('the editor')).toBeInTheDocument();
-  expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true');
-});
-
-test('applying a rebuild opens the Metrics section', async () => {
-  const apply = vi.fn().mockResolvedValue({ ok: true });
+test('applying a rebuild goes to the Metrics tab; a refused one stays', async () => {
+  const apply = vi.fn().mockResolvedValueOnce({ ok: false, refused: false, error: 'Map an AI credential to rebuild' }).mockResolvedValue({ ok: true });
+  const onOpenTab = vi.fn();
   const sug = suggestion({ target: () => ({ kind: 'model', action: 'rebuild' }) });
-  render(<CheckupTab run={instant([core('model.fresh', 'warn', { suggestion: sug }), ck('model.built', 'ok', { group: 'metrics' })])} projectId="p1" now={now} isAdmin apply={apply} metrics={<p>editor</p>} />);
-  const metrics = await screen.findByRole('group', { name: 'Metrics' });
-  await screen.findByText(/Checked/);
-  await act(async () => {});
-  expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'false');
+  render(<CheckupTab run={instant([core('model.fresh', 'warn', { suggestion: sug })])} projectId="p1" now={now} isAdmin apply={apply} onOpenTab={onOpenTab} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
-  await waitFor(() => expect(within(metrics).getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true'));
+  await screen.findByRole('alert');
+  expect(onOpenTab).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(onOpenTab).toHaveBeenCalledWith('ontology'));
 });
 
 test('a core-list Apply waits while the Metrics editor has unsaved edits', async () => {
@@ -328,11 +316,9 @@ test('an AI ask that comes back empty can be tried again', async () => {
   expect(suggestAi).toHaveBeenCalledTimes(2);
 });
 
-test('a section where everything is skipped says Skipped; an empty Metrics section has no count', async () => {
-  render(<CheckupTab run={instant([core('a', 'skip'), core('b', 'skip')])} projectId="p1" now={now} metrics={<p>editor</p>} />);
+test('a section where everything is skipped says Skipped', async () => {
+  render(<CheckupTab run={instant([core('a', 'skip'), core('b', 'skip')])} projectId="p1" now={now} />);
   expect(await screen.findByRole('heading', { name: /Core classes.*Skipped/ })).toBeInTheDocument();
-  const metrics = screen.getByRole('heading', { name: /^Metrics/ });
-  expect(metrics.querySelector('.gy-ck-count')).toHaveTextContent('');
 });
 
 test('the heading keeps a status word for screen readers', async () => {

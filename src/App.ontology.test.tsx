@@ -44,28 +44,21 @@ async function setup() {
 const ctxWith = (route?: string) => { const setRoute = vi.fn(); return { ctx: { projectId: 'p', route, ui: { setRoute } } as never, setRoute }; };
 const customersCard = () => screen.queryByText('Customers', { selector: '.gy-card-title' });
 
-/** Settings is open: goes to the Checkup tab and opens the Metrics section once the first run has settled. */
-async function openMetrics() {
-  fireEvent.click(screen.getByRole('tab', { name: 'Checkup' }));
-  await screen.findByText(/^Checked /);
-  // the card applies its first fold in an effect; let it land before a click
-  await act(async () => {});
-  const toggle = screen.getByRole('button', { name: 'Metrics' });
-  if (toggle.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
-}
+/** Settings is open: goes to the Metrics tab. */
+async function openMetrics() { fireEvent.click(screen.getByRole('tab', { name: 'Metrics' })); }
 
 afterEach(cleanup);
 
-test('a reload at /settings/ontology opens Checkup with the Metrics section open; /settings opens General; others open the canvas', async () => {
+test('a reload at /settings/ontology opens the Metrics tab; /settings/checkup opens Checkup; /settings opens General; others open the canvas', async () => {
   const { deps } = await setup();
   const a = render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
-  expect(await screen.findByRole('tab', { name: 'Checkup', selected: true })).toBeInTheDocument();
-  expect(screen.queryByRole('tab', { name: 'Metrics' })).toBeNull();
-  await screen.findByText(/^Checked /);
-  expect(screen.getByRole('button', { name: 'Metrics' })).toHaveAttribute('aria-expanded', 'true');
+  expect(await screen.findByRole('tab', { name: 'Metrics', selected: true })).toBeInTheDocument();
   // the tab waits for the Data Mart list, then shows the editor
   expect(await screen.findByText('The model of this project. Changes apply to everyone in the project.')).toBeInTheDocument();
   a.unmount();
+  const c = render(<App ctx={ctxWith('/settings/checkup').ctx} deps={deps} />);
+  expect(await screen.findByRole('tab', { name: 'Checkup', selected: true })).toBeInTheDocument();
+  c.unmount();
   const b = render(<App ctx={ctxWith('/settings').ctx} deps={deps} />);
   expect(await screen.findByRole('tab', { name: 'General', selected: true })).toBeInTheDocument();
   b.unmount();
@@ -302,15 +295,15 @@ async function coreSetup() {
 
 test('a core Apply keeps a clean Metrics editor mounted, with no loading placeholder', async () => {
   const { deps, store } = await coreSetup();
-  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
-  const box = await screen.findByRole('checkbox', { name: 'Customers' });
+  render(<App ctx={ctxWith('/settings/checkup').ctx} deps={deps} />);
+  const box = await screen.findByRole('checkbox', { name: 'Customers', hidden: true });
   await screen.findByText(/^Checked /);
   const section = screen.getByRole('group', { name: 'Core classes' });
   fireEvent.click(within(section).getByRole('button', { name: 'Apply' }));
   expect(screen.queryByText('Reading Data Marts…')).toBeNull();
   await waitFor(async () => expect((await loadShared(store))!.classes.some((c) => c.core)).toBe(true));
   expect(screen.queryByText('Reading Data Marts…')).toBeNull();
-  expect(screen.getByRole('checkbox', { name: 'Customers' })).toBe(box);
+  expect(screen.getByRole('checkbox', { name: 'Customers', hidden: true })).toBe(box);
 });
 
 test('a core Apply over a newer shared model writes nothing: the settings keep their old list', async () => {
@@ -331,6 +324,7 @@ test('a core Apply waits for unsaved Metrics edits', async () => {
   const { deps } = await coreSetup();
   render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Checkup' }));
   await screen.findByText(/^Checked /);
   const section = screen.getByRole('group', { name: 'Core classes' });
   expect(within(section).getByRole('button', { name: 'Apply' })).toBeDisabled();
@@ -350,16 +344,16 @@ function gated(base: AppDeps['owox']) {
 test('a core Apply before the Data Marts have loaded still ends with the Metrics editor and a refresh', async () => {
   const { deps, store } = await coreSetup();
   const { owox, release } = gated(deps.owox);
-  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={{ ...deps, owox }} />);
+  render(<App ctx={ctxWith('/settings/checkup').ctx} deps={{ ...deps, owox }} />);
   await screen.findByText(/^Checked /);
   const section = screen.getByRole('group', { name: 'Core classes' });
   expect(screen.getByText('Reading Data Marts…')).toBeInTheDocument();
   fireEvent.click(await within(section).findByRole('button', { name: 'Apply' }));
   await waitFor(async () => expect((await loadShared(store))!.classes.some((c) => c.core)).toBe(true));
   // the saved model is read again without waiting for the slow read of the old one
-  expect(await screen.findByRole('checkbox', { name: 'Customers' })).toBeInTheDocument();
+  expect(await screen.findByRole('checkbox', { name: 'Customers', hidden: true })).toBeInTheDocument();
   await act(async () => { release(); });
-  expect(screen.getByRole('checkbox', { name: 'Customers' })).toBeInTheDocument();
+  expect(screen.getByRole('checkbox', { name: 'Customers', hidden: true })).toBeInTheDocument();
   expect(screen.queryByText('Reading Data Marts…')).toBeNull();
 });
 
@@ -376,8 +370,8 @@ const applyRebuild = async () => {
 
 test('a rebuild answer without an AI credential says to map one', async () => {
   const { deps } = await staleSetup({ generate: null });
-  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
-  await screen.findByRole('checkbox', { name: 'Customers' });
+  render(<App ctx={ctxWith('/settings/checkup').ctx} deps={deps} />);
+  await screen.findByRole('checkbox', { name: 'Customers', hidden: true });
   await applyRebuild();
   expect(await screen.findByText('Map an AI credential to rebuild')).toBeInTheDocument();
 });
@@ -386,6 +380,7 @@ test('a rebuild answer with unsaved Metrics edits says to save or discard them',
   const { deps } = await staleSetup();
   render(<App ctx={ctxWith('/settings/ontology').ctx} deps={deps} />);
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Customers' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Checkup' }));
   await applyRebuild();
   expect(await screen.findByText('Save or discard your Metrics edits first')).toBeInTheDocument();
 });
@@ -393,8 +388,18 @@ test('a rebuild answer with unsaved Metrics edits says to save or discard them',
 test('a rebuild answer before the editor has loaded says it is still loading', async () => {
   const { deps } = await staleSetup();
   const { owox, release } = gated(deps.owox);
-  render(<App ctx={ctxWith('/settings/ontology').ctx} deps={{ ...deps, owox }} />);
+  render(<App ctx={ctxWith('/settings/checkup').ctx} deps={{ ...deps, owox }} />);
   await applyRebuild();
   expect(await screen.findByText('The Metrics editor is still loading. Try again in a moment.')).toBeInTheDocument();
   await act(async () => { release(); });
+});
+
+test('a rebuild answer from Checkup switches to the Metrics tab and starts the rebuild', async () => {
+  const { deps } = await staleSetup();
+  render(<App ctx={ctxWith('/settings/checkup').ctx} deps={deps} />);
+  await screen.findByRole('checkbox', { name: 'Customers', hidden: true });
+  await applyRebuild();
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Metrics' })).toHaveAttribute('aria-selected', 'true'));
+  // the rebuild ran in the Metrics editor, which was mounted behind Checkup
+  expect(await screen.findByText(/already matches|Apply selected|Rebuilding|Reading/i, undefined, { timeout: 3000 })).toBeInTheDocument();
 });

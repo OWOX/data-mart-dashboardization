@@ -15,7 +15,7 @@ The [shared ontology spec](docs/superpowers/specs/2026-11-11-shared-ontology-des
 4. A project with a 0.3 model is migrated on the first admin open, with no AI build, and members see the model right away. Only a project with no model needs an admin to build one; until then, members see "An admin hasn't set up Gyroscope yet".
 5. Describe the business model in the project description: what is sold, to whom, and through which channels. The first build takes the core classes from it. Calculated-field references are still what draws connections.
 
-Settings has two tabs. General holds your view and, for admins, the project threshold. Checkup is the setup page: it sets a project up from scratch or adjusts an existing one. Its sections (critical number, core classes, contexts, connections, metrics, housekeeping) show blockers, warnings and recommendations with tooltips. A check that isn't filled asks a question, suggests an answer, and an admin applies it with one click.
+Settings has three tabs. General holds your view and, for admins, the project threshold. Metrics edits the model: classes, metrics, plans and forecasts, with a Data Mart icon before each title. Checkup is the setup page: it sets a project up from scratch or adjusts an existing one. Its sections (critical number, core classes, contexts, connections, metrics, housekeeping) show blockers, warnings and recommendations with tooltips. A check that isn't filled asks a question, suggests an answer, and an admin applies it with one click.
 
 ## Develop
 

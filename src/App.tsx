@@ -48,7 +48,7 @@ type View =
   | { name: 'error'; message: string; retry: 'load' | 'build' | 'reload' | 'none' }
   | { name: 'not_set_up' }
   | { name: 'ready' }
-  | { name: 'settings'; tab: SettingsTab; section?: GroupId };
+  | { name: 'settings'; tab: SettingsTab };
 
 export function depsFrom(ctx: PluginContext): AppDeps {
   // the model is built once and saved, so the build reads the descriptions on the stronger tier;
@@ -76,18 +76,18 @@ function migrate(project: Model, settings: Settings): { model: Model; core: Core
   return { model: applyCore(project, core, inbound), core };
 }
 
-const ROUTES: Record<SettingsTab, string> = { general: '/settings', checkup: '/settings/checkup' };
+const ROUTES: Record<SettingsTab, string> = { general: '/settings', ontology: '/settings/ontology', checkup: '/settings/checkup' };
 /** True when two models differ only in which classes are core, and who edited when. */
 const sameBesideCore = (a: Model | null, b: Model): boolean => {
   if (!a) return false;
   const strip = (m: Model) => JSON.stringify({ ...m, editedAt: null, editedBy: null, classes: m.classes.map((c) => ({ ...c, core: false, inbound: 0 })) });
   return strip(a) === strip(b);
 };
-const ROUTES_METRICS = '/settings/ontology';
-/** The settings tab (and Checkup section) a route opens; anything else opens the canvas. /settings/ontology is the 0.3 route of the Metrics tab. */
-const tabOf = (route: string | undefined): { tab: SettingsTab; section?: GroupId } | null => {
+/** The settings tab a route opens; anything else opens the canvas. */
+const tabOf = (route: string | undefined): { tab: SettingsTab } | null => {
   const path = route?.replace(/\/+$/, '');
-  return path === ROUTES_METRICS ? { tab: 'checkup', section: 'metrics' } : path === ROUTES.checkup ? { tab: 'checkup' } : path === ROUTES.general ? { tab: 'general' } : null;
+  const tab = (Object.keys(ROUTES) as SettingsTab[]).find((t) => ROUTES[t] === path);
+  return tab ? { tab } : null;
 };
 
 /** Data Marts a health check confirmed gone: class and metric Data Marts, and the sources of plans and forecasts. */
@@ -412,7 +412,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
     void refresh(false).then((done) => { if (done) void checkOutdated(); });
   }, [inputsReady, inputs, model, owox, refresh, range]);
 
-  const openSettings = (tab: SettingsTab = 'general', section?: GroupId) => { ctx.ui?.setRoute?.(section === 'metrics' ? ROUTES_METRICS : ROUTES[tab]); setSettingsError(null); setView({ name: 'settings', tab, section }); };
+  const openSettings = (tab: SettingsTab = 'general') => { ctx.ui?.setRoute?.(ROUTES[tab]); setSettingsError(null); setView({ name: 'settings', tab }); };
   const leaveSettings = () => {
     ctx.ui?.setRoute?.('/');
     // without a model there is no canvas to go back to; only an admin builds one
@@ -438,7 +438,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
   };
   const ontologyDetails = useMemo(() => (health && health.model === model ? health.details : new Map<string, MartDetail>()), [health, model]);
   // null: the access check failed, so the editor verifies nothing
-  const ontologyMarts = useMemo(() => (inputs && inputs.model === model && inputs.data ? inputs.data.marts.map((x) => ({ id: x.id, title: x.title, description: x.description })) : null), [inputs, model]);
+  const ontologyMarts = useMemo(() => (inputs && inputs.model === model && inputs.data ? inputs.data.marts.map((x) => ({ id: x.id, title: x.title, description: x.description, icon: x.icon ?? null })) : null), [inputs, model]);
   // the out-of-date check's hash for a model's classes; null when it can't be told (no contexts, or a transient failure)
   const hashOf = async (m: Model): Promise<string | null> => {
     const data = inputs && inputs.model === model ? inputs.data : null;
@@ -484,7 +484,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
       owox, store, settings: { thresholdPct, industry, coreClasses },
       onModel: (action) => {
         if (action === 'build') void build();
-        else { document.getElementById('gy-ck-sec-metrics')?.scrollIntoView?.({ block: 'start' }); rebuildRef.current?.(); }
+        else rebuildRef.current?.();
       },
     });
     if (!r.ok || t.kind !== 'settings') return r;
@@ -527,7 +527,6 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
         <SettingsPage
           settings={settings}
           tab={view.tab}
-          openSection={view.section}
           rebuildRef={rebuildRef}
           onTabChange={(t) => ctx.ui?.setRoute?.(ROUTES[t])}
           ontology={ontologyProps}
@@ -571,7 +570,7 @@ export function App({ ctx, deps: injected }: { ctx: PluginContext; deps?: AppDep
           text: i.text,
         })),
         outdated: showOutdated,
-        onReview: () => openSettings('checkup', 'metrics'),
+        onReview: () => openSettings('ontology'),
       } : undefined;
       return (
         <main className="gy-main">

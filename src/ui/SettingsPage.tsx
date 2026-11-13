@@ -6,16 +6,15 @@ import type { BuildStep } from '../model/build';
 import { LoadingBar } from './LoadingBar';
 import { OntologyTab } from './OntologyTab';
 import { CheckupTab, type CheckupProps } from './CheckupTab';
-import type { GroupId } from '../checkup/types';
 
-export type SettingsTab = 'general' | 'checkup';
-const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'checkup', label: 'Checkup' }];
+export type SettingsTab = 'general' | 'ontology' | 'checkup';
+const TABS: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }, { id: 'ontology', label: 'Metrics' }, { id: 'checkup', label: 'Checkup' }];
 
-/** What the Metrics section edits; null while the Data Marts are still being read. */
+/** What the Metrics tab edits; null while the Data Marts are still being read. */
 export interface OntologyProps {
   model: Model;
   details: ReadonlyMap<string, MartDetail>;
-  marts: { id: string; title: string }[] | null;
+  marts: { id: string; title: string; icon?: string | null }[] | null;
   owox: OwoxLike;
   now: () => Date;
   onSave: (m: Model) => Promise<void>;
@@ -24,7 +23,7 @@ export interface OntologyProps {
   gone?: ReadonlySet<string>;
 }
 
-export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, noModel = false, isAdmin = true, onReload, openSection, rebuildRef }: {
+export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild = true, projectId, onOpen, onDismiss, error, tab: initialTab = 'general', onTabChange, ontology, checkup, noModel = false, isAdmin = true, onReload, rebuildRef }: {
   settings: Settings; onSave: (s: Settings) => void; onBack: () => void;
   /** Reads the descriptions and schemas again into a candidate model; the Ontology tab shows it as a proposal. */
   onRebuild?: (onStep: (s: BuildStep) => void) => Promise<BuildResult>; canRebuild?: boolean; projectId?: string; onOpen?: (path: string) => void;
@@ -32,12 +31,10 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
   onDismiss?: () => void; error?: string | null;
   tab?: SettingsTab; onTabChange?: (t: SettingsTab) => void; ontology?: OntologyProps | null;
   /** What the Checkup tab runs; the tab stays mounted, and each time it becomes active it starts a run. */
-  checkup?: Omit<CheckupProps, 'metrics' | 'isAdmin' | 'noModel' | 'openSection' | 'active' | 'metricsDirty'> | null;
-  /** The Checkup section that opens on arrival, e.g. 'metrics' for the old /settings/ontology route. */
-  openSection?: GroupId;
-  /** Filled with a function that starts the Metrics section's Rebuild. */
+  checkup?: Omit<CheckupProps, 'isAdmin' | 'noModel' | 'active' | 'metricsDirty' | 'onOpenTab'> | null;
+  /** Filled with a function that starts the Metrics tab's Rebuild. */
   rebuildRef?: MutableRefObject<(() => void) | null>;
-  /** No model yet: the Metrics section says so instead of waiting for Data Marts. */
+  /** No model yet: the Metrics tab says so instead of waiting for Data Marts. */
   noModel?: boolean;
   /** A member who isn't a project admin reads the model and edits only their own view settings. */
   isAdmin?: boolean;
@@ -86,10 +83,14 @@ export function SettingsPage({ settings, onSave, onBack, onRebuild, canRebuild =
         ))}
       </div>
       <main>
+        <div className="dm-page-content" role="tabpanel" id="gy-panel-ontology" aria-labelledby="gy-tab-ontology" hidden={tab !== 'ontology'}>
+          {/* always mounted, so an unsaved draft survives a visit to another tab */}
+          {metrics}
+        </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-checkup" aria-labelledby="gy-tab-checkup" hidden={tab !== 'checkup'}>
-          {/* mounted once there is a checkup, so an unsaved Metrics draft survives a visit to General; each visit starts a run */}
+          {/* mounted once there is a checkup; each visit starts a run */}
           {checkup && (
-            <CheckupTab {...checkup} active={tab === 'checkup'} onOpen={onOpen} isAdmin={isAdmin} noModel={noModel} openSection={openSection} metrics={metrics} metricsDirty={metricsDirty} />
+            <CheckupTab {...checkup} active={tab === 'checkup'} onOpen={onOpen} onOpenTab={(t) => go(t)} isAdmin={isAdmin} noModel={noModel} metricsDirty={metricsDirty} />
           )}
         </div>
         <div className="dm-page-content" role="tabpanel" id="gy-panel-general" aria-labelledby="gy-tab-general" hidden={tab !== 'general'}>

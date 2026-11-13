@@ -20,15 +20,19 @@ test('saves the chosen week start', () => {
   expect(onSave).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, weekStart: 'sunday' });
 });
 
-test('the tabs are General and Checkup, a tablist that arrow keys move through', () => {
+test('the tabs are General, Metrics and Checkup, a tablist that arrow keys move through', () => {
   const onTabChange = vi.fn();
   render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} onTabChange={onTabChange} />);
-  expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['General', 'Checkup']);
+  expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['General', 'Metrics', 'Checkup']);
   const general = screen.getByRole('tab', { name: 'General' });
   const checkup = screen.getByRole('tab', { name: 'Checkup' });
   expect(general).toHaveAttribute('aria-selected', 'true');
   expect(checkup).toHaveAttribute('tabindex', '-1');
+  const metrics = screen.getByRole('tab', { name: 'Metrics' });
   fireEvent.keyDown(general, { key: 'ArrowRight' });
+  expect(metrics).toHaveAttribute('aria-selected', 'true');
+  expect(onTabChange).toHaveBeenLastCalledWith('ontology');
+  fireEvent.keyDown(metrics, { key: 'ArrowRight' });
   expect(checkup).toHaveAttribute('aria-selected', 'true');
   expect(checkup).toHaveFocus();
   expect(onTabChange).toHaveBeenLastCalledWith('checkup');
@@ -112,4 +116,14 @@ test('Settings offers None (ontology view) and it is selected when there is no d
   fireEvent.change(select, { target: { value: '' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect(onSave).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, defaultPreset: null });
+});
+
+test('the Metrics panel shows the loading or no-model note and stays mounted behind other tabs', () => {
+  const { rerender } = render(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} noModel tab="ontology" />);
+  expect(screen.getByText(/No model yet/)).toBeVisible();
+  fireEvent.click(screen.getByRole('tab', { name: 'General' }));
+  expect(document.getElementById('gy-panel-ontology')).toHaveAttribute('hidden');
+  expect(document.getElementById('gy-panel-ontology')!.childElementCount).toBeGreaterThan(0);
+  rerender(<SettingsPage settings={DEFAULT_SETTINGS} onSave={() => {}} onBack={() => {}} />);
+  expect(screen.getByText('Reading Data Marts…')).toBeInTheDocument();
 });

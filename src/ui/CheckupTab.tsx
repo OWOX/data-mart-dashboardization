@@ -1,5 +1,5 @@
 import { Boxes, ListChecks, Loader2, Network, RefreshCw, Spline, Target, Wrench, type LucideIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { GROUPS, type ApplyTarget, type Check, type CheckStatus, type Fix, type GroupId, type Suggestion } from '../checkup/types';
 import type { ApplyResult } from '../checkup/apply';
 import { metricsSnippet } from './Blocked';
@@ -19,16 +19,14 @@ export interface CheckupProps {
   apply?: (t: ApplyTarget) => Promise<ApplyResult>;
   /** Drafts an answer with the AI for a check; passed only when an admin has an AI credential. */
   suggestAi?: (checkId: string) => Promise<Suggestion | null>;
-  /** The Metrics editor, drawn in the Metrics section under its checks. */
-  metrics?: ReactNode;
+  /** Goes to another Settings tab: a Fix link to Metrics, and a Rebuild answer. */
+  onOpenTab?: (tab: 'ontology') => void;
   /** No model yet: every section opens. */
   noModel?: boolean;
   /** Runs a checkup each time it turns true; the tab stays mounted while hidden. Default true. */
   active?: boolean;
   /** The Metrics editor holds unsaved edits, so an answer that replaces the model's core classes waits. */
   metricsDirty?: boolean;
-  /** This section opens on the first result and scrolls into view. */
-  openSection?: GroupId;
 }
 
 const GROUP_ICON: Record<GroupId, LucideIcon> = { critical: Target, core: Boxes, contexts: Network, connections: Spline, metrics: ListChecks, housekeeping: Wrench };
@@ -73,7 +71,7 @@ const sectionId = (g: GroupId) => `gy-ck-sec-${g}`;
 const scrollTo = (g: GroupId) => { document.getElementById(sectionId(g))?.scrollIntoView?.({ block: 'start' }); };
 const recommendedIndex = (s: Suggestion) => Math.max(0, s.options.findIndex((o) => o.recommended));
 
-export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply, suggestAi, metrics, noModel = false, openSection, active = true, metricsDirty = false }: CheckupProps) {
+export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply, suggestAi, onOpenTab, noModel = false, active = true, metricsDirty = false }: CheckupProps) {
   const [checks, setChecks] = useState<Check[]>([]);
   const [running, setRunning] = useState(true);
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
@@ -84,12 +82,10 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
   runRef.current = run;
   const nowRef = useRef(now);
   nowRef.current = now;
-  const openRef = useRef({ noModel, openSection });
-  openRef.current = { noModel, openSection };
+  const noModelRef = useRef(noModel);
+  noModelRef.current = noModel;
   // which sections start folded; set once, when the first run ends, so a rerun never refolds what a person opened
   const [folded, setFolded] = useState<Record<string, boolean> | null>(null);
-  // sections opened on request: a Fix link to Metrics, or a Rebuild
-  const [attention, setAttention] = useState<ReadonlySet<GroupId>>(new Set());
   // the option picked per check, as an index; unset means the recommended one
   const [picked, setPicked] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
@@ -114,8 +110,8 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
       setRunning(false);
       setFolded((prev) => {
         if (prev) return prev;
-        const { noModel: none, openSection: open } = openRef.current;
-        return Object.fromEntries(GROUPS.map((g) => [g.id, !(none || g.id === open || list.some((c) => c.group === g.id && (c.status === 'fail' || c.status === 'warn')))]));
+        const none = noModelRef.current;
+        return Object.fromEntries(GROUPS.map((g) => [g.id, !(none || list.some((c) => c.group === g.id && (c.status === 'fail' || c.status === 'warn')))]));
       });
       setCheckedAt(nowRef.current());
       setAnnounced(summarize(list, false));
@@ -131,26 +127,19 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
     return () => { runId.current++; };
   }, [start, active]);
 
-  // the section a request names scrolls into view once its card is on the page
-  const scrolled = useRef(false);
-  useEffect(() => {
-    if (!openSection || !folded || scrolled.current) return;
-    scrolled.current = true;
-    scrollTo(openSection);
-  }, [openSection, folded]);
-
-  const openMetrics = () => { setAttention((p) => new Set(p).add('metrics')); scrollTo('metrics'); };
+  const openMetrics = () => onOpenTab?.('ontology');
 
   const doApply = async (c: Check, s: Suggestion) => {
     if (!apply) return;
     const target = s.target(s.options[picked[c.id] ?? recommendedIndex(s)]!);
-    if (target.kind === 'model' && target.action === 'rebuild') openMetrics();
     setBusy((p) => new Set(p).add(c.id));
     const r = await apply(target).catch((e): ApplyResult => ({ ok: false, refused: false, error: e instanceof Error ? e.message : String(e) }));
     setBusy((p) => { const n = new Set(p); n.delete(c.id); return n; });
     setResults((p) => { const n = { ...p }; if (r.ok) delete n[c.id]; else n[c.id] = r; return n; });
     // a build leaves Settings and a rebuild shows its proposal; every other answer changes what the checks see
     if (r.ok && target.kind !== 'model') start();
+    // a rebuild shows its proposal on the Metrics tab
+    if (r.ok && target.kind === 'model' && target.action === 'rebuild') openMetrics();
   };
 
   const suggest = async (c: Check) => {
@@ -254,16 +243,16 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
       </div>
       {GROUPS.map((g) => {
         const inGroup = checks.filter((c) => c.group === g.id);
-        if (inGroup.length === 0 && !(g.id === 'metrics' && metrics)) return null;
+        if (inGroup.length === 0) return null;
         const plain = inGroup.filter((c) => !c.context);
         const contexts: { id: string; name: string }[] = [];
         for (const c of inGroup) if (c.context && !contexts.some((x) => x.id === c.context!.id)) contexts.push(c.context);
         const w = worst(inGroup);
         // open while the first run streams, then by what the run found
-        const fold = folded ? folded[g.id] ?? !(noModel || g.id === openSection) : false;
+        const fold = folded ? folded[g.id] ?? !noModel : false;
         return (
           <section key={g.id} id={sectionId(g.id)} aria-labelledby={`gy-ck-${g.id}`} className="gy-ck-group">
-            <CollapsibleCard variant="section" icon={GROUP_ICON[g.id]} label={g.label} collapsed={fold} attention={attention.has(g.id)}
+            <CollapsibleCard variant="section" icon={GROUP_ICON[g.id]} label={g.label} collapsed={fold}
               title={<h3 id={`gy-ck-${g.id}`} className="gy-ck-title">{g.label}<span className="gy-ck-gmark" data-state={w} aria-hidden="true">{MARK[w]}</span>{inGroup.length > 0 && <span className="gy-sr">, {HEAD_WORD[w]}</span>}<span className="gy-ck-count">{countText(inGroup)}</span></h3>}>
             {plain.length > 0 && <div className="dm-card-block"><ul className="gy-build-list">{plain.map(renderCheck)}</ul></div>}
             {contexts.length > 0 && <div className="gy-ck-contexts">
@@ -279,7 +268,6 @@ export function CheckupTab({ run, projectId, now, onOpen, isAdmin = false, apply
               );
             })}
             </div>}
-            {g.id === 'metrics' && metrics && <div className="gy-ck-editor">{metrics}</div>}
             </CollapsibleCard>
           </section>
         );
