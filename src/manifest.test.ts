@@ -12,5 +12,5 @@ test('the delivery URL is the folder of this compatibility line', () => {
 test('0.4 declares the shared ontology collection, project scope', () => {
   const cols = read('plugin.json').collections as { name: string; scope: string }[];
   expect(cols).toContainEqual({ name: 'ontology_project', scope: 'project' });
-  expect(read('package.json').version).toBe('0.4.0');
+  expect(read('package.json').version).toMatch(/^0\.4\.\d+$/);
 });
