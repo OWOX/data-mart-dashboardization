@@ -17,6 +17,7 @@ import { Blocked } from './Blocked';
 import { BuildProgress } from './BuildProgress';
 import { RebuildProposal } from './RebuildProposal';
 import { AGGS, FieldPicker, dateFields, fieldOptions, martFields, valueFields, type Option } from './FieldPicker';
+import { MartTitle } from './MartIcon';
 import { SourcePicker, type FieldGroup } from './SourcePicker';
 import { Select } from './Select';
 import { ReadOnly } from './readOnly';
@@ -103,7 +104,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   /** The schemas the health check already read; others are fetched when a Data Mart is picked. */
   details: ReadonlyMap<string, MartDetail>;
   /** The Data Marts this member can choose from; null when the access check failed, so nothing is verified. */
-  marts: { id: string; title: string; description?: string | null }[] | null;
+  marts: { id: string; title: string; description?: string | null; icon?: string | null }[] | null;
   owox: OwoxLike;
   now: () => Date;
   onSave: (m: Model) => Promise<void>;
@@ -142,6 +143,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   const [extra, setExtra] = useState<ReadonlyMap<string, MartDetail | null>>(new Map());
   const requested = useRef(new Set<string>());
   const accessible = useMemo(() => (marts ? new Set(marts.map((m) => m.id)) : null), [marts]);
+  const icons = useMemo(() => new Map((marts ?? []).map((m) => [m.id, m.icon ?? null])), [marts]);
   const descriptions = useMemo(() => new Map((marts ?? []).map((m) => [m.id, m.description?.trim() ?? ''])), [marts]);
   // folded by default; local, never saved
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
@@ -347,7 +349,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
   const forecastGroups: FieldGroup[] = martOptions.flatMap((o) => {
     const { detail, status } = detailOf(o.value);
     if (status === 'gone' || status === 'no_access') return [];
-    return [{ martId: o.value, title: o.label, status, options: fieldOptions(valueFields(martFields(detail?.fields ?? []))) }];
+    return [{ martId: o.value, title: o.label, icon: icons.get(o.value), status, options: fieldOptions(valueFields(martFields(detail?.fields ?? []))) }];
   });
 
   return (
@@ -424,7 +426,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
               </label>
               <button type="button" className="gy-onto-fold" aria-expanded={open} aria-controls={bodyId} onClick={() => toggleOpen(c.id)}>
                 {open ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
-                <strong>{c.title}</strong>
+                <MartTitle icon={icons.get(c.martId)}><strong>{c.title}</strong></MartTitle>
                 {c.contexts.length > 0 && <span className="gy-onto-pills" aria-label="Contexts">{c.contexts.map((x) => <span key={x.id} className="dm-badge">{x.name}</span>)}</span>}
                 <span className="dm-muted gy-onto-contexts">{shownCount} of {metrics.length} metrics shown</span>
                 {broken > 0 && <span className="gy-bad-text">{broken} broken</span>}
@@ -505,7 +507,7 @@ export function OntologyTab({ model, details, marts, owox, now, onSave, onCancel
                             </span>
                           </td>
                           <th scope="row" className="gy-onto-label">Fact</th>
-                          <td className="gy-onto-mart">{martTitle(m.martId)}</td>
+                          <td className="gy-onto-mart"><MartTitle icon={icons.get(m.martId)}>{martTitle(m.martId)}</MartTitle></td>
                           <Source
                             label="Fact" {...detailOf(m.martId)} measure={m.measure} dateField={m.dateField ?? ''} noDate={{ value: '', label: 'No date (all time)' }}
                             onMeasure={(measure) => patchMetric(m.id, (x) => {

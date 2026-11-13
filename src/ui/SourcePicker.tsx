@@ -2,10 +2,12 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useBelow } from './anchor';
 import { useReadOnly } from './readOnly';
 import type { Option } from './FieldPicker';
+import { MartTitle } from './MartIcon';
 
 export interface FieldGroup {
   martId: string;
   title: string;
+  icon?: string | null;
   /** loading: the schema is still being read; unreadable: it couldn't be. */
   status: 'ok' | 'loading' | 'unreadable';
   options: Option[];
@@ -114,7 +116,7 @@ export function SourcePicker({ label, noneLabel, martId, field, groups, missing,
           <div id={optId(0)} role="option" aria-selected={martId === null} className={`gy-combo-opt${active === 0 ? ' gy-combo-active' : ''}`} onClick={() => pick(null)}>{noneLabel}</div>
           {shown.map((g) => (
             <div key={g.martId} role="group" aria-label={g.title}>
-              <div className="gy-combo-head" aria-hidden="true">{g.title}</div>
+              <div className="gy-combo-head" aria-hidden="true"><MartTitle icon={g.icon}>{g.title}</MartTitle></div>
               {g.status === 'loading' && g.options.length === 0 && <div role="option" aria-selected={false} aria-disabled="true" className="gy-combo-note">Loading…</div>}
               {g.status === 'unreadable' && <div role="option" aria-selected={false} aria-disabled="true" className="gy-combo-note gy-bad-text">Couldn&apos;t read the schema</div>}
               {g.options.map((o) => {

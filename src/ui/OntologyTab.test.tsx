@@ -765,3 +765,30 @@ test("a metric row whose Data Mart the editor can't access is read-only with a n
   expect(row('Revenue').getByRole('checkbox', { name: 'Shown' })).toBeEnabled();
   expect(row('Revenue').queryByText(/You can't access/)).toBeNull();
 });
+
+// Data Mart icons: each title on the Metrics tab has its Data Mart's icon right before it
+const ICON_MARTS = [{ id: 'a', title: 'Orders', icon: 'orders' }, { id: 'c', title: 'Customers', icon: 'finance' }, { id: 'p', title: 'Targets' }];
+
+test('a class header shows its Data Mart icon right before the title', () => {
+  setup(model(), DETAILS, ICON_MARTS, false);
+  const title = within(screen.getByRole('region', { name: 'Orders' })).getByText('Orders', { selector: 'strong' });
+  const icon = title.parentElement!.firstElementChild!;
+  expect(icon.tagName.toLowerCase()).toBe('svg');
+  expect(icon).toHaveClass('lucide-receipt');
+  expect(icon).toHaveAttribute('aria-hidden', 'true');
+  expect(icon).toHaveAttribute('width', '16');
+  // another Data Mart, another icon; none set draws the default
+  expect(within(screen.getByRole('region', { name: 'Customers' })).getByText('Customers', { selector: 'strong' }).parentElement!.firstElementChild).toHaveClass('lucide-wallet');
+});
+
+test('the fact row and the source list group heads show the Data Mart icon before the title', () => {
+  setup(model(), DETAILS, ICON_MARTS);
+  const cell = within(screen.getByRole('rowgroup', { name: 'Metric Customers' })).getByText('Customers', { selector: '.gy-mart-title' });
+  expect(cell.firstElementChild).toHaveClass('lucide-wallet');
+  expect(cell.lastChild!.textContent).toBe('Customers');
+  const box = row('Units').getByRole('combobox', { name: 'Forecast source' });
+  fireEvent.click(box);
+  const head = within(document.getElementById(box.getAttribute('aria-controls')!)!).getAllByText('Orders', { selector: '.gy-mart-title' })[0]!;
+  expect(head.firstElementChild).toHaveClass('lucide-receipt');
+  expect(head.firstElementChild).toHaveAttribute('aria-hidden', 'true');
+});

@@ -1,4 +1,4 @@
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useEffect, useState, type ReactNode } from 'react';
 import {
   Activity, BadgeCheck, BadgeDollarSign, BellRing, Blocks, Box, Braces, Building2, Calendar, ChartColumn, ChartNoAxesCombined, ChartPie, Cloud, Coins, CreditCard, Database, DatabaseZap, Eye, FileCode, FileSpreadsheet, FileText, Filter, Fingerprint, Flag, FlaskConical, Gauge, Globe, Goal, Handshake, Image, Layers, LayoutDashboard, LayoutTemplate, LifeBuoy, Mail, MapPin, Megaphone, Merge, MessageCircle, MousePointerClick, Newspaper, Package, Phone, PiggyBank, Radio, Receipt, Repeat, Route, ScanEye, ScrollText, Search, Server, Sheet, ShoppingBag, ShoppingCart, Sigma, Smartphone, Star, Store, Table, Tag, Target, TicketPercent, TrendingUp, Truck, Undo2, User, UserPlus, Users, Video, Wallet, Warehouse, Webhook, Workflow,
   type LucideIcon,
@@ -124,4 +124,9 @@ export function MartIcon({ icon, ...props }: LucideProps & { icon: string | null
   // Until the library loads, an empty box of the same size holds the place.
   if (!lib) return <svg width={props.size ?? 24} height={props.size ?? 24} aria-hidden="true" />;
   return createElement(lib.get(icon.slice(PREFIX.length)) ?? DEFAULT_ICON, props);
+}
+
+/** A Data Mart's title with its icon right before it, for lists and headings. */
+export function MartTitle({ icon, children }: { icon: string | null | undefined; children: ReactNode }) {
+  return <span className="gy-mart-title"><MartIcon icon={icon} size={16} aria-hidden="true" />{children}</span>;
 }
